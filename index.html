@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>X FORCE 1.1</title>
+<meta name="description" content="X FORCE 1.1 — Dupedia's company operating system: site planning and quotations, orders and payments, engineering and factory, leads and follow-ups, commission, company messaging and the CEO control center.">
+<link rel="stylesheet" href="app/fonts.css">
+<link rel="stylesheet" href="app/styles.css">
+</head>
+<body>
+<div class="gate" id="gate" hidden></div>
+<div class="app" id="app" data-view="dash" data-zone="app" hidden>
+  <header class="top" id="top">
+    <button type="button" class="brand" id="go-home" aria-label="Dashboard"><img src="brand/logo_compact.png" alt="Dupedia"></button>
+    <button type="button" class="btn ghost sm" id="btn-back" hidden>← Projects</button>
+    <div class="ptitle" id="ptitle" hidden>
+      <input id="pname" class="pname" aria-label="Project name" maxlength="90">
+      <span class="psub" id="psub"></span>
+    </div>
+    <div class="htitle" id="htitle"><span class="t1">X FORCE <b class="xv">1.1</b></span><span class="t2">Dupedia operating system</span></div>
+    <nav class="flow" id="flow" aria-label="Workflow" hidden>
+      <button type="button" data-view="setup"><b>1</b>Project</button>
+      <button type="button" data-view="plan"><b>2</b>Site &amp; design</button>
+      <button type="button" data-view="quote"><b>3</b>Quotation</button>
+      <button type="button" data-view="review"><b>4</b>Review &amp; Submit</button>
+      <button type="button" data-view="proposal"><b>5</b>Proposal PDF</button>
+    </nav>
+    <div class="top-act">
+      <span class="save-state" id="save-state" aria-live="polite"></span>
+      <button type="button" class="bell" id="btn-chat" title="Messages" aria-label="Messages" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><em id="chat-n" hidden>0</em></button>
+      <button type="button" class="bell" id="btn-bell" title="Notifications" aria-label="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><em id="bell-n" hidden>0</em></button>
+      <button type="button" class="role" id="role-badge" title="My profile"></button>
+      <button type="button" class="btn ghost sm" id="btn-admin" hidden>Admin</button>
+      <button type="button" class="btn sm" id="btn-save" hidden>Save</button>
+    </div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+
+  <div class="body">
+  <nav class="rail" id="rail" aria-label="Main navigation"></nav>
+  <main class="views">
+    <section class="view" id="view-dash" aria-label="Dashboard"></section>
+    <section class="view" id="view-start" aria-label="Site Planner"></section>
+    <section class="view" id="view-payverify" aria-label="Payment Verification"></section>
+    <section class="view" id="view-workforce" aria-label="Work Force"></section>
+    <section class="view" id="view-askceo" aria-label="Ask CEO Inbox"></section>
+    <section class="view" id="view-intel" aria-label="Market Intelligence"></section>
+    <section class="view" id="view-mission" aria-label="Mission Control"></section>
+    <section class="view" id="view-home" aria-label="Projects"></section>
+    <section class="view" id="view-proposals" aria-label="My Orders and Proposals"></section>
+    <section class="view" id="view-register" aria-label="Order Register"></section>
+    <section class="view" id="view-approvecomm" aria-label="Approve Commission"></section>
+    <section class="view" id="view-audit" aria-label="Audit Log"></section>
+    <section class="view" id="view-search" aria-label="Company Search"></section>
+    <section class="view" id="view-factory" aria-label="Factory"></section>
+    <section class="view" id="view-messages" aria-label="Messages"></section>
+    <section class="view" id="view-leads" aria-label="Lead Mine"></section>
+    <section class="view" id="view-myleads" aria-label="My Leads"></section>
+    <section class="view" id="view-mycomm" aria-label="My Commissions"></section>
+    <section class="view" id="view-profile" aria-label="My Profile"></section>
+    <section class="view" id="view-approvals" aria-label="Order approvals"></section>
+    <section class="view" id="view-allleads" aria-label="All Leads"></section>
+    <section class="view" id="view-employees" aria-label="Employees"></section>
+    <section class="view" id="view-users" aria-label="User Management"></section>
+    <section class="view" id="view-commadmin" aria-label="Commission Management"></section>
+    <section class="view" id="view-reports" aria-label="Reports"></section>
+    <section class="view" id="view-tracking" aria-label="Order tracking"></section>
+    <section class="view" id="view-calls" aria-label="Call tracker"></section>
+    <section class="view" id="view-engorders" aria-label="Engineering orders"></section>
+    <section class="view" id="view-engqueue" aria-label="Engineering queue"></section>
+    <section class="view" id="view-workers" aria-label="Workers"></section>
+    <section class="view" id="view-research" aria-label="Lead research"></section>
+    <section class="view" id="view-setup" aria-label="Project details"></section>
+    <section class="view" id="view-plan" aria-label="Site and design">
+      <div class="toolbar" role="toolbar" aria-label="Plan tools" id="toolbar"></div>
+      <div class="work">
+        <aside class="left" id="left" aria-label="Library"></aside>
+        <section class="canvas-wrap" id="canvas-wrap" aria-label="Site plan">
+          <canvas id="cv" tabindex="0" aria-label="Site plan. Select tool active; arrow keys move the selection." role="application"></canvas>
+          <div class="hud" id="hud"></div>
+          <div class="hint" id="hint" hidden></div>
+          <div class="scalebar" id="scalebar"><i></i><span></span></div>
+          <div class="north" id="north" title="North"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/><path d="M20 5 27 29 20 24Z" class="n1"/><path d="M20 5 13 29 20 24Z" class="n2"/></svg><b>N</b></div>
+          <div class="drop-hint" id="drop-hint" hidden>Drop to place on the plan</div>
+          <div class="drawer" id="drawer" hidden></div>
+        </section>
+        <aside class="right" id="right" aria-label="Properties"></aside>
+      </div>
+      <footer class="status" id="status"></footer>
+    </section>
+    <section class="view" id="view-quote" aria-label="Quotation"></section>
+    <section class="view" id="view-review" aria-label="Review"></section>
+    <section class="view" id="view-proposal" aria-label="Proposal"></section>
+    <section class="view" id="view-admin" aria-label="Administration"></section>
+  </main>
+  </div>
+</div>
+<dialog class="modal" id="modal"><div class="modal-in" id="modal-in"></div></dialog>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<input type="file" id="file-in" hidden>
+
+<script src="app/products.js"></script>
+<script src="app/geom.js"></script>
+<script src="app/catalogue.js"></script>
+<script src="app/pen.js"></script>
+<script src="app/symbols.js"></script>
+<script src="app/model.js"></script>
+<script src="app/pricing.js"></script>
+<script src="app/commission.js"></script>
+<script src="app/payments.js"></script>
+<script src="app/sound.js"></script>
+<script src="app/store.js"></script>
+<script src="app/auth.js"></script>
+<script src="app/sales.js"></script>
+<script src="app/price.js"></script>
+<script src="app/notify.js"></script>
+<script src="app/leadops.js"></script>
+<script src="app/orders.js"></script>
+<script src="app/chat.js"></script>
+<script src="app/pitches.js"></script>
+<script src="app/askceo.js"></script>
+<script src="app/intel.js"></script>
+<script src="app/export.js"></script>
+<script src="app/planrender.js"></script>
+<script src="app/canvas.js"></script>
+<script src="app/fit.js"></script>
+<script src="app/io.js"></script>
+<script src="app/fontcover.js"></script>
+<script src="app/proposal.js"></script>
+<script src="app/ui-core.js"></script>
+<script src="app/ui-home.js"></script>
+<script src="app/ui-plan.js"></script>
+<script src="app/ui-quote.js"></script>
+<script src="app/ui-proposal.js"></script>
+<script src="app/ui-admin.js"></script>
+<script src="app/ui-shell.js"></script>
+<script src="app/ui-dash.js"></script>
+<script src="app/ui-leads.js"></script>
+<script src="app/ui-comm.js"></script>
+<script src="app/ui-users.js"></script>
+<script src="app/ui-ops.js"></script>
+<script src="app/ui-eng.js"></script>
+<script src="app/ui-orders.js"></script>
+<script src="app/ui-chat.js"></script>
+<script src="app/ui-ceo.js"></script>
+<script src="app/ui-pitch.js"></script>
+<script src="app/ui-pay.js"></script>
+<script src="app/ui-start.js"></script>
+<script src="app/ui-ceo2.js"></script>
+<script src="app/ui-assist.js"></script>
+<script src="app/ui-intel.js"></script>
+<script src="app/ui-mission.js"></script>
+<script src="app/boot.js"></script>
+</body>
+</html>
