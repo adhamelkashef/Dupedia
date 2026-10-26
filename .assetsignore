@@ -1,5 +1,14 @@
-   .git
-   .github
-   README.md
-   wrangler.jsonc
-   .assetsignore
+# Never upload these as public website files
+.git
+.github
+node_modules
+worker
+README.md
+CLOUDFLARE.md
+wrangler.jsonc
+package.json
+package-lock.json
+.assetsignore
+.dev.vars
+.wrangler
+.gitignore
