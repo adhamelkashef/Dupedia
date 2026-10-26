@@ -1,4 +1,3 @@
-# Never upload these as public website files
 .git
 .github
 node_modules
