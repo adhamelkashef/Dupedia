@@ -1,8 +1,28 @@
 {
-  // X FORCE 1.1 is plain HTML/CSS/JS with no build step: the repository root IS the site.
+  // X FORCE 1.1 on Cloudflare: one Worker (worker/index.js) + the app's static files + one D1 database.
   "name": "dupedia",
+  "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
   "assets": {
-    "directory": "."
-  }
+    // the repository root is the website (plain HTML/CSS/JS, no build step)
+    "directory": ".",
+    "binding": "ASSETS",
+    // these paths go through the Worker (sign-in, setup, the app page, the API); everything else is a static file
+    "run_worker_first": ["/", "/index.html", "/login", "/setup", "/xf-login.js", "/xf-shim.js", "/api/*"]
+  },
+  "d1_databases": [
+    // created automatically on the first deploy if it does not exist yet (or create it yourself with this exact name)
+    { "binding": "DB", "database_name": "xforce-db" }
+  ],
+  // hourly server sweep: 24-hour lead release, follow-up reminders, overdue customer payments (worker/sweep.js)
+  "triggers": { "crons": ["28 * * * *"] },
+  "vars": {
+    "PBKDF2_ITERATIONS": "60000",
+    "SESSION_DAYS": "14",
+    "STORAGE_QUOTA_MB": "500",
+    "STORAGE_WARN_MB": "400"
+  },
+  // keep variables and secrets you set in the Cloudflare dashboard (SETUP_CODE is a secret)
+  "keep_vars": true,
+  "observability": { "enabled": true }
 }
