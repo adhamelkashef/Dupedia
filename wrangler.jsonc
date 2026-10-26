@@ -1,0 +1,8 @@
+{
+  // X FORCE 1.1 is plain HTML/CSS/JS with no build step: the repository root IS the site.
+  "name": "dupedia",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "."
+  }
+}
