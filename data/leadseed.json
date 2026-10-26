@@ -1,0 +1,1634 @@
+[
+{
+"id": "L-mountain-view",
+"name": "Mountain View",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "New Cairo / West Cairo / North Coast",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "MV 1.1 (127 feddans, 900+ units); iCity New Cairo (500+ feddans); Aliva, Mostakbal City",
+"evidence": "Handover of MV 1.1 began May 2026; 1,800+ units delivered H1 2026; EGP 25 bn construction budget for 2026",
+"sources": [
+{
+"url": "https://www.dailynewsegypt.com/2026/05/03/mountain-view-begins-handover-of-mv-1-1-in-new-cairo/",
+"date": "2026-05-03 / 2026-08-26",
+"note": "Handover of MV 1.1 began May 2026; 1,800+ units delivered H1 2026; EGP 25 bn construction budget for 2026"
+}
+],
+"sourceDate": "2026-05-03 / 2026-08-26",
+"productsFit": "Complete play areas, surfacing, later site furniture",
+"why": "Largest visible construction spend; many phases and play areas; repeat business",
+"process": "Technical/landscape team specifies; procurement tenders packages; landscape contractor may supply",
+"departments": "Projects, Landscape, Procurement, Technical Office",
+"titles": "Head of Landscape; Project Director (iCity); Procurement Manager",
+"competitors": "Landscape contractors' bundled play; incumbents unknown",
+"entry": "Through landscape team with iCity-specific shortlist; parallel supplier registration",
+"nextAction": "Find iCity landscape lead; request supplier registration",
+"qualification": {
+"value": 25,
+"evidence": 20,
+"fit": 20,
+"access": 9,
+"recurring": 10,
+"winProb": 5
+},
+"score": 89,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 1,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-talaat-moustafa-group-tmg",
+"name": "Talaat Moustafa Group (TMG)",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "New Cairo (Madinaty), Noor City, North Coast",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Noor City; SouthMED (North Coast); Madinaty incl. The Spine",
+"evidence": "Noor City phase-1 handovers begin 2026; SouthMED phase 1 ~200 buildings, ~EGP 10 bn",
+"sources": [
+{
+"url": "https://www.zawya.com/en/business/real-estate/egypts-tmg-to-launch-post-ai-project-and-begin-noor-city-deliveries-in-2026-utlv79sx",
+"date": "2026-01-05",
+"note": "Noor City phase-1 handovers begin 2026; SouthMED phase 1 ~200 buildings, ~EGP 10 bn"
+}
+],
+"sourceDate": "2026-01-05",
+"productsFit": "Play areas for Noor City and SouthMED; schools inside Noor",
+"why": "Largest Egyptian city-scale developer; decades of repeat phases",
+"process": "Central procurement; landscape often via contractors (Jinet did Madinaty Golf Lakes)",
+"departments": "Procurement, Landscape, Projects (Noor City)",
+"titles": "Noor City Project Director; Landscape Manager; Procurement Manager",
+"competitors": "Jinet (Hassan Allam) and other landscape contractors",
+"entry": "Two routes: direct supplier registration + via landscape contractor on Noor City",
+"nextAction": "Supplier registration; identify Noor City landscape contractor",
+"qualification": {
+"value": 25,
+"evidence": 18,
+"fit": 20,
+"access": 6,
+"recurring": 10,
+"winProb": 4
+},
+"score": 83,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 2,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-emaar-misr",
+"name": "Emaar Misr",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "Marassi Red Sea; Marassi North Coast; New Cairo",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Marassi Red Sea (Infinity Beach 675 villas; Island Living ~220 villas; Marina 750 units)",
+"evidence": "~EGP 20 bn construction contracts signed (Rowad, Innovo, Arabian Construction), Sept 2026; phase-1 handover 2029",
+"sources": [
+{
+"url": "https://www.zawya.com/en/projects/real-estate/emaar-misr-signs-over-271mln-contracts-with-rowad-innovo-for-marassi-red-sea-624310",
+"date": "2026-09-15",
+"note": "~EGP 20 bn construction contracts signed (Rowad, Innovo, Arabian Construction), Sept 2026; phase-1 handover 2029"
+}
+],
+"sourceDate": "2026-09-15",
+"productsFit": "Resort and community play areas, beach-side family zones",
+"why": "Flagship coastal destination at design/early build: spec window is open now",
+"process": "Design consultant + landscape specs; Emaar procurement; main contractors execute",
+"departments": "Design / Landscape, Procurement",
+"titles": "Landscape Design Manager; Development Director (Marassi Red Sea); Procurement Manager",
+"competitors": "International brands specified by consultants; Jinet (did The Address Marassi)",
+"entry": "Get onto approved-supplier list; reach landscape consultant for Red Sea masterplan",
+"nextAction": "Identify Marassi Red Sea landscape consultant",
+"qualification": {
+"value": 25,
+"evidence": 18,
+"fit": 18,
+"access": 7,
+"recurring": 10,
+"winProb": 5
+},
+"score": 83,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 2,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-jinet-hassan-allam-holding",
+"name": "Jinet (Hassan Allam Holding)",
+"orgType": "contractor",
+"segmentLabel": "B. Landscape contractor",
+"location": "Cairo; nationwide",
+"country": "Egypt",
+"website": "https://www.hassanallam.com/subsidaries/jinet",
+"websiteNote": "",
+"projects": "Madinaty Golf Lakes (TMG); Cairo Festival City Park C (Al-Futtaim); The Address Marassi (Emaar); Alamein Historical City",
+"evidence": "Lists children's play areas in its landscape scope; references with TMG, Emaar, Al-Futtaim, Government",
+"sources": [
+{
+"url": "https://www.hassanallam.com/subsidaries/jinet",
+"date": "undated page",
+"note": "Lists children's play areas in its landscape scope; references with TMG, Emaar, Al-Futtaim, Government"
+}
+],
+"sourceDate": "undated page",
+"productsFit": "Play equipment + surfacing as subcontract or supply",
+"why": "One partner gives repeat access to Tier 1 developers",
+"process": "Buys play equipment per project for its landscape packages",
+"departments": "Procurement, Technical Office, Landscape Design",
+"titles": "Technical Office Manager; Procurement Manager; Landscape Design Manager",
+"competitors": "Its current equipment sources (unknown)",
+"entry": "Partner: supply + install play packages under Jinet contracts at contractor pricing",
+"nextAction": "Request supplier prequalification meeting",
+"qualification": {
+"value": 20,
+"evidence": 14,
+"fit": 20,
+"access": 12,
+"recurring": 10,
+"winProb": 6
+},
+"score": 82,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 4,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-ora-developers-egypt",
+"name": "Ora Developers Egypt",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "New Cairo (ZED East); Sheikh Zayed (ZED West); North Coast (Silversands)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "ZED East (332 feddans; Sage phase handed over; Sage Extension next); ZED East Sports Club",
+"evidence": "Handover started April 2026; landscaping 75% complete",
+"sources": [
+{
+"url": "https://www.zawya.com/en/press-release/companies-news/life-begins-at-ora-ora-developers-egypt-begins-handover-of-first-homes-at-zed-east-346118",
+"date": "2026-04-26",
+"note": "Handover started April 2026; landscaping 75% complete"
+}
+],
+"sourceDate": "2026-04-26",
+"productsFit": "Play areas for Sage Extension and club; later ZED West",
+"why": "High-end, design-led developer; repeat phases",
+"process": "Design/landscape team + project manager; procurement",
+"departments": "Design, Landscape, Projects",
+"titles": "Head of Landscape; Project Director ZED East; Procurement",
+"competitors": "International brands likely in a design-led project",
+"entry": "Target next phases (Sage Extension, ZED West), not phases already landscaped",
+"nextAction": "Ask who manages remaining ZED East landscape packages",
+"qualification": {
+"value": 20,
+"evidence": 20,
+"fit": 20,
+"access": 9,
+"recurring": 8,
+"winProb": 4
+},
+"score": 81,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 5,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-osool-developments",
+"name": "Osool Developments",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "Sidi Abdel Rahman, North Coast",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Sayf Resort (40 feddans; 100 m beachfront; landscaped open spaces, recreational facilities, clubhouse)",
+"evidence": "Launched July 2026 under ministerial decree of Sept 2025",
+"sources": [
+{
+"url": "https://www.dailynewsegypt.com/2026/07/26/osool-developments-launches-40-feddan-sayf-resort-in-north-coast/",
+"date": "2026-07-26",
+"note": "Launched July 2026 under ministerial decree of Sept 2025"
+}
+],
+"sourceDate": "2026-07-26",
+"productsFit": "Resort play area, clubhouse kids' zone; later furniture",
+"why": "Early design stage; mid-size developer = reachable decision-makers; fits Dupedia's scale",
+"process": "Owner/Technical Office decides with designer",
+"departments": "Technical Office, Projects, Owner",
+"titles": "Technical Office Manager; Project Director; Chairman/MD (smaller firm)",
+"competitors": "Unknown; likely local suppliers",
+"entry": "Direct: offer Sayf shortlist and layout input before design freezes",
+"nextAction": "Email technical office with Sayf shortlist offer",
+"qualification": {
+"value": 12,
+"evidence": 20,
+"fit": 20,
+"access": 14,
+"recurring": 5,
+"winProb": 8
+},
+"score": 79,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 6,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-sodic",
+"name": "SODIC",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "Ras El Hekma (June); New Zayed (VYE); East Cairo",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "June, Ras El Hekma (280 feddans; beach club; Tribute Portfolio hotel by Marriott); VYE New Zayed (delivered early)",
+"evidence": "EGP 7.5 bn CIB facility to fund June's development, Aug 2026",
+"sources": [
+{
+"url": "https://www.zawya.com/en/business/construction/sodic-secures-147mln-cib-facility-to-finance-june-north-coast-project-472017",
+"date": "2026-08-31",
+"note": "EGP 7.5 bn CIB facility to fund June's development, Aug 2026"
+}
+],
+"sourceDate": "2026-08-31",
+"productsFit": "Beach-club and resort play areas; community play areas",
+"why": "Major listed developer; coastal hotel + community = several areas",
+"process": "Development + design teams; procurement; landscape contractor",
+"departments": "Development, Landscape, Procurement",
+"titles": "Development Director (June); Landscape Manager; Procurement Manager",
+"competitors": "International brands; landscape contractors",
+"entry": "Shortlist for June beach-club/family areas; supplier registration",
+"nextAction": "Find June landscape lead",
+"qualification": {
+"value": 20,
+"evidence": 18,
+"fit": 18,
+"access": 8,
+"recurring": 8,
+"winProb": 5
+},
+"score": 77,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 7,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-sites-international",
+"name": "Sites International",
+"orgType": "consultant",
+"segmentLabel": "B. Landscape consultant",
+"location": "Giza (HQ); USA office",
+"country": "Egypt",
+"website": "https://www.sitesint.com/",
+"websiteNote": "",
+"projects": "Al-Azhar Park; New Giza Residential and Golf Course; AUC campus; Mirage City; Diriyah (KSA) urban design",
+"evidence": "Founded 1986; Egypt's best-known landscape consultancy",
+"sources": [
+{
+"url": "https://archnet.org/authorities/1493",
+"date": "Archnet undated; also Enterprise guide 2026-08-26",
+"note": "Founded 1986; Egypt's best-known landscape consultancy"
+}
+],
+"sourceDate": "Archnet undated; also Enterprise guide 2026-08-26",
+"productsFit": "Specification of play areas in their masterplans",
+"why": "Specifies for large developers; also Saudi exposure",
+"process": "Specifies products; client buys via contractor",
+"departments": "Landscape design studio",
+"titles": "Principal / Associate Landscape Architect; Design Director",
+"competitors": "International brands with spec libraries",
+"entry": "Technical presentation: data sheets, safety zones, CAD; ask about live projects",
+"nextAction": "Request a 30-min technical intro",
+"qualification": {
+"value": 18,
+"evidence": 10,
+"fit": 20,
+"access": 12,
+"recurring": 10,
+"winProb": 6
+},
+"score": 76,
+"tier": "Tier 1",
+"confidence": "High",
+"rank": 8,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-palm-hills-developments",
+"name": "Palm Hills Developments",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "West Cairo; Ras El Hekma; Abu Dhabi (Saadiyat Shores)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Ras El Hekma project with UAE's Miran; Saadiyat Shores, Abu Dhabi (USD 3.8 bn+)",
+"evidence": "New Ras El Hekma JV and Abu Dhabi project announced (dates in sources); stage not verified",
+"sources": [
+{
+"url": "https://enterpriseam.com/uae/2025/12/09/egypts-palm-hills-to-invest-over-usd-3-8-bn-in-saadiyat-shores-project/",
+"date": "2025-12-09",
+"note": "New Ras El Hekma JV and Abu Dhabi project announced (dates in sources); stage not verified"
+}
+],
+"sourceDate": "2025-12-09",
+"productsFit": "Community and resort play areas",
+"why": "Large, multi-project; route to UAE later",
+"process": "Development + landscape; procurement",
+"departments": "Development, Landscape, Procurement",
+"titles": "Head of Landscape; Development Director; Procurement",
+"competitors": "Unknown",
+"entry": "Register as supplier; position for Ras El Hekma phase",
+"nextAction": "Verify current phases in construction",
+"qualification": {
+"value": 25,
+"evidence": 10,
+"fit": 18,
+"access": 7,
+"recurring": 10,
+"winProb": 5
+},
+"score": 75,
+"tier": "Tier 1",
+"confidence": "Medium",
+"rank": 9,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-modon-holding-ras-el-hekma-urban-develop",
+"name": "Modon Holding / Ras El Hekma Urban Development",
+"orgType": "developer",
+"segmentLabel": "A. Master developer",
+"location": "Ras El Hekma",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Wadi Yemm, first of 17 precincts; 50 m sqm phase 1",
+"evidence": "Construction packages to Rowad/CCC and Rowad/Elsewedy, Aug 2026",
+"sources": [
+{
+"url": "https://www.meed.com/contractors-win-ras-el-hekma-construction-packages",
+"date": "2026-08-17",
+"note": "Construction packages to Rowad/CCC and Rowad/Elsewedy, Aug 2026"
+}
+],
+"sourceDate": "2026-08-17",
+"productsFit": "Public-realm and resort play; long-term",
+"why": "Largest coastal project in Egypt; decades of packages",
+"process": "International consultants + main contractors; formal tenders",
+"departments": "Procurement / Contracts; Design management",
+"titles": "Procurement / Contracts Manager; Landscape lead of the consultant",
+"competitors": "Gulf turnkey specialists; international brands",
+"entry": "Via main contractor Rowad and the landscape consultant once identified; watch tenders",
+"nextAction": "Identify Wadi Yemm landscape consultant",
+"qualification": {
+"value": 25,
+"evidence": 18,
+"fit": 14,
+"access": 4,
+"recurring": 10,
+"winProb": 3
+},
+"score": 74,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 10,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-cira-education",
+"name": "CIRA Education",
+"orgType": "school",
+"segmentLabel": "E. Education",
+"location": "Greater Cairo; Damietta; Badr City",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Damietta University (Sep 2027); Seneca University Badr City (Sep 2028); school network",
+"evidence": "EGP 2 bn expansion over two years, Aug 2026",
+"sources": [
+{
+"url": "https://enterpriseam.com/egypt/2026/08/12/cira-lines-up-egp-2-bn-expansion-across-education-healthcare-and-vocational-training/",
+"date": "2026-08-12",
+"note": "EGP 2 bn expansion over two years, Aug 2026"
+}
+],
+"sourceDate": "2026-08-12",
+"productsFit": "School play packages, campus furniture",
+"why": "Largest listed education group; repeat across schools",
+"process": "Central projects / procurement",
+"departments": "Projects, Procurement, Facilities",
+"titles": "Projects Director; Procurement Manager; Facilities Manager",
+"competitors": "School-furniture makers (e.g. A&W Egypt)",
+"entry": "School-package offer to central procurement",
+"nextAction": "Find projects/procurement contact",
+"qualification": {
+"value": 15,
+"evidence": 18,
+"fit": 16,
+"access": 10,
+"recurring": 8,
+"winProb": 6
+},
+"score": 73,
+"tier": "Tier 2",
+"confidence": "High",
+"rank": 11,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-tatweer-misr",
+"name": "Tatweer Misr",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "Ain Sokhna (Il Monte Galala); New Cairo (Bloomfields)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Il Monte Galala; Bloomfields; Kerten Hospitality hotels (MoU)",
+"evidence": "EGP 3.5 bn AAIB facility for both projects (date not confirmed); Kerten has 7 Ain Sokhna hotels in pipeline",
+"sources": [
+{
+"url": "https://invest-gate.me/news/tatweer-misr-aaib-ink-egp-3-5-bn-facility-contract-to-boost-construction-of-il-monte-galala-bloomfields-projects/",
+"date": "verify",
+"note": "EGP 3.5 bn AAIB facility for both projects (date not confirmed); Kerten has 7 Ain Sokhna hotels in pipeline"
+}
+],
+"sourceDate": "verify",
+"productsFit": "Community + resort play areas",
+"why": "Two active large projects; hotel component",
+"process": "Development + landscape; procurement",
+"departments": "Landscape, Projects, Procurement",
+"titles": "Head of Landscape; Project Director Bloomfields",
+"competitors": "Unknown",
+"entry": "Direct shortlist for Bloomfields phases",
+"nextAction": "Verify phases and timing",
+"qualification": {
+"value": 18,
+"evidence": 10,
+"fit": 20,
+"access": 10,
+"recurring": 8,
+"winProb": 6
+},
+"score": 72,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 12,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-orascom-development-egypt",
+"name": "Orascom Development Egypt",
+"orgType": "developer",
+"segmentLabel": "A. Developer / operator",
+"location": "El Gouna; Makadi Heights; O West (6 October)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "El Gouna; Makadi Heights; O West",
+"evidence": "Projects active (listings); current phase not verified",
+"sources": [
+{
+"url": "https://invest-gate.me/news/orascom-developments-uncovers-makadi-heights-design-masterplan/",
+"date": "verify",
+"note": "Projects active (listings); current phase not verified"
+}
+],
+"sourceDate": "verify",
+"productsFit": "Play areas; operator replacement and refurbishment",
+"why": "Owns and operates towns: new build + maintenance + refurbishment",
+"process": "Development; town management/facilities",
+"departments": "Projects, Town management, Procurement",
+"titles": "Facilities/Town Manager; Project Director O West",
+"competitors": "Unknown",
+"entry": "Two angles: O West new phases; El Gouna refurbishment",
+"nextAction": "Verify O West phase status",
+"qualification": {
+"value": 20,
+"evidence": 8,
+"fit": 18,
+"access": 8,
+"recurring": 10,
+"winProb": 6
+},
+"score": 70,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 13,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-rowad-modern-engineering",
+"name": "Rowad Modern Engineering",
+"orgType": "contractor",
+"segmentLabel": "B. Main contractor",
+"location": "Cairo; Red Sea; Ras El Hekma",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Marassi Red Sea (Infinity Beach); Ras El Hekma Wadi Yemm packages",
+"evidence": "Awarded 2026 packages on both projects",
+"sources": [
+{
+"url": "https://www.meed.com/contractors-win-ras-el-hekma-construction-packages",
+"date": "2026-08-17",
+"note": "Awarded 2026 packages on both projects"
+}
+],
+"sourceDate": "2026-08-17",
+"productsFit": "Play equipment as subcontract inside landscape scope",
+"why": "Holds contracts on two flagship coastal projects",
+"process": "Subcontract procurement",
+"departments": "Procurement, Technical Office",
+"titles": "Procurement Manager; Technical Office Manager",
+"competitors": "Specialist landscape subcontractors",
+"entry": "Register as specialist subcontractor/supplier",
+"nextAction": "Request vendor registration",
+"qualification": {
+"value": 18,
+"evidence": 18,
+"fit": 12,
+"access": 8,
+"recurring": 8,
+"winProb": 5
+},
+"score": 69,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 14,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-al-ahly-sabbour",
+"name": "Al Ahly Sabbour",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "New Cairo",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Everyday in The Mornings, New Cairo (2026 launch)",
+"evidence": "Listed as a 2026 launch",
+"sources": [
+{
+"url": "https://www.nawy.com/blog/106333-a-guide-to-the-new-projects-in-egypt",
+"date": "2026",
+"note": "Listed as a 2026 launch"
+}
+],
+"sourceDate": "2026",
+"productsFit": "Community play areas",
+"why": "Established mid-large developer with several projects",
+"process": "Technical office + procurement",
+"departments": "Technical Office, Projects",
+"titles": "Technical Office Manager; Project Manager",
+"competitors": "Unknown",
+"entry": "Direct shortlist",
+"nextAction": "Verify project stage",
+"qualification": {
+"value": 15,
+"evidence": 12,
+"fit": 18,
+"access": 10,
+"recurring": 8,
+"winProb": 6
+},
+"score": 69,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 14,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-madaar-developments",
+"name": "Madaar Developments",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "North Coast (Azha)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Azha North Coast; Ophelia Lagoon Chalets",
+"evidence": "Listed as a 2026 launch",
+"sources": [
+{
+"url": "https://www.nawy.com/blog/106333-a-guide-to-the-new-projects-in-egypt",
+"date": "2026",
+"note": "Listed as a 2026 launch"
+}
+],
+"sourceDate": "2026",
+"productsFit": "Resort play areas, lagoon-side family zones",
+"why": "Coastal resort developer; reachable size",
+"process": "Technical office",
+"departments": "Technical Office, Projects",
+"titles": "Technical Office Manager; Project Director",
+"competitors": "Unknown",
+"entry": "Direct shortlist before summer 2027",
+"nextAction": "Verify stage",
+"qualification": {
+"value": 15,
+"evidence": 12,
+"fit": 18,
+"access": 11,
+"recurring": 6,
+"winProb": 7
+},
+"score": 69,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 14,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-arkan-palm-developments",
+"name": "Arkan Palm Developments",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "West Cairo (205; One33)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Canal Walk Residence in 205; The Sage in One33",
+"evidence": "Listed as 2026 launches",
+"sources": [
+{
+"url": "https://www.nawy.com/blog/106333-a-guide-to-the-new-projects-in-egypt",
+"date": "2026",
+"note": "Listed as 2026 launches"
+}
+],
+"sourceDate": "2026",
+"productsFit": "Community play areas",
+"why": "Mid-size, multiple compounds",
+"process": "Technical office",
+"departments": "Technical Office",
+"titles": "Technical Office Manager",
+"competitors": "Unknown",
+"entry": "Direct shortlist",
+"nextAction": "Verify stage",
+"qualification": {
+"value": 12,
+"evidence": 12,
+"fit": 18,
+"access": 12,
+"recurring": 6,
+"winProb": 7
+},
+"score": 67,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 17,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-jaz-hotel-group-travco",
+"name": "Jaz Hotel Group (Travco)",
+"orgType": "hotel",
+"segmentLabel": "C. Hotel operator/owner",
+"location": "Marsa Alam; Ain Sokhna; Red Sea",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "5 Marsa Alam projects in chain pipeline; active in Ain Sokhna",
+"evidence": "W Hospitality pipeline data, April 2026",
+"sources": [
+{
+"url": "https://www.futurehospitality.com/egypt/content-library/egypt-leads-record-african-hotel-boom-as-pipeline-grows-by-35-5",
+"date": "2026-04-27",
+"note": "W Hospitality pipeline data, April 2026"
+}
+],
+"sourceDate": "2026-04-27",
+"productsFit": "Kids' club play areas; later pool/beach furniture",
+"why": "Owner-operator (Travco) = buyer and operator; family resorts",
+"process": "Pre-opening projects team + purchasing",
+"departments": "Projects, Purchasing, Pre-opening",
+"titles": "Projects Director; Purchasing Manager; Kids' Club / Entertainment Manager",
+"competitors": "Hotel furniture makers; importers",
+"entry": "Shortlist for kids' areas in new Marsa Alam resorts",
+"nextAction": "Identify projects/purchasing contact",
+"qualification": {
+"value": 15,
+"evidence": 14,
+"fit": 16,
+"access": 8,
+"recurring": 8,
+"winProb": 6
+},
+"score": 67,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 17,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-lmd",
+"name": "LMD",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "6th of October (Being 6 October)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Being 6 October incl. Mindset Mall",
+"evidence": "Listed as a 2026 launch",
+"sources": [
+{
+"url": "https://www.nawy.com/blog/106333-a-guide-to-the-new-projects-in-egypt",
+"date": "2026",
+"note": "Listed as a 2026 launch"
+}
+],
+"sourceDate": "2026",
+"productsFit": "Community play areas",
+"why": "Mid-size mixed-use",
+"process": "Technical office",
+"departments": "Technical Office, Projects",
+"titles": "Technical Office Manager",
+"competitors": "Unknown",
+"entry": "Direct shortlist",
+"nextAction": "Verify stage",
+"qualification": {
+"value": 12,
+"evidence": 12,
+"fit": 18,
+"access": 11,
+"recurring": 6,
+"winProb": 7
+},
+"score": 66,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 19,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-hassan-allam-properties",
+"name": "Hassan Allam Properties",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "New Cairo; West Cairo; El Gouna",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Swan Lake developments",
+"evidence": "Listings only; current phase not verified",
+"sources": [
+{
+"url": "https://www.propertyfinder.eg/en/new-projects/hassan-allam-holding/swan-lake-west",
+"date": "verify",
+"note": "Listings only; current phase not verified"
+}
+],
+"sourceDate": "verify",
+"productsFit": "Community play areas",
+"why": "Large group; sister company Jinet does landscape",
+"process": "Likely via Jinet (in-house)",
+"departments": "Projects",
+"titles": "Project Director",
+"competitors": "Jinet (sister company)",
+"entry": "Approach through the Jinet partnership, not separately",
+"nextAction": "Cover via Jinet",
+"qualification": {
+"value": 18,
+"evidence": 8,
+"fit": 18,
+"access": 8,
+"recurring": 8,
+"winProb": 4
+},
+"score": 64,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 20,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-urbnlanes-developments",
+"name": "Urbnlanes Developments",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "New Cairo (Noi)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Alveo Apartments in Noi New Cairo",
+"evidence": "Listed as a 2026 launch",
+"sources": [
+{
+"url": "https://www.nawy.com/blog/106333-a-guide-to-the-new-projects-in-egypt",
+"date": "2026",
+"note": "Listed as a 2026 launch"
+}
+],
+"sourceDate": "2026",
+"productsFit": "Community play areas",
+"why": "Smaller developer; fast access",
+"process": "Owner / technical office",
+"departments": "Technical Office",
+"titles": "Technical Office Manager; MD",
+"competitors": "Unknown",
+"entry": "Direct shortlist",
+"nextAction": "Verify stage",
+"qualification": {
+"value": 8,
+"evidence": 12,
+"fit": 18,
+"access": 13,
+"recurring": 4,
+"winProb": 8
+},
+"score": 63,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 21,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-q-developments",
+"name": "Q Developments",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "El Alamein, North Coast",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Q Bay North Coast",
+"evidence": "Listed as a 2026 launch",
+"sources": [
+{
+"url": "https://www.nawy.com/blog/106333-a-guide-to-the-new-projects-in-egypt",
+"date": "2026",
+"note": "Listed as a 2026 launch"
+}
+],
+"sourceDate": "2026",
+"productsFit": "Resort play areas",
+"why": "Coastal; reachable size",
+"process": "Technical office",
+"departments": "Technical Office",
+"titles": "Technical Office Manager",
+"competitors": "Unknown",
+"entry": "Direct shortlist",
+"nextAction": "Verify stage",
+"qualification": {
+"value": 10,
+"evidence": 12,
+"fit": 18,
+"access": 12,
+"recurring": 4,
+"winProb": 7
+},
+"score": 63,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 21,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-pao-planning-and-architecture-office",
+"name": "PAO – Planning and Architecture Office",
+"orgType": "consultant",
+"segmentLabel": "B. Landscape consultant",
+"location": "Mohandeseen, Giza",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "City-scale and outdoor projects in Egypt and Middle East (since 2003)",
+"evidence": "Named in Enterprise landscaping guide",
+"sources": [
+{
+"url": "https://enterpriseam.com/egypt/2026/08/26/the-landscaping-experts-to-call-for-your-sahel-garden/",
+"date": "2026-08-26",
+"note": "Named in Enterprise landscaping guide"
+}
+],
+"sourceDate": "2026-08-26",
+"productsFit": "Specification",
+"why": "Specifier for developments",
+"process": "Specifies",
+"departments": "Design studio",
+"titles": "Principal Landscape Architect",
+"competitors": "Unknown",
+"entry": "Technical presentation",
+"nextAction": "Request intro",
+"qualification": {
+"value": 12,
+"evidence": 6,
+"fit": 18,
+"access": 12,
+"recurring": 8,
+"winProb": 7
+},
+"score": 63,
+"tier": "Tier 2",
+"confidence": "Medium",
+"rank": 21,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-innovo-group",
+"name": "Innovo Group",
+"orgType": "contractor",
+"segmentLabel": "B. Main contractor",
+"location": "Marassi Red Sea",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Island Living, Marassi Red Sea (~220 villas)",
+"evidence": "Contract signed Sept 2026",
+"sources": [
+{
+"url": "https://www.zawya.com/en/projects/real-estate/emaar-misr-signs-over-271mln-contracts-with-rowad-innovo-for-marassi-red-sea-624310",
+"date": "2026-09-15",
+"note": "Contract signed Sept 2026"
+}
+],
+"sourceDate": "2026-09-15",
+"productsFit": "Play areas if landscape in scope",
+"why": "Active contract on flagship project",
+"process": "Subcontract procurement",
+"departments": "Procurement",
+"titles": "Procurement Manager",
+"competitors": "Specialist subcontractors",
+"entry": "Vendor registration",
+"nextAction": "Check if landscape is in scope",
+"qualification": {
+"value": 12,
+"evidence": 18,
+"fit": 10,
+"access": 8,
+"recurring": 6,
+"winProb": 5
+},
+"score": 59,
+"tier": "Tier 3",
+"confidence": "Medium",
+"rank": 24,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-bloom-landscape-solutions",
+"name": "Bloom Landscape Solutions",
+"orgType": "contractor",
+"segmentLabel": "B. Landscape contractor",
+"location": "Sheikh Zayed",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Design, execution, maintenance across Egypt",
+"evidence": "Named in Enterprise guide",
+"sources": [
+{
+"url": "https://enterpriseam.com/egypt/2026/08/26/the-landscaping-experts-to-call-for-your-sahel-garden/",
+"date": "2026-08-26",
+"note": "Named in Enterprise guide"
+}
+],
+"sourceDate": "2026-08-26",
+"productsFit": "Play packages as subcontract",
+"why": "Design-build channel; smaller",
+"process": "Buys per project",
+"departments": "Owner / Projects",
+"titles": "Owner; Projects Manager",
+"competitors": "Unknown",
+"entry": "Partner offer",
+"nextAction": "Intro call",
+"qualification": {
+"value": 8,
+"evidence": 6,
+"fit": 18,
+"access": 13,
+"recurring": 6,
+"winProb": 8
+},
+"score": 59,
+"tier": "Tier 3",
+"confidence": "Low",
+"rank": 24,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-nasaq-landscape",
+"name": "NASAQ Landscape",
+"orgType": "contractor",
+"segmentLabel": "B. Landscape contractor",
+"location": "Heliopolis",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Design and build",
+"evidence": "Named in Enterprise guide",
+"sources": [
+{
+"url": "https://enterpriseam.com/egypt/2026/08/26/the-landscaping-experts-to-call-for-your-sahel-garden/",
+"date": "2026-08-26",
+"note": "Named in Enterprise guide"
+}
+],
+"sourceDate": "2026-08-26",
+"productsFit": "Play packages as subcontract",
+"why": "Design-build channel",
+"process": "Buys per project",
+"departments": "Owner / Projects",
+"titles": "Owner; Projects Manager",
+"competitors": "Unknown",
+"entry": "Partner offer",
+"nextAction": "Intro call",
+"qualification": {
+"value": 8,
+"evidence": 6,
+"fit": 18,
+"access": 13,
+"recurring": 6,
+"winProb": 8
+},
+"score": 59,
+"tier": "Tier 3",
+"confidence": "Low",
+"rank": 24,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-turkan-landscape",
+"name": "Turkan Landscape",
+"orgType": "contractor",
+"segmentLabel": "B. Landscape contractor",
+"location": "Nasr City",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Villas and larger outdoor projects; 15+ years",
+"evidence": "Named in Enterprise guide",
+"sources": [
+{
+"url": "https://enterpriseam.com/egypt/2026/08/26/the-landscaping-experts-to-call-for-your-sahel-garden/",
+"date": "2026-08-26",
+"note": "Named in Enterprise guide"
+}
+],
+"sourceDate": "2026-08-26",
+"productsFit": "Play packages as subcontract",
+"why": "Design-build channel",
+"process": "Buys per project",
+"departments": "Owner / Projects",
+"titles": "Owner; Projects Manager",
+"competitors": "Unknown",
+"entry": "Partner offer",
+"nextAction": "Intro call",
+"qualification": {
+"value": 8,
+"evidence": 6,
+"fit": 18,
+"access": 13,
+"recurring": 6,
+"winProb": 8
+},
+"score": 59,
+"tier": "Tier 3",
+"confidence": "Low",
+"rank": 24,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-new-urban-communities-authority-nuca",
+"name": "New Urban Communities Authority (NUCA)",
+"orgType": "government",
+"segmentLabel": "E. Public",
+"location": "New cities nationwide",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Parks and public spaces in new cities",
+"evidence": "No specific open playground tender found in this research",
+"sources": [
+{
+"url": "https://www.tendersarabia.com/tenders/egypt/",
+"date": "n/a",
+"note": "No specific open playground tender found in this research"
+}
+],
+"sourceDate": "n/a",
+"productsFit": "Public park play areas",
+"why": "Huge volume; tender-driven",
+"process": "Formal tenders; vendor registration",
+"departments": "Contracts, City development agencies",
+"titles": "Tender committees",
+"competitors": "Low-price bidders",
+"entry": "Register; monitor tenders weekly",
+"nextAction": "Set up tender monitoring",
+"qualification": {
+"value": 20,
+"evidence": 3,
+"fit": 18,
+"access": 4,
+"recurring": 10,
+"winProb": 3
+},
+"score": 58,
+"tier": "Tier 3",
+"confidence": "Low",
+"rank": 28,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-akam-al-rajhi-developments",
+"name": "Akam Al Rajhi Developments",
+"orgType": "developer",
+"segmentLabel": "A. Developer",
+"location": "North Coast (DOSE Village)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "DOSE Village North Coast with 300-key voco resort (IHG)",
+"evidence": "Opening was scheduled for Dec 2026 in an older announcement; verify",
+"sources": [
+{
+"url": "https://gulfbusiness.com/?p=257577",
+"date": "verify (older)",
+"note": "Opening was scheduled for Dec 2026 in an older announcement; verify"
+}
+],
+"sourceDate": "verify (older)",
+"productsFit": "Resort play area",
+"why": "Saudi-backed developer; first Egyptian project",
+"process": "Technical office",
+"departments": "Projects",
+"titles": "Project Director",
+"competitors": "Unknown",
+"entry": "Direct; check if play area still open",
+"nextAction": "Verify stage",
+"qualification": {
+"value": 12,
+"evidence": 8,
+"fit": 16,
+"access": 10,
+"recurring": 4,
+"winProb": 7
+},
+"score": 57,
+"tier": "Tier 3",
+"confidence": "Low",
+"rank": 29,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-al-futtaim-real-estate-cairo-festival-ci",
+"name": "Al-Futtaim Real Estate (Cairo Festival City)",
+"orgType": "developer",
+"segmentLabel": "A. Developer / operator",
+"location": "New Cairo",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "Cairo Festival City (Park C landscaped by Jinet, 2018)",
+"evidence": "Operating destination; no current project verified",
+"sources": [
+{
+"url": "https://www.hassanallam.com/subsidaries/jinet",
+"date": "2018 reference",
+"note": "Operating destination; no current project verified"
+}
+],
+"sourceDate": "2018 reference",
+"productsFit": "Play area upgrades, refurbishment",
+"why": "Large operator; refurbishment cycle",
+"process": "Facilities / projects",
+"departments": "Facilities, Projects",
+"titles": "Facilities Manager",
+"competitors": "Jinet",
+"entry": "Refurbishment angle",
+"nextAction": "Verify upcoming works",
+"qualification": {
+"value": 15,
+"evidence": 6,
+"fit": 16,
+"access": 8,
+"recurring": 6,
+"winProb": 5
+},
+"score": 56,
+"tier": "Tier 3",
+"confidence": "Low",
+"rank": 30,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-kerten-hospitality",
+"name": "Kerten Hospitality",
+"orgType": "hotel",
+"segmentLabel": "C. Hotel operator",
+"location": "Ain Sokhna",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "7 Ain Sokhna hotels in pipeline (Tatweer Misr partnership)",
+"evidence": "W Hospitality, April 2026",
+"sources": [
+{
+"url": "https://www.futurehospitality.com/egypt/content-library/egypt-leads-record-african-hotel-boom-as-pipeline-grows-by-35-5",
+"date": "2026-04-27",
+"note": "W Hospitality, April 2026"
+}
+],
+"sourceDate": "2026-04-27",
+"productsFit": "Hotel play areas",
+"why": "Pipeline concentrated in one location",
+"process": "Operator advises; owner (Tatweer) buys",
+"departments": "Technical services",
+"titles": "Technical Services Director",
+"competitors": "Unknown",
+"entry": "Through Tatweer Misr",
+"nextAction": "Cover via Tatweer",
+"qualification": {
+"value": 10,
+"evidence": 12,
+"fit": 14,
+"access": 8,
+"recurring": 6,
+"winProb": 6
+},
+"score": 56,
+"tier": "Tier 3",
+"confidence": "Medium",
+"rank": 30,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-accor-egypt-pipeline",
+"name": "Accor (Egypt pipeline)",
+"orgType": "hotel",
+"segmentLabel": "C. Hotel operator",
+"location": "Sharm El Sheikh; Cairo; Ain Sokhna",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "7 of 9 Sharm projects; 28 Cairo hotels in pipeline",
+"evidence": "W Hospitality, April 2026",
+"sources": [
+{
+"url": "https://www.futurehospitality.com/egypt/content-library/egypt-leads-record-african-hotel-boom-as-pipeline-grows-by-35-5",
+"date": "2026-04-27",
+"note": "W Hospitality, April 2026"
+}
+],
+"sourceDate": "2026-04-27",
+"productsFit": "Family-resort play areas (owner purchases)",
+"why": "Brand standards influence owners",
+"process": "Operator sets standards; owners buy",
+"departments": "Technical Services",
+"titles": "Technical Services; owners' project managers",
+"competitors": "International brands",
+"entry": "Get onto operator's approved-vendor knowledge; sell to owners",
+"nextAction": "Find Sharm owners",
+"qualification": {
+"value": 12,
+"evidence": 14,
+"fit": 12,
+"access": 4,
+"recurring": 8,
+"winProb": 5
+},
+"score": 55,
+"tier": "Tier 3",
+"confidence": "Medium",
+"rank": 32,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-marriott-international-egypt-pipeline",
+"name": "Marriott International (Egypt pipeline)",
+"orgType": "hotel",
+"segmentLabel": "C. Hotel operator",
+"location": "Cairo; Marsa Alam; Ras El Hekma (Tribute at SODIC June)",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "20 Cairo, 2 Marsa Alam projects; Tribute Portfolio at June",
+"evidence": "W Hospitality, April 2026",
+"sources": [
+{
+"url": "https://www.futurehospitality.com/egypt/content-library/egypt-leads-record-african-hotel-boom-as-pipeline-grows-by-35-5",
+"date": "2026-04-27",
+"note": "W Hospitality, April 2026"
+}
+],
+"sourceDate": "2026-04-27",
+"productsFit": "Resort play areas via owners",
+"why": "Brand standards",
+"process": "Operator standards; owner buys",
+"departments": "Technical Services",
+"titles": "Technical Services; owners",
+"competitors": "International brands",
+"entry": "Via owners (e.g. SODIC)",
+"nextAction": "Cover via SODIC",
+"qualification": {
+"value": 12,
+"evidence": 14,
+"fit": 12,
+"access": 4,
+"recurring": 8,
+"winProb": 5
+},
+"score": 55,
+"tier": "Tier 3",
+"confidence": "Medium",
+"rank": 32,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+},
+{
+"id": "L-hilton-egypt-pipeline",
+"name": "Hilton (Egypt pipeline)",
+"orgType": "hotel",
+"segmentLabel": "C. Hotel operator",
+"location": "Cairo; Marsa Alam",
+"country": "Egypt",
+"website": "",
+"websiteNote": "Website not verified in research",
+"projects": "18 Cairo, 4 Marsa Alam projects",
+"evidence": "W Hospitality, April 2026",
+"sources": [
+{
+"url": "https://www.futurehospitality.com/egypt/content-library/egypt-leads-record-african-hotel-boom-as-pipeline-grows-by-35-5",
+"date": "2026-04-27",
+"note": "W Hospitality, April 2026"
+}
+],
+"sourceDate": "2026-04-27",
+"productsFit": "Resort play areas via owners",
+"why": "Brand standards",
+"process": "Operator standards; owner buys",
+"departments": "Technical Services",
+"titles": "Technical Services; owners",
+"competitors": "International brands",
+"entry": "Via owners",
+"nextAction": "Identify Marsa Alam owners",
+"qualification": {
+"value": 12,
+"evidence": 14,
+"fit": 12,
+"access": 4,
+"recurring": 8,
+"winProb": 5
+},
+"score": 55,
+"tier": "Tier 3",
+"confidence": "Medium",
+"rank": 32,
+"contact": {
+"phone": "",
+"email": "",
+"name": "",
+"title": "",
+"sub": "titles"
+},
+"origin": "Dupedia Strategic Account Database (researched 25 Oct 2026)"
+}
+]
