@@ -1,0 +1,23 @@
+[Unit]
+Description=X FORCE (Dupedia) server
+After=network.target
+
+[Service]
+Type=simple
+User=xforce
+WorkingDirectory=/opt/xforce
+Environment=PORT=8080
+Environment=HOST=127.0.0.1
+Environment=TRUST_PROXY=1
+Environment=DATA_DIR=/var/lib/xforce
+Environment=BACKUP_KEEP=3
+# Environment=RESEARCH_TOKEN=change-me-to-a-long-random-secret
+ExecStart=/usr/bin/node server/server.js
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/xforce
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
