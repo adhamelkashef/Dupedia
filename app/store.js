@@ -60,6 +60,7 @@
             const me = await user.me().catch(() => null); st.userName = (me && me.name) || ""; st.email = (me && me.email) || null; st.isOwner = !!(me && me.isOwner);
             const admin = await user.canEdit().catch(() => false), w = await user.can("data.write").catch(() => null);
             st.level = admin ? "admin" : w === false ? "view" : "interact";
+            if (root.XFServer) { const m = await root.XFServer.me().catch(() => null); if (m && m.level === "finance") st.level = "finance"; }   // 1.2 Accountant
           }
         } catch (e) { st.level = "interact"; }
         st.role = st.level === "admin" ? "admin" : st.level === "view" ? "viewer" : "employee";
@@ -89,6 +90,13 @@
   const memLease = {}; const memB = { acquire: async (p, { holder, ttlMs = 30000 } = {}) => { const n = Date.now(), l = memLease[p]; if (l && l.exp > n && l.holder !== holder) return { acquired: false }; memLease[p] = { holder, exp: n + ttlMs }; return { acquired: true, holder }; }, get: async (p) => mem[p] || null, set: async (p, d) => { mem[p] = JSON.parse(JSON.stringify(d)); }, del: async (p) => { delete mem[p]; }, list: async (c) => Object.keys(mem).filter((k) => k.startsWith(c + "/") && k.split("/").length === c.split("/").length + 1).map((k) => ({ id: k.split("/").pop(), data: mem[k] })) };
   const be = () => (st.mode === "memory" ? memB : B());
 
+  /** 1.2 — create-only write: succeeds only if nothing exists at `path` yet (atomic on the Cloudflare server, which also uses it
+   *  for the append-only audit trail and unique document numbers). → {created: true} or {created: false} when it existed. */
+  async function create(path, data) {
+    if (st.mode === "cloud" && st.db && st.db.doc(path).create) return st.db.doc(path).create(JSON.parse(JSON.stringify(data)));
+    const prev = await be().get(path).catch(() => null); if (prev) return { created: false };
+    await be().set(path, data); return { created: true };
+  }
   /* ---------------- high-level API ---------------- */
   const LIMIT = 230000;
   const size = (o) => JSON.stringify(o).length;
@@ -263,7 +271,28 @@
     { path: "mi", read: "interact", write: "admin" },                      // Market Intelligence: opportunities, research history, job health (no money)
     { path: "mix", read: "admin", write: "admin" },                        // CEO-only intelligence: material prices, supplier quotes, pricing and weekly reports, news
     { path: "data/users/{self}", write: "interact" },
+    // 1.2 — Finance (Cloudflare build). The Accountant's own level "finance" is evaluated by allowedFinance() below.
+    { path: "fin", read: "admin", write: "admin" },                        // ledger, accounts, payroll, purchases, invoices, taxes, finance settings
+    { path: "payslips", read: "admin", write: "admin" },                   // payslip copies written by Finance…
+    { path: "payslips/{self}", read: "interact", write: "admin" },         // …each employee reads only their own
+    { path: "audit", read: "admin", write: "admin" },                      // append-only audit trail (the server only ever adds entries)
+    { path: "leadx", read: "interact", write: "interact" },                // lead attachments (pictures, drawings, CAD, specifications)
   ];
+  /** 1.2 — what the Accountant (account level "finance") may read / write. The most specific matching prefix wins;
+   *  anything not listed is evaluated exactly as for staff ("interact"). Enforced by the Cloudflare Worker. */
+  const FINANCE_RULES = [
+    ["fin", "rw"], ["fin/cfg", "r"], ["audit", "r"],
+    ["orders", "rw"], ["salesorders", "rw"], ["paysub", "rw"], ["submissions", "r"], ["commissions", "rw"], ["requests", "rw"],
+    ["payslips", "rw"], ["notif", "w"], ["config/pricebook", "r"], ["config/commission", "r"], ["restricted/costs", "r"],
+    ["handoff", "r"], ["assign", "r"], ["eng", "r"],
+  ];
+  function allowedFinance(path, op, uid) {
+    const seg = path.split("/"); let best = null, len = -1;
+    for (const [p, m] of FINANCE_RULES) { const ps = p.split("/"); if (ps.length > seg.length || ps.some((x, i) => x !== seg[i])) continue; if (ps.length > len) { best = m; len = ps.length; } }
+    // finance access = everything staff may do, plus the finance grants above
+    if (best && (op === "read" ? best.includes("r") : best.includes("w"))) return true;
+    return allowed(path, op, "interact", uid);
+  }
   /** Evaluate RULES for a path the way the database does (used by the tests and the local emulator).
    *  Returns true when a viewer with `level` (and id `uid`) may perform `op` ("read"|"write") on `path`. */
   const LV = { view: 0, interact: 1, admin: 2, owner: 3 };
@@ -282,7 +311,7 @@
     if (privateSibling) return false;
     return LV[level] >= LV[need[op]];
   }
-  root.DPStore = { st, init, setIdentity, capability, get, set, del, list, acquire, tryGet, tryList, saveProject, loadProject, listProjects, deleteProject, saveVersion, listVersions, getVersion,
+  root.DPStore = { st, create, init, setIdentity, capability, get, set, del, list, acquire, tryGet, tryList, saveProject, loadProject, listProjects, deleteProject, saveVersion, listVersions, getVersion,
     migrateLegacy, listTemplates, saveTemplate, deleteTemplate, getConfig, setConfig, getRestricted, setRestricted, getPref, setPref, putLocalHeavy, getLocalHeavy, compactCad,
-    RULES, allowed, localStorageGet, localStorageSet, local };
+    RULES, allowed, FINANCE_RULES, allowedFinance, localStorageGet, localStorageSet, local };
 })(typeof self !== "undefined" ? self : this);

@@ -587,3 +587,36 @@ ul.claims{margin:0;padding-left:16px}
 .spark{width:110px;height:28px;color:var(--mc-acc)}.mc .tl>div{border-color:var(--mc-line)}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none}.ceo-drawer{animation:none}}
 @media (max-width:640px){.assist-fab{bottom:calc(74px + env(safe-area-inset-bottom, 0px));right:12px;width:50px;height:50px}.assist-panel{left:8px;right:8px;width:auto;bottom:calc(132px + env(safe-area-inset-bottom, 0px));max-height:calc(100vh - 190px)}.ceo-drawer{width:100vw}.pv-grid{grid-template-columns:1fr}dl.kv{grid-template-columns:1fr}dl.kv dt{margin-top:4px}}
+
+/* ---------------- 1.2 Finance ---------------- */
+.fin-h{margin:18px 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
+.fin-per{gap:8px;flex-wrap:wrap;align-items:center}
+.fin-t{text-align:left;cursor:pointer;font:inherit;color:inherit;border:1px solid var(--line);background:var(--surface)}
+.fin-t:hover,.fin-t:focus-visible{border-color:var(--lime);outline:none}
+.kc.warn{border-color:var(--amber);background:var(--amber-bg)}
+.neg{color:var(--red)}
+.tiny.up{color:var(--ok)}.tiny.down{color:var(--red)}
+.fin-alerts .note{text-align:left;cursor:pointer;width:100%;font:inherit}
+.fin-filt{flex-wrap:wrap;gap:6px}.fin-filt .in{max-width:200px}
+.fin-acts{flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
+.sep{flex:0 0 1px;align-self:stretch;background:var(--line);margin:0 4px}
+.fin-bars{display:flex;gap:6px;align-items:flex-end;overflow-x:auto;padding:6px 0}
+.fin-bars .fb{display:flex;flex-direction:column;align-items:center;min-width:46px;gap:2px}
+.fin-bars .fbb{height:120px;display:flex;align-items:flex-end;gap:2px}
+.fin-bars i{display:block;width:12px;border-radius:3px 3px 0 0;min-height:1px}
+.fin-bars i.in,.lg.in{background:var(--lime)}.fin-bars i.out,.lg.out{background:var(--fg2)}
+.lg{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle}
+.fin-doc{font-size:13px}.fin-doc .r{text-align:right}.fin-doc dl{max-width:440px;margin-left:auto}
+[dir="rtl"] .fin-t,[dir="rtl"] .fin-alerts .note{text-align:right}
+[dir="rtl"] .fin-doc dl{margin-left:0;margin-right:auto}
+.lang-ic{display:inline-grid;place-items:center;width:20px;height:20px;font:700 12px/1 var(--f-display, system-ui);flex:0 0 20px}
+[dir="rtl"] body{font-family:"Segoe UI",Tahoma,"Noto Sans Arabic","IBM Plex Sans Arabic",system-ui,sans-serif}
+[dir="rtl"] .r,[dir="rtl"] th.r,[dir="rtl"] td.r{text-align:left}
+[dir="rtl"] .num{direction:ltr;unicode-bidi:isolate}
+.app[data-view="finance"] #view-finance,.app[data-view="transfers"] #view-transfers,.app[data-view="finaccounts"] #view-finaccounts,.app[data-view="salaries"] #view-salaries,
+.app[data-view="purchases"] #view-purchases,.app[data-view="invoices"] #view-invoices,.app[data-view="taxes"] #view-taxes,.app[data-view="finreports"] #view-finreports{display:block;overflow-y:auto}
+.fin-per .in{width:auto;flex:0 0 auto;min-width:0}
+.fin-per .check{flex:1 1 100%}
+#view-finance .row.between{flex-wrap:wrap;gap:10px;align-items:flex-start}
+@media (max-width:700px){.fin-per .in{flex:1 1 40%}}
+.fin-acts .in{width:auto;flex:0 0 auto;max-width:240px}

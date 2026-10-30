@@ -42,12 +42,37 @@
   const sortLeads = (list) => list.sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[pri(a)] - { High: 0, Medium: 1, Low: 2 }[pri(b)]) || ((+b.score || 0) - (+a.score || 0)) || a.name.localeCompare(b.name));
 
   /* ---------------- Lead Mine ---------------- */
+  /* 1.2 — manual lead creation (administrators, sales, data entry) and lead attachments */
+  const canAdd = () => ["admin", "employee", "dataentry"].includes(U.role());
+  async function addLeadDialog(done) {
+    const sales = U.role() === "employee", de = U.role() === "dataentry";
+    const f = await U.form("Add a lead", [{ id: "name", label: "Organisation *", required: true }, { id: "orgType", label: "Organisation type", type: "select", value: "developer", options: Object.entries(L.ORG_TYPES).map(([k, x]) => ({ value: k, label: x })) },
+      { id: "location", label: "City / region" }, { id: "website", label: "Website" }, { id: "projects", label: "Project or opportunity", type: "textarea" }, { id: "how", label: "How you found this lead *", required: true, placeholder: "e.g. met at Cityscape, referral from…, site visit, web page" },
+      { id: "src", label: "Source link (optional, https://…)" }, { id: "cname", label: "Contact name (only if real)" }, { id: "ctitle", label: "Contact title" }, { id: "cphone", label: "Contact phone (only if real)" }, { id: "cemail", label: "Contact e-mail (only if real)" }],
+      { submit: "Add lead", wide: true, intro: sales ? "A lead you add is yours straight away and stays yours: the 24-hour rule does not release it. Only an administrator can reassign it, and must give a reason." : de ? "The lead is added Under Research and unowned. Sales can claim it once it is ready." : "Administrators can also add full researched leads from All Leads." });
+    if (!f) return; if (f.src && !/^https?:\/\//.test(f.src.trim())) return U.toast("The source link must start with https://", { err: true });
+    try { const id = await L.createLead({ name: f.name, orgType: f.orgType, location: f.location.trim(), website: f.website.trim(), projects: f.projects, evidence: f.how.trim(), sources: f.src.trim() ? [{ url: f.src.trim(), date: new Date().toISOString().slice(0, 10) }] : [],
+        contact: { name: f.cname.trim(), title: f.ctitle.trim(), phone: f.cphone.trim(), email: f.cemail.trim(), source: f.cname || f.cphone || f.cemail ? "Provided by " + (DPAuth.A.me.name || "staff") + " — " + f.how.trim() : "", sub: "none" } });
+      U.toast(sales ? "Lead added — it is in My Leads and stays yours." : "Lead added."); done && done(id);
+    } catch (e) { if (e.code === "duplicate") U.toast(e.message, { err: true, ms: 8000 }); else U.toast(e.message || "Not saved.", { err: true }); }
+  }
+  async function filesBox(box, leadId) {
+    if (!box || !L.leadFiles) return; const files = await L.leadFiles(leadId).catch(() => []), me = DPStore.st.userId;
+    box.innerHTML = `<div class="row between"><h4>Files (${files.length})</h4>${U.canWrite() ? `<button class="btn ghost xs" data-lfa>${U.svg("clip")} Attach…</button>` : ""}</div>
+      ${files.length ? `<ul class="small">${files.map((f) => `<li><button class="linkbtn" data-lfo="${esc(f.id)}">${esc(f.name)}</button> <span class="tiny muted">${esc(f.label || "")} · ${esc(DPAuth.nameSync(f.by) || "")} · ${esc(String(f.at).slice(0, 10))} · ${Math.round(f.size / 1024)} kB</span>${f.by === me || U.isAdmin() ? ` <button class="linkbtn tiny" data-lfr="${esc(f.id)}">remove</button>` : ""}</li>`).join("")}</ul>` : `<p class="tiny muted">Pictures, drawings, CAD files or specifications for this lead.</p>`}`;
+    const a = $("[data-lfa]", box); if (a) a.onclick = () => U.pickFile(".jpg,.jpeg,.png,.webp,.gif,.pdf,.dwg,.dxf,.skp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip", async (file) => {
+      const label = (root.prompt && root.prompt("What is this file? (e.g. site photo, master plan)")) || ""; a.disabled = true; a.textContent = "Uploading…";
+      try { await L.attachLeadFile(leadId, file, { label }); U.toast("File attached."); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); } filesBox(box, leadId); });
+    $$("[data-lfo]", box).forEach((b) => (b.onclick = async () => { const f = await L.leadFile(leadId, b.dataset.lfo); if (!f) return U.toast("The file is not complete.", { err: true });
+      if (/^image\/|pdf$/.test(f.type)) DPUI.showFile(f, f.name); else { const bin = atob(f.dataUrl.split(",")[1] || ""), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); U.downloadOut({ blob: new Blob([u8], { type: f.type }), filename: f.name }, "File"); } }));
+    $$("[data-lfr]", box).forEach((b) => (b.onclick = async () => { if (!(await U.ask("Remove this file?", "", [{ label: "Cancel", value: false }, { label: "Remove", value: true, cls: "danger" }]))) return; try { await L.removeLeadFile(leadId, b.dataset.lfr); } catch (e) { U.toast(e.message, { err: true }); } filesBox(box, leadId); }));
+  }
   async function renderMine() {
     const V = $("#view-leads");
     V.innerHTML = `<div class="page"><div class="phead"><div><span class="eyebrow">Lead Mine</span><h1>Find your next <em>project</em>.</h1><p class="lead small">Researched organisations with active or upcoming projects. Claim a lead to make it yours: nobody else can take it unless an administrator reassigns it.</p></div>
-      <div class="row"><button class="btn ghost sm" id="lm-my">My Leads →</button></div></div>${filterBar("lm")}<div id="lm-list" class="lgrid"><div class="empty"><div class="spinner"></div></div></div>
+      <div class="row">${canAdd() ? `<button class="btn lime sm" id="lm-add">${U.svg("plus")} Add a lead</button>` : ""}<button class="btn ghost sm" id="lm-my">My Leads →</button></div></div>${filterBar("lm")}<div id="lm-list" class="lgrid"><div class="empty"><div class="spinner"></div></div></div>
       <p class="tiny muted">Contact details are shown only when verified with a source; everything else is “Under Research”. Lead information comes from public sources listed on each lead — check them before contacting anyone.</p></div>`;
-    $("#lm-my").onclick = () => U.go("myleads");
+    $("#lm-my").onclick = () => U.go("myleads"); const la = $("#lm-add"); if (la) la.onclick = () => addLeadDialog(() => renderMine());
     bindFilters("lm", list);
     try { await load(true); } catch (e) { $("#lm-list").innerHTML = `<div class="note err">Leads could not be loaded (${esc(e.message || e.code)}).</div>`; return; }
     list();
@@ -85,9 +110,9 @@
       <div class="kv"><span>Projects</span><span>${esc(l.projects || "—")}</span><span>Evidence</span><span>${esc(l.evidence || "—")}</span><span>Lead with</span><span>${esc(l.productsFit || "—")}</span><span>Why attractive</span><span>${esc(l.why || "—")}</span>
         <span>How they buy</span><span>${esc(l.process || "—")}</span><span>Titles to reach</span><span>${esc(l.titles || "—")}</span><span>Competitors</span><span>${esc(l.competitors || "—")}</span><span>Entry strategy</span><span>${esc(l.entry || "—")}</span><span>Suggested next step</span><span>${esc(l.nextAction || "—")}</span></div>
       <h4>Qualification (100 points)</h4><div class="kv">${L.QUAL.map(([k, lab, max]) => `<span>${esc(lab)}</span><span class="num">${q[k] != null ? esc(q[k]) : "—"} / ${max}</span>`).join("")}<span><b>Score</b></span><b class="num">${l.score != null ? esc(l.score) : "—"}</b></div>
-      <h4>Sources</h4>${srcList(l)}<p class="tiny muted">${esc(l.origin || "")}</p>
+      <h4>Sources</h4>${srcList(l)}<p class="tiny muted">${esc(l.origin || "")}${l.createdBy ? " · " + esc(DPAuth.nameSync(l.createdBy) || "") + " · " + esc(String(l.createdAt || "").slice(0, 10)) : ""}</p><div id="ld-files" class="stack"></div>
       <div class="acts">${!o.owner && !o.conflict && U.canWrite() && !["archived", "merged", "inactive"].includes(l.status) ? `<button class="btn lime" id="ld-claim">Claim lead</button>` : `<span class="small muted">${o.conflict ? "Ownership under review by an administrator." : o.owner ? "Owner: " + esc(ownerName(o.owner)) : ""}</span>`}<button class="btn ghost" id="ld-x">Close</button></div>`,
-      (m) => { $("#ld-x", m).onclick = () => U.closeModal(); const c = $("#ld-claim", m); if (c) c.onclick = () => { U.closeModal(); doClaim(id); }; }, { wide: true });
+      (m) => { filesBox($("#ld-files", m), id); $("#ld-x", m).onclick = () => U.closeModal(); const c = $("#ld-claim", m); if (c) c.onclick = () => { U.closeModal(); doClaim(id); }; }, { wide: true });
   }
 
   /* ---------------- My Leads ---------------- */
@@ -95,8 +120,8 @@
     if (opts && opts.lead) F.sel = opts.lead;
     const V = $("#view-myleads");
     V.innerHTML = `<div class="page"><div class="phead"><div><span class="eyebrow">My Leads</span><h1>Your <em>pipeline</em>.</h1><p class="lead small">Leads you own. Record each contact, keep a next action, and start the project when it is ready to quote. Only you and administrators can see these notes.</p></div>
-      <div class="row"><button class="btn ghost sm" id="ml-mine">Lead Mine</button></div></div><div class="split"><div class="stack"><div class="filters"><select class="in sm" id="ml-st"><option value="">All stages</option>${L.STAGES.filter(([k]) => !["available", "research", "archived"].includes(k)).map(([k, l]) => `<option value="${k}"${F.mst === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div><div class="llist" id="ml-list"><div class="empty"><div class="spinner"></div></div></div></div><div id="ml-detail"></div></div></div>`;
-    $("#ml-mine").onclick = () => U.go("leads");
+      <div class="row">${canAdd() ? `<button class="btn lime sm" id="ml-add">${U.svg("plus")} Add my own lead</button>` : ""}<button class="btn ghost sm" id="ml-mine">Lead Mine</button></div></div><div class="split"><div class="stack"><div class="filters"><select class="in sm" id="ml-st"><option value="">All stages</option>${L.STAGES.filter(([k]) => !["available", "research", "archived"].includes(k)).map(([k, l]) => `<option value="${k}"${F.mst === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div><div class="llist" id="ml-list"><div class="empty"><div class="spinner"></div></div></div></div><div id="ml-detail"></div></div></div>`;
+    $("#ml-mine").onclick = () => U.go("leads"); const mla = $("#ml-add"); if (mla) mla.onclick = () => addLeadDialog((id) => { F.sel = id; renderMy(); });
     $("#ml-st").onchange = (e) => { F.mst = e.target.value; listMy(); };
     await load(true);
     const crms = await L.listCrm(DPStore.st.userId); cache.crm = Object.fromEntries(crms.map((c) => [c.leadId, c]));
@@ -123,14 +148,16 @@
       (c.stageHistory || []).map((h) => ({ at: h.at, html: `Stage → <b>${esc(L.STAGE_LABEL[h.stage] || h.stage)}</b>${h.note ? ` <span class="muted">${esc(h.note)}</span>` : ""}` }))).sort((a, b) => String(b.at).localeCompare(String(a.at)));
     const cf = c.contactFound || {};
     B.innerHTML = `<div class="card stack corner"><div class="row between"><div><span class="eyebrow">${esc(typeL(l.orgType))} · ${esc(l.location || "")}</span><h2>${esc(l.name)}</h2></div><span class="pri ${pri(l)}">${pri(l)} priority</span></div>
-      <div class="note small row between"><span><b>24-hour rule.</b> ${o.deadline ? `Released ${esc(new Date(o.deadline).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))} unless you log a qualifying activity.` : "No time limit on this lead (set by an administrator)."}${o.lastActivity ? ` Last qualifying activity ${esc(new Date(o.lastActivity).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}.` : ""}</span>${timerChip(o)}</div>
+      <div class="note small row between"><span><b>24-hour rule.</b> ${o.deadline ? `Released ${esc(new Date(o.deadline).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))} unless you log a qualifying activity.` : (l.originKind === "sales" && l.createdBy === DPStore.st.userId ? "You added this lead yourself, so it stays yours — the 24-hour rule does not release it. Only an administrator can reassign it, with a reason." : "No time limit on this lead (set by an administrator).")}${o.lastActivity ? ` Last qualifying activity ${esc(new Date(o.lastActivity).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}.` : ""}</span>${timerChip(o)}</div>
       <div class="grid2"><label class="field"><span>Pipeline stage</span><select class="in" id="md-stage">${L.STAGES.filter(([k]) => L.OWNER_STAGES.includes(k) || k === c.stage).map(([k, lab]) => `<option value="${k}"${(c.stage || "claimed") === k ? " selected" : ""}${!L.OWNER_STAGES.includes(k) ? " disabled" : ""}>${esc(lab)}</option>`).join("")}</select><small>“Won” is set automatically when an administrator approves the order.</small></label>
         <div class="field"><span class="lbl">Next action</span><div class="row" style="flex-wrap:nowrap"><input class="in" id="md-na" placeholder="e.g. Call the landscape manager" value="${esc((c.nextAction || {}).text || "")}"><input class="in" type="date" id="md-due" value="${esc((c.nextAction || {}).due || "")}" style="width:150px"></div></div></div>
       <div class="row"><button class="btn sm" id="md-act">${U.svg("phone")} Log call / activity</button><button class="btn ghost sm" id="md-note">Private note</button><button class="btn ghost sm" id="md-contact">Update contact details</button><button class="btn lime sm" id="md-proj">${U.svg("planner")} Start a project</button><button class="btn ghost sm" id="md-info">Lead details</button><button class="btn ghost sm" id="md-rel">Release lead</button></div>
       ${contactBox(l)}${(() => { const ct = l.contact || {}; return ct.name || ct.phone || ct.email ? `<div class="kv small"><span>Contact</span><span>${esc([ct.name, ct.title].filter(Boolean).join(" · ") || "—")}</span><span>Phone</span><span>${esc(ct.phone || "—")}${ct.phone ? (ct.phoneVerified ? ' <span class="pill ok">verified</span>' : ' <span class="pill warn">unverified</span>') : ""}</span><span>E-mail</span><span>${esc(ct.email || "—")}${ct.email ? (ct.emailVerified ? ' <span class="pill ok">verified</span>' : ' <span class="pill warn">unverified</span>') : ""}</span>${ct.source ? `<span>Source</span><span>${esc(ct.source)}</span>` : ""}</div>` : ""; })()}
       ${projects.length ? `<div class="stack" style="gap:6px"><h4>Projects for this lead</h4>${projects.map((p) => `<button class="linkbtn" data-open="${esc(p.id)}" style="text-align:left">${esc(p.name)} · ${esc(U.STATUS_LABEL[p.status] || "Draft")}${p.total != null ? " · " + esc(H.money2(p.total, p.currency)) : ""}</button>`).join("")}</div>` : ""}
+      <div id="md-files" class="stack"></div>
       <h4>Timeline</h4>${tl.length ? `<div class="tl">${tl.map((t) => `<div><span class="tiny muted">${esc(new Date(t.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}</span><span>${t.html}</span></div>`).join("")}</div>` : `<p class="small muted">Nothing logged yet.</p>`}
       <h4>Sources</h4>${srcList(l)}</div>`;
+    filesBox($("#md-files"), l.id);
     const save = async (patch, note) => { try { cache.crm[l.id] = await L.updateCrm(l.id, patch, { stageNote: note || "" }); listMy(); } catch (e) { U.toast(e.message || "Not saved.", { err: true }); } };
     $("#md-stage").onchange = async (e) => { const st = e.target.value; let note = "";
       if (st === "lost") { const f = await U.form("Mark the lead as lost", [{ id: "r", label: "Reason", required: true, type: "textarea" }], { submit: "Mark lost" }); if (!f) { e.target.value = c.stage || "claimed"; return; } note = f.r; }
@@ -250,7 +277,7 @@
       verifiedAt: (f.cphone || f.cemail) ? ((c.phone === f.cphone.trim() && c.email === f.cemail.trim() && c.verifiedAt) || new Date().toISOString()) : null, verifiedBy: (f.cphone || f.cemail) ? DPStore.st.userId : null };
     const patch = { name: f.name.trim(), orgType: f.orgType, location: f.location.trim(), website: f.website.trim(), projects: f.projects, evidence: f.evidence, sources, productsFit: f.productsFit, titles: f.titles, contact, qualification: qual, score: L.scoreOf(qual), priorityOverride: f.prio || null };
     try {
-      if (isNew) { await L.saveLead(Object.assign({ status: "research", country: "Egypt", origin: "Added by an administrator" }, patch), "Created", "Added manually", ""); U.toast("Lead added."); }
+      if (isNew) { await L.saveLead(Object.assign({ status: "research", country: "Egypt", origin: "Added by an administrator", originKind: "admin" }, patch), "Created", "Added manually", ""); U.toast("Lead added."); }
       else { const cpatch = Object.assign({}, patch); delete cpatch.contact; delete cpatch.website; await L.correct(l.id, cpatch, f.reason);
         // contact data and website live on the shared contact record (2.2), so data entry and sales see the correction
         await DPLeadOps.saveContact(l.id, { website: patch.website, contact: { name: contact.name, title: contact.title, phone: contact.phone, email: contact.email, source: contact.source, phoneVerified: !!contact.phone, emailVerified: !!contact.email } }, "Administrator correction: " + f.reason);

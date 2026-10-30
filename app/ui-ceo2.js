@@ -20,7 +20,7 @@
 
   /* ---------------- order record ---------------- */
   async function orderPanel(oid) {
-    if (!U.isAdmin()) return U.go("proposals", { oid });
+    if (!U.isAdmin() && !(root.DPFin && DPFin.isFin())) return U.go("proposals", { oid });
     drawer(`<div class="cd-head"><span class="eyebrow">Order</span><button class="btn ghost xs" data-close aria-label="Close">✕</button></div><div class="empty"><div class="spinner"></div>Loading the order record…</div>`, null, { label: "Order record" });
     const [o, subs, reps, job] = await Promise.all([DPStore.tryGet(`orders/${oid}`), DPSales.allSubmissions().catch(() => []), O.listPaymentReports().catch(() => []), O.jobOf(oid).catch(() => null)]);
     const sub = subs.find((s) => s.oid === oid) || null;
@@ -58,6 +58,7 @@
         ${open.length ? `<div class="note err small"><b>Blockers:</b> ${open.map((b) => esc(b.text)).join(" · ")}</div>` : ""}
         ${ex && (ex.team || []).filter((t) => !t.removedAt).length ? `<p class="small"><b>Workers:</b> ${ex.team.filter((t) => !t.removedAt).map((t) => `${esc(t.name)} (${esc(t.role)}${t.from ? ", " + esc(t.from) + (t.to ? "→" + esc(t.to) : "") : ""})`).join(" · ")}</p>` : `<p class="small muted">No workers assigned yet.</p>`}
         ${ex && (ex.notes || []).length ? `<p class="small"><b>Latest engineering note:</b> ${esc(ex.notes[ex.notes.length - 1].text)}</p>` : ""}${ex && (ex.files || []).length ? `<p class="small"><b>Attachments:</b> ${ex.files.map((f) => `<button class="linkbtn" data-tf="${esc(f.id)}">${esc(f.name)}</button>`).join(" · ")}</p>` : ""}` : `<p class="small muted">Not yet in engineering.</p>`, false)}
+      ${o && root.DPFinUI2 && root.DPFin && DPFin.isFin() ? sec("Finance — costs, ledger and documents", `<div id="cd-fin"><div class="spinner"></div></div>`, false) : ""}
       ${sec("Activity timeline", `<div class="tl">${tl.slice(0, 50).map((x) => `<div><span class="tiny muted">${esc(dt(x.at))}</span><span>${esc(x.t)} <span class="muted">${esc(DPAuth.nameSync(x.by) || "")}</span></span></div>`).join("") || "<span class='small muted'>—</span>"}</div>`, false)}`, (d) => {
       $("#cd-full", d).onclick = () => { closeDrawer(); U.go("register", { oid, full: true }); };
       const ce = $("#cd-eng", d); if (ce) ce.onclick = () => engPanel(oid);
@@ -67,6 +68,7 @@
       $$("[data-rp]", d).forEach((b) => (b.onclick = async () => DPUI.showFile(await O.getFile(`paysub/${b.dataset.ru}/p/${b.dataset.rp}`), "Customer payment proof")));
       $$("[data-tf]", d).forEach((b) => (b.onclick = async () => DPUI.showFile(await O.techFile(job, b.dataset.tf), "Project file")));
       const pos = $(".paypos", d); if (pos && o) DPPayUI.bindPosition(pos, o, () => orderPanel(oid));
+      const cf = $("#cd-fin", d); if (cf) DPFinUI2.orderFinanceHtml(oid).then((h) => { cf.innerHTML = h; DPFinUI2.bindOrderFinance(cf, oid); }).catch((e) => { cf.innerHTML = `<p class="small muted">${esc(e.message)}</p>`; });
     }, { label: "Order record" });
   }
 

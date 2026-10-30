@@ -157,6 +157,16 @@
   }
   /** Commission payout with its own proof (kept on the employee's commission record — never with customer payment evidence). */
   function payoutDialog(r, done) {
+    // 1.2: when Finance accounts exist, a commission payout is a ledger transaction (approval already given by the
+    // commission approval; payment recorded with proof, then verified — the payout is written on verification).
+    if (root.DPFin && DPFin.isFin()) return DPFin.accounts().then((A) => { const L = Object.values(A).filter((a) => a.status !== "closed" && a.currency === (r.currency || "EGP")); if (!L.length) return legacyPayout(r, done);
+      const due = Math.max(0, DPSales.owedMinor(r) - DPSales.paidMinor(r));
+      return U.form("Pay commission through Transfers", [{ id: "acc", label: "Paid from *", type: "select", options: L.map((a) => ({ value: a.id, label: a.name })) }, { id: "meth", label: "Method", type: "select", value: "Bank transfer", options: DPFinCalc.METHODS.map((x) => ({ value: x, label: x })) },
+        { id: "amt", label: `Amount (${r.currency || "EGP"})`, type: "number", step: "0.01", value: (due / 100).toFixed(2) }, { id: "d", label: "Date", type: "date", value: new Date().toISOString().slice(0, 10) }], { submit: "Create payout", intro: `${esc(DPAuth.nameSync(r.uid))} · ${esc(r.name)} · outstanding ${esc(H.money2(due, r.currency))}. The payout is created as a Commission transfer; attach the proof and verify it in Transfers — the commission record is then marked paid.` })
+        .then(async (f) => { if (!f) return; try { const t = await DPFin.payCommission(r.uid, r.oid, { account: f.acc, method: f.meth, date: f.d, amountMinor: Math.round(+f.amt * 100) }); U.toast(`Payout ${t.ref} created.`); U.go("transfers", { ref: t.ref }); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); } }); });
+    return legacyPayout(r, done);
+  }
+  function legacyPayout(r, done) {
     const due = Math.max(0, DPSales.owedMinor(r) - DPSales.paidMinor(r)); let proof = null;
     U.openModal(`<h2>Record commission payout</h2><p class="small muted">${esc(DPAuth.nameSync(r.uid))} · ${esc(r.name)} · outstanding ${esc(H.money2(due, r.currency))}</p>
       <div class="grid3"><label class="field"><span>Payment date *</span><input class="in" type="date" id="po-d" value="${new Date().toISOString().slice(0, 10)}"></label><label class="field"><span>Amount (${esc(r.currency)}) *</span><input class="in num" type="number" step="0.01" min="0" id="po-a" value="${(due / 100).toFixed(2)}"></label><label class="field"><span>Payroll / transfer reference</span><input class="in" id="po-r"></label></div>
@@ -182,6 +192,9 @@
     for (const j of jobs) { for (const l of (j.e && j.e.log) || []) ev.push({ at: l.at, by: l.by, area: "Engineering", action: l.what, rec: j.oid, detail: l.note || "" }); for (const h of j.history || []) ev.push({ at: h.at, by: h.by, area: "Engineering", action: h.action, rec: j.oid, detail: h.detail || "" }); }
     for (const l of leads) for (const h of l.history || []) ev.push({ at: h.at, by: h.by, area: "Lead", action: h.action, rec: l.name, detail: [h.detail, h.reason].filter(Boolean).join(" · ") });
     for (const a of DPLeadOps.LT.acts) for (const h of a.history || []) ev.push({ at: h.at, by: h.by, area: "Call log", action: "Activity edited", rec: (leads.find((l) => l.id === a.leadId) || {}).name || a.leadId, detail: Object.entries(h.changes || {}).map(([k, v]) => `${k}: ${v[0] == null ? "—" : v[0]} → ${v[1] == null ? "—" : v[1]}`).join("; ") + (h.reason ? " · " + h.reason : "") });
+    // 1.2: the server's append-only audit trail (finance and lead entries; administration entries are already listed above)
+    for (const x of await DPStore.tryList("audit")) { const e = x.data || {}; if (!["finance", "lead"].includes(e.kind)) continue;
+      ev.push({ at: e.at, by: e.by, area: e.kind === "finance" ? "Finance" : "Lead", action: e.action, rec: e.target, detail: [e.detail, e.reason && "reason: " + e.reason, e.before && "before: " + JSON.stringify(e.before), e.after && "after: " + JSON.stringify(e.after)].filter(Boolean).join(" · ").slice(0, 400) }); }
     ev.sort((a, b) => String(b.at).localeCompare(String(a.at)));
     const draw = () => { const q = D.aq.toLowerCase(), rows = ev.filter((e) => (!D.aw || e.by === D.aw) && (!q || [e.area, e.action, e.rec, e.detail].join(" ").toLowerCase().includes(q)));
       $("#au-list").innerHTML = rows.length ? `<table class="mtable"><thead><tr><th>When</th><th>Who</th><th>Area</th><th>Action</th><th>Record</th><th>Detail (before → after where recorded)</th></tr></thead><tbody>${rows.slice(0, 800).map((e) => `<tr><td class="small">${esc(new Date(e.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}</td><td class="small">${esc(DPAuth.nameSync(e.by) || (String(e.by || "").startsWith("server") ? "Server sweep" : e.by || "—"))}</td><td class="small">${esc(e.area)}</td><td class="small"><b>${esc(e.action)}</b></td><td class="small">${esc(e.rec || "")}</td><td class="small">${esc(e.detail || "")}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">No entries.</div>`;

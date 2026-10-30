@@ -65,6 +65,13 @@
   function safe(str, font) { const ok = COVER[font] || COVER.sans; let o = ""; for (const ch of String(str)) { const c = ch.codePointAt(0); if (ok(c) || c === 10 || c === 13) o += ch; else if (SUBST[ch] != null) o += [...SUBST[ch]].filter((x) => ok(x.codePointAt(0))).join(""); else o += "?"; } return o; }
 
   /* ---------------- document wrapper ---------------- */
+  /** 1.2: an A4 portrait document with the brand fonts (receipts, invoices, credit notes). Call ensureLib() first. */
+  function portraitDoc() {
+    const { jsPDF } = root.jspdf; const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+    for (const [n, d] of fontData) { doc.addFileToVFS(n + ".ttf", d); doc.addFont(n + ".ttf", n, "normal"); }
+    doc.setFont("IS", "normal"); doc.setLineHeightFactor(1.32); return doc;
+  }
+  const brandLogo = () => logoP;
   function newDoc(format = "a4") {
     const { jsPDF } = root.jspdf; const doc = new jsPDF({ orientation: "landscape", unit: "mm", format, compress: true });
     for (const [n, d] of fontData) { doc.addFileToVFS(n + ".ttf", d); doc.addFont(n + ".ttf", n, "normal"); }
@@ -402,7 +409,7 @@
     if (sec.quotation && X.r.lines.length) { D.doc.addPage(); pagesQuotation(D, X, ++n); }
     if (sec.notes) { D.doc.addPage(); pageNotes(D, X, ++n); }
     pageNumbers(D);
-    D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.1" });
+    D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.2" });
     progress && progress("Checking the document");
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("proposal"), pages: D.doc.getNumberOfPages(), warnings: chk.warnings, total: X.r.total, currency: X.r.currency }, 2);
   }
@@ -414,7 +421,7 @@
     // compact title block instead of a cover
     pagesQuotation(D, X, 1, { standalone: true });
     D.doc.setPage(1); rect(D, 160, 20, 0.01, 0.01, C.white);
-    pageNumbers(D, false); D.doc.setProperties({ title: `${X.p.meta.name} — quotation`, creator: "Dupedia X FORCE 1.1" });
+    pageNumbers(D, false); D.doc.setProperties({ title: `${X.p.meta.name} — quotation`, creator: "Dupedia X FORCE 1.2" });
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("quotation"), pages: D.doc.getNumberOfPages() });
   }
   /** A3 technical drawing: design mode with dimensions, labels and zones, title block, standard scale where possible. */
@@ -436,9 +443,9 @@
     scaleBar(D, tx + 6, y + 4, s, tbW - 20); northArrow(D, tx + tbW - 12, y + 24, (X.p.site && X.p.site.north) || 0);
     para(D, M.DISCLAIMER, tx + 6, H - 54, tbW - 12, { size: 6.4, color: C.pebble, lh: 1.35 });
     if (!DPIO.scaleVerified()) txt(D, "SCALE NOT VERIFIED", tx + 6, H - 20, { size: 9, font: "sansBold", color: C.red });
-    D.doc.setProperties({ title: `${X.p.meta.name} — technical drawing`, creator: "Dupedia X FORCE 1.1" });
+    D.doc.setProperties({ title: `${X.p.meta.name} — technical drawing`, creator: "Dupedia X FORCE 1.2" });
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("technical-drawing-A3"), pages: D.doc.getNumberOfPages() });
   }
 
-  root.DPProposal = { proposal, quotation, technical, ensureLib, clientLines, safe, precheck, validatePdf, loadScript };
+  root.DPProposal = { proposal, quotation, technical, ensureLib, clientLines, safe, precheck, validatePdf, loadScript, portraitDoc, brandLogo };
 })(typeof self !== "undefined" ? self : this);

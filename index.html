@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>X FORCE 1.1</title>
-<meta name="description" content="X FORCE 1.1 — Dupedia's company operating system: site planning and quotations, orders and payments, engineering and factory, leads and follow-ups, commission, company messaging and the CEO control center.">
+<title>X FORCE 1.2</title>
+<meta name="description" content="X FORCE 1.2 — Dupedia's company operating system: site planning and quotations, orders and payments, engineering and factory, leads and follow-ups, commission, company messaging and the CEO control center.">
 <link rel="stylesheet" href="app/fonts.css">
 <link rel="stylesheet" href="app/styles.css">
 </head>
@@ -18,7 +18,7 @@
       <input id="pname" class="pname" aria-label="Project name" maxlength="90">
       <span class="psub" id="psub"></span>
     </div>
-    <div class="htitle" id="htitle"><span class="t1">X FORCE <b class="xv">1.1</b></span><span class="t2">Dupedia operating system</span></div>
+    <div class="htitle" id="htitle"><span class="t1">X FORCE <b class="xv">1.2</b></span><span class="t2">Dupedia operating system</span></div>
     <nav class="flow" id="flow" aria-label="Workflow" hidden>
       <button type="button" data-view="setup"><b>1</b>Project</button>
       <button type="button" data-view="plan"><b>2</b>Site &amp; design</button>
@@ -43,6 +43,14 @@
     <section class="view" id="view-dash" aria-label="Dashboard"></section>
     <section class="view" id="view-start" aria-label="Site Planner"></section>
     <section class="view" id="view-payverify" aria-label="Payment Verification"></section>
+    <section class="view" id="view-finance" aria-label="Finance"></section>
+    <section class="view" id="view-transfers" aria-label="Transfers"></section>
+    <section class="view" id="view-finaccounts" aria-label="Financial Accounts"></section>
+    <section class="view" id="view-salaries" aria-label="Salaries and payroll"></section>
+    <section class="view" id="view-purchases" aria-label="Purchases"></section>
+    <section class="view" id="view-invoices" aria-label="Invoices and receipts"></section>
+    <section class="view" id="view-taxes" aria-label="Taxes"></section>
+    <section class="view" id="view-finreports" aria-label="Finance reports"></section>
     <section class="view" id="view-workforce" aria-label="Work Force"></section>
     <section class="view" id="view-askceo" aria-label="Ask CEO Inbox"></section>
     <section class="view" id="view-intel" aria-label="Market Intelligence"></section>
@@ -109,7 +117,9 @@
 <script src="app/pricing.js"></script>
 <script src="app/commission.js"></script>
 <script src="app/payments.js"></script>
+<script src="app/fincalc.js"></script>
 <script src="app/sound.js"></script>
+<script src="app/i18n.js"></script>
 <script src="app/store.js"></script>
 <script src="app/auth.js"></script>
 <script src="app/sales.js"></script>
@@ -117,6 +127,7 @@
 <script src="app/notify.js"></script>
 <script src="app/leadops.js"></script>
 <script src="app/orders.js"></script>
+<script src="app/finance.js"></script>
 <script src="app/chat.js"></script>
 <script src="app/pitches.js"></script>
 <script src="app/askceo.js"></script>
@@ -151,6 +162,8 @@
 <script src="app/ui-assist.js"></script>
 <script src="app/ui-intel.js"></script>
 <script src="app/ui-mission.js"></script>
+<script src="app/ui-fin.js"></script>
+<script src="app/ui-fin2.js"></script>
 <script src="app/boot.js"></script>
 </body>
 </html>

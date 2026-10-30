@@ -26,13 +26,17 @@
   /** Access levels ("bases"). Every role maps to one; the base decides screens and which data copies the person receives.
    *  The database distinguishes administrators (Editor) from everyone else (Contributor); sales / engineer / data entry are
    *  separated by giving each person only their own subtrees and only the data copies their base needs (see store.js RULES). */
-  const BASES = { admin: "Administrator access", employee: "Sales access", engineer: "Engineering access", dataentry: "Data entry access" };
+  const BASES = { admin: "Administrator access", employee: "Sales access", engineer: "Engineering access", dataentry: "Data entry access", accountant: "Finance access" };
   const DEFAULT_ROLES = [
     { id: "admin", label: "Administrator", base: "admin", builtIn: true, description: "Full access: prices and costs, users, commissions, orders, all leads and reports." },
     { id: "employee", label: "Sales Employee", base: "employee", builtIn: true, description: "Own projects, proposals, leads, orders and commissions. No cost, margin or other employees' data." },
     { id: "engineer", label: "Engineer", base: "engineer", builtIn: true, description: "Assigned orders from manufacturing to installation: specifications, plans, status, deadlines, teams. No prices, totals, payments or commissions." },
     { id: "dataentry", label: "Data Entry", base: "dataentry", builtIn: true, description: "Lead research: contact details, sources, verification, duplicates, research calls. No prices, orders or commissions." },
+    // 1.2 — department Finance. Server level "finance": ledger, payments, payroll, purchases, invoices, taxes; approvals only as the Administrator allows
+    { id: "accountant", label: "Accountant", base: "accountant", builtIn: true, department: "Finance", description: "Finance: transfers, bank and wallet accounts, payment verification, salaries and worker payments, purchases, invoices, taxes and reports. Approvals only where the Administrator allows. No user management or company settings." },
   ];
+  /** 1.2 — the server account level for a role: administrators "admin", accountants "finance", everyone else "interact". */
+  const levelFor = (roleId) => { const b = baseOf(roleId); return b === "admin" ? "admin" : b === "accountant" ? "finance" : "interact"; };
   const now = () => new Date().toISOString();
   const normEmail = (e) => String(e || "").trim().toLowerCase();
   const rid = (p) => p + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -72,7 +76,7 @@
       if (!ses || Date.now() - ses.at > 12 * 3600e3) { LS.del("dp.sp21.session"); return { state: "signin", note: "Your session expired. Sign in again." }; }
       const rec = A.directory.find((r) => r.uid === ses.id); if (!rec) return { state: "signin" };
       if (rec.active === false) { LS.del("dp.sp21.session"); return { state: "inactive", record: rec }; }
-      return finish(rec, { level: baseOf(rec.role) === "admin" ? "admin" : "interact" });
+      return finish(rec, { level: levelFor(rec.role) });
     }
     if (!st.userId) return { state: "nouser" };
     let rec = A.directory.find((r) => r.uid === st.userId);
@@ -91,7 +95,9 @@
     // effective role: never above what the database grants (sharing level), never above the directory role
     let eff = base;
     if (base === "admin" && level !== "admin") { eff = "employee"; A.warnings.push("Your Dupedia role is Administrator, but this page is shared with you as Contributor, so the database only gives you employee access. Ask the owner to make you an Editor."); }
-    if (base !== "admin" && level === "admin") A.warnings.push("This page is shared with you as Editor. The app shows you employee screens, but Editor access lets the database return administrator data. Ask an administrator to change your sharing level to Contributor.");
+    if (base === "accountant" && level !== "finance" && level !== "admin") { eff = "viewer"; A.warnings.push("Your Dupedia role is Accountant, but your sign-in does not have Finance access yet. Ask the administrator to save your user again."); }
+    if (base === "accountant" && level === "admin") eff = "accountant";
+    if (base !== "admin" && base !== "accountant" && level === "admin") A.warnings.push("This page is shared with you as Editor. The app shows you employee screens, but Editor access lets the database return administrator data. Ask an administrator to change your sharing level to Contributor.");
     if (level === "view") eff = "viewer";
     A.record = rec; A.me = { id: rec.uid || st.userId, name: fullName(rec) || st.userName || "", firstName: rec.firstName || (fullName(rec) || st.userName || "").split(" ")[0], email: rec.email || st.email || "",
       title: rec.title || "", department: rec.department || "", role: eff, roleId: rec.role, roleLabel: (roleOf(rec.role) || {}).label || rec.role, level };
@@ -116,7 +122,16 @@
   async function adminLog(action, { target = "", reason = "", detail = "" } = {}) {
     const day = now().slice(0, 10), path = `adminlog/${day}`, prev = (await root.DPStore.tryGet(path)) || { entries: [] };
     const entries = (prev.entries || []).slice(-400); entries.push({ at: now(), by: (A.me && A.me.id) || ST().userId || "", action, target, reason, detail });
-    await root.DPStore.set(path, { day, entries });
+    if (!root.XFServer || isAdmin()) await root.DPStore.set(path, { day, entries });
+    // 1.2 — append-only audit trail on the Cloudflare server: the server stamps who and when, and nobody can edit or erase it
+    if (root.XFServer) await auditLog(action, { target, reason, detail });
+  }
+  /** 1.2 — one append-only audit entry (previous/new values for financial changes). Never throws into the caller's workflow. */
+  async function auditLog(action, { target = "", reason = "", detail = "", before = null, after = null, kind = "" } = {}) {
+    if (!root.XFServer) return null;
+    const id = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 17) + "-" + Math.random().toString(36).slice(2, 8);
+    try { await root.DPStore.create(`audit/${id}`, { action, target, reason, detail: String(detail || "").slice(0, 600), before, after, kind }); } catch (e) { console.warn("audit", e && e.message); }
+    return id;
   }
 
   /* ---------------- local accounts ---------------- */
@@ -241,7 +256,7 @@
     if (patch.active === true && prev.active === false) { next.reactivatedAt = now(); next.reactivatedBy = A.me.id; }
     await root.DPStore.set(`directory/${docId}`, next);
     // self-hosted: the server account follows the directory (level for admin vs staff; deactivation ends sign-in and sessions)
-    if (root.XFServer && next.uid && ("role" in patch || "active" in patch)) await root.XFServer.updateAccount(next.uid, { level: baseOf(next.role) === "admin" ? "admin" : "interact", active: next.active !== false, name: next.displayName || undefined }).catch((e) => { throw new Error("Saved in X FORCE, but the server account could not be updated: " + e.message); });
+    if (root.XFServer && next.uid && ("role" in patch || "active" in patch)) await root.XFServer.updateAccount(next.uid, { level: levelFor(next.role), active: next.active !== false, name: next.displayName || undefined }).catch((e) => { throw new Error("Saved in X FORCE, but the server account could not be updated: " + e.message); });
     const what = Object.keys(patch).map((k) => `${k}: ${JSON.stringify(prev[k] == null ? "" : prev[k])} → ${JSON.stringify(patch[k])}`).join("; ");
     await adminLog(patch.active === false ? "Deactivated user" : patch.active === true ? "Reactivated user" : "Updated user", { target: docId, reason, detail: what });
     await listDirectory();
@@ -274,6 +289,7 @@
     await root.DPStore.set("config/roles", { roles, updatedAt: now(), updatedBy: A.me.id }); await adminLog("Updated roles", { detail: roles.map((r) => `${r.label} (${r.base})`).join(", ") }); await loadRoles();
   }
   const isAdmin = () => !!(A.me && A.me.role === "admin");
+  const isFinance = () => !!(A.me && A.me.role === "accountant");
   /** Display name for a user id: directory name (admin-entered) → platform profile name → fallback. */
   async function names(ids) {
     const out = {}, missing = [];
@@ -286,6 +302,6 @@
   const nameSync = (id) => { const r = A.directory.find((x) => x.uid === id || x.docId === id); return (r && (fullName(r) || r.email)) || ""; };
 
   const roleBase = () => (A.me ? A.me.role : null);
-  root.DPAuth = { A, BASES, DEFAULT_ROLES, isSalesRole, fullName, roleBase, saveHr, checkEmployeeId, setPicture, removePicture, originalPicture, picture, avatarUrl, initialsAvatar, PIC_TYPES, resolve, touchActivity, logActivity, adminLog, localSetup, localSignIn, localChangePassword, signOut, createUser, updateUser, resetLocalPassword,
+  root.DPAuth = { A, BASES, DEFAULT_ROLES, levelFor, isFinance, auditLog, isSalesRole, fullName, roleBase, saveHr, checkEmployeeId, setPicture, removePicture, originalPicture, picture, avatarUrl, initialsAvatar, PIC_TYPES, resolve, touchActivity, logActivity, adminLog, localSetup, localSignIn, localChangePassword, signOut, createUser, updateUser, resetLocalPassword,
     processRequests, requestAccess, saveRoles, loadRoles, listDirectory, roleOf, baseOf, isAdmin, names, nameSync, passwordProblem, hashPassword, verifyPassword, normEmail };
 })(typeof self !== "undefined" ? self : this);

@@ -8,7 +8,10 @@
     engineer: [["dash", "Dashboard", "dash"], ["engorders", "Engineering Orders", "truck"], ["factory", "Factory", "factory"], ["workers", "Worker Directory", "team"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
     dataentry: [["dash", "Dashboard", "dash"], ["research", "Lead Research", "leads"], ["leads", "Lead Mine", "mine"], ["calls", "Call Log", "phone"], ["intel", "Market Intelligence", "radar"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
     viewer: [["dash", "Dashboard", "dash"], ["profile", "My Profile", "user"]],
+    accountant: [["finance", "Finance Dashboard", "finance"], ["transfers", "Transfers", "transfer"], ["finaccounts", "Financial Accounts", "bank"], ["payverify", "Payment Verification", "shield"], ["salaries", "Salaries & Payroll", "payroll"], ["purchases", "Purchases", "cart"],
+      ["invoices", "Invoices & Receipts", "receipt"], ["approvecomm", "Commissions", "coins"], ["taxes", "Taxes", "tax"], ["finreports", "Finance Reports", "report"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
   };
+  const NAV_FIN = [["finance", "Finance Dashboard", "finance"], ["transfers", "Transfers", "transfer"], ["finaccounts", "Financial Accounts", "bank"], ["salaries", "Salaries & Payroll", "payroll"], ["purchases", "Purchases", "cart"], ["invoices", "Invoices & Receipts", "receipt"], ["taxes", "Taxes", "tax"], ["finreports", "Finance Reports", "report"]];
   const NAV_EMP = NAV.employee;
   const NAV_ADM = [["mission", "Mission Control", "globe"], ["askceo", "Ask CEO Inbox", "inbox"], ["register", "Order Register", "doc"], ["payverify", "Payment Verification", "shield"], ["approvals", "Payments & Approvals", "check"], ["approvecomm", "Approve Commission", "coins"], ["engqueue", "Engineering", "truck"], ["factory", "Factory", "factory"], ["workers", "Worker Directory", "team"], ["allleads", "All Leads", "leads"], ["research", "Lead Research", "mine"], ["workforce", "Work Force", "users"], ["employees", "Employees", "team"], ["users", "User Management", "users"], ["commadmin", "Commission Rules", "coins"], ["pricing", "Product Pricing", "tag"], ["reports", "Reports", "report"], ["audit", "Audit Log", "audit"], ["search", "Company Search", "search2"], ["settings", "Settings", "gear"]];
 
@@ -20,10 +23,12 @@
     const item = ([k, l, ic]) => `<button type="button" class="ri${on(k) ? " is-on" : ""}" data-nav="${k}" title="${esc(l)}">${U.svg(ic)}<span>${esc(l)}</span>${badge(k) ? `<em>${badge(k)}</em>` : ""}</button>`;
     const mine = adm ? [["dash", "CEO Control Center", "dash"]].concat(NAV_EMP.filter((x) => x[0] !== "dash")) : (NAV[U.role()] || NAV.viewer);
     const adm2 = NAV_ADM.filter(([k]) => k !== "askceo" || (root.DPAskCeo && DPAskCeo.canReadInbox()));
-    r.innerHTML = `<div class="rtop"><button type="button" class="ri rtog" id="rail-tog" aria-label="Collapse or expand the menu"></button></div><div class="rg">${mine.map(item).join("")}</div>${adm ? `<div class="rh">Administration</div><div class="rg">${adm2.map(item).join("")}</div>` : ""}
-      <div class="rfoot"><button type="button" class="ri" id="r-out" title="Sign out">${U.svg("out")}<span>Sign out</span></button></div>`;
+    r.innerHTML = `<div class="rtop"><button type="button" class="ri rtog" id="rail-tog" aria-label="Collapse or expand the menu"></button></div><div class="rg">${mine.map(item).join("")}</div>${adm ? `<div class="rh">Finance</div><div class="rg">${NAV_FIN.map(item).join("")}</div><div class="rh">Administration</div><div class="rg">${adm2.map(item).join("")}</div>` : ""}
+      <div class="rfoot">${root.DPI18n ? DPI18n.toggleHtml() : ""}<button type="button" class="ri" id="r-out" title="Sign out">${U.svg("out")}<span>Sign out</span></button></div>`;
     $$("[data-nav]", r).forEach((b) => (b.onclick = () => nav(b.dataset.nav)));
     $("#r-out").onclick = signOut;
+    const lg = $("#r-lang"); if (lg) lg.onclick = () => DPI18n.setLang(DPI18n.lang === "ar" ? "en" : "ar");
+    if (root.DPI18n && !rail.lp) { rail.lp = 1; DPI18n.loadPref(); }
     $("#rail-tog").onclick = () => root.DPCeo2 && DPCeo2.toggleRail(); if (root.DPCeo2) DPCeo2.applyRail(DPCeo2.railPref());
   }
   async function nav(k) {

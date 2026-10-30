@@ -91,6 +91,7 @@
         <div class="stack"><dl class="kv small"><dt>Customer</dt><dd>${esc(x.client || "—")}</dd><dt>Project</dt><dd>${esc(x.project || "—")}</dd><dt>Amount</dt><dd><b>${esc(H.money2(x.amountMinor, x.currency))}</b></dd><dt>Payment date</dt><dd>${esc(x.date)}</dd><dt>Method</dt><dd>${esc(x.method || "—")}</dd>
           <dt>Reference</dt><dd>${esc(x.payRef || "—")}</dd><dt>Recorded by</dt><dd>${esc(DPAuth.nameSync(x.by) || "—")} · ${esc(H.dateS(x.at))}</dd>${x.notes ? `<dt>Notes</dt><dd>${esc(x.notes)}</dd>` : ""}${x.nFiles > 1 ? `<dt>Files</dt><dd>${x.files.map((f, i) => `<button class="linkbtn" data-f="${i}">file ${i + 1}</button>`).join(" · ")}</dd>` : ""}</dl>
           <div id="rv-pos" class="small muted">Loading the order's payment position…</div>
+          ${root.DPFin && DPFin.isFin() ? `<label class="field"><span>Received into (financial account)</span><select class="in sm" id="rv-acc"><option value="">Automatic — the default account for ${esc(x.method || "this method")}</option></select></label>` : ""}
           <label class="field"><span>Note (optional for verification, required for rejection)</span><textarea class="in" id="rv-n" rows="2" maxlength="300"></textarea></label>
           ${x.kind === "payment" && !x.hasFile ? `<button class="btn ghost sm" id="rv-att">${U.svg("clip")} Attach proof…</button>` : ""}
           <p class="small" id="rv-err" style="color:var(--red)"></p>
@@ -100,13 +101,15 @@
       $("#rv-x", m).onclick = () => U.closeModal();
       const show = async (i = 0) => { f = await x.load(i).catch(() => null); const r = await mountViewer($("#rv-v", m), f); ok.disabled = !r.ok; if (!r.ok) err.textContent = "The proof cannot be opened, so the payment cannot be verified. Reject it with a reason (e.g. “proof missing — upload again”)."; else { err.textContent = ""; $("#rv-dl", m).hidden = false; } };
       if (x.hasFile) show(0); $$("[data-f]", m).forEach((b) => (b.onclick = () => show(+b.dataset.f)));
+      const accSel = $("#rv-acc", m); if (accSel) DPFin.accounts().then((A) => { accSel.insertAdjacentHTML("beforeend", Object.values(A).filter((a) => a.status !== "closed" && a.currency === (x.currency || "EGP")).map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("")); }).catch(() => {});
       $("#rv-dl", m).onclick = () => f && U.downloadOut({ blob: new Blob([bytesOf(f.dataUrl)], { type: f.type }), filename: f.name || "payment-proof" }, "Payment proof");
       const att = $("#rv-att", m); if (att) att.onclick = () => U.pickFile(".jpg,.jpeg,.png,.webp,.pdf", async (file) => { try { att.disabled = true; att.textContent = "Uploading…"; const pf = await O.prepareFile(file); await O.attachPaymentFile(x.oid, x.pay.id, pf); U.closeModal(); U.toast("Proof attached. Review the payment again."); renderVerify(); } catch (e) { err.textContent = e.message; att.disabled = false; att.textContent = "Attach proof…"; } });
       // payment position of the order (verified money only)
       try { const o = await DPStore.tryGet(`orders/${x.oid}`); if (o) { const s = DPPay.summary(o, { tz: App.config.settings.timezone, settings: App.config.settings }); $("#rv-pos", m).innerHTML = `Order value <b>${esc(H.money2(s.payableMinor, o.currency))}</b> · verified so far <b>${esc(H.money2(s.verifiedMinor, o.currency))}</b> · remaining <b>${esc(H.money2(s.remainingMinor, o.currency))}</b>${s.verifiedMinor + x.amountMinor > s.payableMinor ? `<div class="note warn" style="margin-top:6px">Verifying this payment would exceed the order value by ${esc(H.money2(s.verifiedMinor + x.amountMinor - s.payableMinor, o.currency))}. It will be flagged as an overpayment for review.</div>` : ""}`; } else $("#rv-pos", m).textContent = "The order is being booked; the payment is added to it when you verify."; } catch (e) { $("#rv-pos", m).textContent = ""; }
       ok.onclick = async () => { ok.disabled = true; ok.textContent = "Verifying…"; err.textContent = "";
         try { const note = $("#rv-n", m).value.trim();
-          if (x.kind === "report") await O.decidePaymentReport(x.rep, true, { verified: true, note }); else await O.setPaymentStatus(x.oid, x.pay.id, "verified", note);
+          const account = (accSel && accSel.value) || null;
+          if (x.kind === "report") await O.decidePaymentReport(x.rep, true, { verified: true, note, account }); else await O.setPaymentStatus(x.oid, x.pay.id, "verified", note, { account });
           U.closeModal(); U.toast(`Payment verified: ${H.money2(x.amountMinor, x.currency)} on ${x.ref || x.oid}. The salesperson has been notified.`, { ms: 6000 }); renderVerify(); }
         catch (e) { err.textContent = e.message || "Not saved."; ok.disabled = false; ok.textContent = "Verify payment"; } };
       $("#rv-no", m).onclick = async () => { const note = $("#rv-n", m).value.trim(); if (note.length < 3) { err.textContent = "Give the reason for the rejection so the salesperson can correct it."; $("#rv-n", m).focus(); return; }

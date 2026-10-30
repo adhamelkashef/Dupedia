@@ -24,6 +24,10 @@
   const me = () => AU().A.me || {};
   const rid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const reqAdmin = () => { if (!AU().isAdmin()) throw new Error("Administrators only."); };
+  // 1.2: the Accountant records and verifies customer payments when the administrator allows it
+  const reqPay = () => { if (AU().isAdmin()) return; if (root.DPFin && AU().isFinance && AU().isFinance() && root.DPFin.can("verifyCustomerPayments")) return; throw new Error("Administrators or authorised Finance users only."); };
+  /** 1.2: a verified customer payment becomes exactly ONE incoming ledger transaction (linked to the order payment). */
+  async function post(o, p, account) { if (!root.DPFin) return null; try { return await root.DPFin.postReceipt(o, p, { account }); } catch (e) { console.warn("ledger", e && e.message); return null; } }
 
   /* ---------------- files stored inside access-controlled documents ---------------- */
   const FILE_TYPES = { "image/jpeg": "JPG", "image/png": "PNG", "image/webp": "WebP", "application/pdf": "PDF" };
@@ -83,8 +87,8 @@
   const PAY_STATUS = { recorded: "Recorded — pending verification", submitted: "Pending verification", verified: "Verified (funds cleared)", rejected: "Rejected", accepted: "Added to the order" };
   const payMethods = () => { const s = (root.DPUI && root.DPUI.App.config.settings.paymentMethods) || null; return Array.isArray(s) && s.length ? s : PAY_METHODS; };
   /** Administrator records a payment. Recording is not verification: status stays "recorded" until verified. */
-  async function recordPayment(oid, { date, amountMinor, method, ref, notes, files = [], verified = false, reportId = null, reportedBy = null }) {
-    reqAdmin(); if (!date || !(amountMinor > 0)) throw new Error("Enter the date and an amount greater than zero.");
+  async function recordPayment(oid, { date, amountMinor, method, ref, notes, files = [], verified = false, reportId = null, reportedBy = null, account = null }) {
+    reqPay(); if (!date || !(amountMinor > 0)) throw new Error("Enter the date and an amount greater than zero.");
     const o = await DS().get(`orders/${oid}`); if (!o) throw new Error("Order not found."); if (o.status === "cancelled") throw new Error("The order is cancelled.");
     const pid = rid("pay-"), fids = [];
     const pays = (o.payments || []).filter((x) => x.status !== "rejected");
@@ -96,10 +100,12 @@
     for (const f of files) { const fid = rid("f-"); await putFile(`orders/${oid}/files/${fid}`, f); fids.push(fid); fileMeta.push({ id: fid, name: f.name, type: f.type, size: f.size, hash: f.hash || null }); }
     const p = { id: pid, date, amountMinor, method: method || "", ref: ref || "", notes: notes || "", files: fids, fileMeta, status: verified ? "verified" : "recorded", at: now(), by: me().id, source: reportId ? "sales" : "admin", reportId: reportId || null, reportedBy: reportedBy || null };
     if (verified && !fids.length) throw new Error("Attach the payment proof to mark the payment as verified.");
+    if (verified && !reportId && !AU().isAdmin() && (await root.DPFin.cfg()).sod) throw new Error("Separation of duties: record the payment, then another person verifies it.");
     if (verified) Object.assign(p, { verifiedAt: now(), verifiedBy: me().id });
     o.payments = (o.payments || []).concat([p]); o.history = (o.history || []).concat([{ at: now(), by: me().id, action: verified ? "Payment recorded and verified" : "Payment recorded", detail: `${date} · ${amountMinor / 100} · ${method || ""}` }]);
     await DS().set(`orders/${oid}`, o); await syncSalesView(oid);
     await AU().adminLog("Recorded client payment", { target: oid, detail: `${date} ${amountMinor / 100} ${method || ""} ${ref || ""}${fids.length ? ` · ${fids.length} attachment(s)` : ""}` });
+    if (verified) await post(o, p, account);
     await paymentNotices(o, p); await root.DPSales.checkEligibility(oid);
     return p;
   }
@@ -108,15 +114,19 @@
     await NT().deliver(o.ownerId, { id: `pay-${p.id}-${p.status}`, type: "payment", title: p.status === "verified" ? "Payment verified" : "Payment recorded", body: `${o.name}: ${amt} (${PAY_STATUS[p.status] || p.status}).`, link: { view: "tracking" }, ref: o.oid }).catch(() => {});
     await NT().deliver("@admins", { id: `pay-adm-${p.id}-${p.status}`, type: "payment", title: "Payment " + (p.status === "verified" ? "verified" : "recorded"), body: `${o.name}: ${amt}.`, link: { view: "payverify" }, ref: o.oid }).catch(() => {});
   }
-  async function setPaymentStatus(oid, payId, status, note) {
-    reqAdmin(); if (!PAY_STATUS[status]) throw new Error("Unknown status."); if (status === "rejected" && !note) throw new Error("Give the reason.");
+  async function setPaymentStatus(oid, payId, status, note, { account = null } = {}) {
+    reqPay(); if (!PAY_STATUS[status]) throw new Error("Unknown status."); if (status === "rejected" && !note) throw new Error("Give the reason.");
     const o = await DS().get(`orders/${oid}`), p = (o.payments || []).find((x) => x.id === payId); if (!p) throw new Error("Payment not found.");
     if (status === "verified") { if (!(p.files || []).length) throw new Error("This payment has no proof attached. Attach the evidence first — a payment is verified against its evidence.");
       for (const fid of p.files) if (!(await getFile(`orders/${oid}/files/${fid}`))) throw new Error("The payment proof cannot be opened (incomplete upload). Attach it again before verifying."); }
+    if (status === "verified" && !AU().isAdmin() && p.by === me().id && p.source !== "sales" && (await root.DPFin.cfg()).sod) throw new Error("Separation of duties: you recorded this payment, so another person must verify it.");
+    if (p.status === "verified" && status !== "verified" && !AU().isAdmin()) throw new Error("Only the administrator can change a verified payment.");
     p.statusHistory = (p.statusHistory || []).concat([{ from: p.status || "recorded", to: status, at: now(), by: me().id, note: note || "" }]);
     p.status = status; p.statusNote = note || ""; if (status === "verified") Object.assign(p, { verifiedAt: now(), verifiedBy: me().id }); if (status === "rejected") Object.assign(p, { rejectedAt: now(), rejectedBy: me().id });
     o.history = (o.history || []).concat([{ at: now(), by: me().id, action: `Payment ${status}`, detail: `${p.date} · ${p.amountMinor / 100}${note ? " · " + note : ""}` }]);
-    await DS().set(`orders/${oid}`, o); await syncSalesView(oid); await paymentNotices(o, p); await root.DPSales.checkEligibility(oid);
+    await DS().set(`orders/${oid}`, o); await syncSalesView(oid);
+    if (status === "verified") await post(o, p, account);
+    await paymentNotices(o, p); await root.DPSales.checkEligibility(oid);
     await AU().adminLog(`Payment ${status}`, { target: oid, reason: note || "", detail: `${p.amountMinor / 100}` });
   }
   /** Administrator changes the payment terms. The original terms and every change (with its reason) are kept. */
@@ -148,7 +158,7 @@
   }
   /** Administrator attaches (more) proof to a recorded payment. Evidence is never deleted. */
   async function attachPaymentFile(oid, payId, f) {
-    reqAdmin(); const o = await DS().get(`orders/${oid}`), p = o && (o.payments || []).find((x) => x.id === payId); if (!p) throw new Error("Payment not found.");
+    reqPay(); const o = await DS().get(`orders/${oid}`), p = o && (o.payments || []).find((x) => x.id === payId); if (!p) throw new Error("Payment not found.");
     if (f.hash && (o.payments || []).some((x) => (x.fileMeta || []).some((m) => m.hash === f.hash))) throw new Error("This file is already attached to a payment on this order.");
     const fid = rid("f-"); await putFile(`orders/${oid}/files/${fid}`, f);
     p.files = (p.files || []).concat([fid]); p.fileMeta = (p.fileMeta || []).concat([{ id: fid, name: f.name, type: f.type, size: f.size, hash: f.hash || null }]);
@@ -172,13 +182,13 @@
   }
   async function listPaymentReports() { const ids = await root.DPLeads.uids(); const l = await Promise.all(ids.map((u) => DS().tryList(`paysub/${u}/p`).then((x) => x.map((y) => Object.assign({ id: y.id, uid: u }, y.data))))); return l.flat().filter((x) => x.oid); }
   async function myPaymentReports() { return (await DS().tryList(`paysub/${me().id}/p`)).map((x) => Object.assign({ id: x.id }, x.data)).filter((x) => x.oid); }
-  async function decidePaymentReport(rep, accept, { verified = false, note = "" } = {}) {
-    reqAdmin(); const base = `paysub/${rep.uid}/p/${rep.id}`;
-    if (accept) { if (!(await DS().tryGet(`orders/${rep.oid}`))) await intake(); if (!(await DS().tryGet(`orders/${rep.oid}`))) throw new Error("The order is not booked yet. Open the order once and try again.");
+  async function decidePaymentReport(rep, accept, { verified = false, note = "", account = null } = {}) {
+    reqPay(); const base = `paysub/${rep.uid}/p/${rep.id}`;
+    if (accept) { if (!(await DS().tryGet(`orders/${rep.oid}`)) && AU().isAdmin()) await intake(); if (!(await DS().tryGet(`orders/${rep.oid}`))) throw new Error("The order is not booked yet. Open the order once and try again.");
       const f = rep.hasFile ? await getFile(base) : null;
       if (rep.hasFile && !f) throw new Error("The payment proof cannot be read (the upload is incomplete). Reject the report and ask the salesperson to attach the file again.");
       if (verified && !f) throw new Error("There is no payment proof. A payment can only be verified against its evidence.");
-      await recordPayment(rep.oid, { date: rep.date, amountMinor: rep.amountMinor, method: rep.method, ref: rep.ref, notes: (rep.notes ? rep.notes + " · " : "") + "Reported by " + (AU().nameSync(rep.uid) || "sales"), files: f ? [f] : [], verified, reportId: rep.id, reportedBy: rep.uid }); }
+      await recordPayment(rep.oid, { date: rep.date, amountMinor: rep.amountMinor, method: rep.method, ref: rep.ref, notes: (rep.notes ? rep.notes + " · " : "") + "Reported by " + (AU().nameSync(rep.uid) || "sales"), files: f ? [f] : [], verified, reportId: rep.id, reportedBy: rep.uid, account }); }
     else if (!note) throw new Error("Give the reason.");
     const cur = await DS().get(base); await DS().set(base, Object.assign({}, cur, { status: accept ? "accepted" : "rejected", decidedAt: now(), decidedBy: me().id, note }));
     if (NT()) await NT().deliver(rep.uid, { id: `paysub-dec-${rep.id}`, type: "payment", title: accept ? "Payment report accepted" : "Payment report rejected", body: accept ? "Your reported payment was added to the order." : `Reason: ${note}`, link: { view: "tracking" }, ref: rep.oid }).catch(() => {});

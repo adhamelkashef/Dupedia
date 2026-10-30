@@ -81,6 +81,7 @@
   /** Deadline of one claim: null = no timer (administrator assignment with the timer switched off). */
   function deadline(lead, claim) {
     if (lead.assignedTo === claim.uid && lead.assignTimer === false) return null;
+    if (lead.originKind === "sales" && lead.createdBy === claim.uid && !(lead.assignedTo && lead.assignedTo !== claim.uid)) return null;   // 1.2: a lead a salesperson created stays theirs (no 24-hour release)
     const start = [claim.claimedAt, lead.assignedTo === claim.uid ? lead.assignedAt : null].filter(Boolean).sort().pop();
     const last = lastQualifying(lead.id, claim.uid, start), base = [start, last].filter(Boolean).sort().pop();
     let dl = new Date(Date.parse(base) + timerCfg().hours * 3600e3).toISOString();

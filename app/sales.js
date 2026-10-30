@@ -147,6 +147,47 @@
     await updateCrm(leadId, { stage }, { stageNote: note || "" }).catch(() => {});
   }
 
+  /* ---------------- 1.2: manual lead creation, lead origin and attachments ---------------- */
+  const ORIGIN_KINDS = { admin: "Added by an administrator", sales: "Added by sales (stays with its creator)", dataentry: "Added by data entry", research: "Lead research", import: "Imported list", proposal: "Data-entry proposal" };
+  /** Administrators, sales and data entry add a lead by hand. A salesperson's own lead is claimed by them at once and is
+   *  never released by the 24-hour rule; only an administrator can reassign it (with a reason). Data-entry leads start
+   *  Under Research, unowned. The server checks creator and origin. */
+  async function createLead(patch) {
+    const u = me(); if (!u || !u.id) throw new Error("Sign in first.");
+    const kind = u.role === "admin" ? "admin" : u.role === "employee" ? "sales" : u.role === "dataentry" ? "dataentry" : null; if (!kind) throw new Error("Your role cannot add leads.");
+    const nm = String(patch.name || "").trim(); if (!nm) throw new Error("Enter the organisation name.");
+    const dup = (await listLeads()).find((l) => String(l.name || "").trim().toLowerCase() === nm.toLowerCase() && !["merged", "archived"].includes(l.status));
+    if (dup) throw Object.assign(new Error(`A lead called "${dup.name}" already exists. Open it instead of adding a duplicate.`), { code: "duplicate", leadId: dup.id });
+    const id = rid("L-"), at = now();
+    const doc = Object.assign({ country: "Egypt", orgType: "developer", contact: { name: "", title: "", phone: "", email: "", source: "", sub: "none" }, qualification: {}, sources: [] }, patch, { name: nm,
+      status: kind === "dataentry" ? "research" : "available", origin: ORIGIN_KINDS[kind], originKind: kind, createdBy: u.id, createdAt: at, updatedAt: at, updatedBy: u.id, history: [{ at, by: u.id, action: "Created", reason: "Added manually", detail: ORIGIN_KINDS[kind] }] });
+    if (kind === "admin") await saveLead(Object.assign({ id }, doc), "Created", "Added manually", "");
+    else { const r = await DS().create(`leads/${id}`, doc); if (!r.created) throw new Error("The lead could not be created. Try again."); }
+    if (kind === "sales") await DS().set(`claims/${u.id}/c/${id}`, { leadId: id, uid: u.id, claimedAt: at, leadName: nm, via: "created" });
+    await AU().auditLog("Lead created", { kind: "lead", target: id, detail: `${nm} · ${ORIGIN_KINDS[kind]}` }).catch(() => {});
+    return id;
+  }
+  const LEADX_TYPES = /\.(jpe?g|png|webp|gif|pdf|dwg|dxf|skp|doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip)$/i, LEADX_MAX = 8 * 1024 * 1024;
+  const leadFiles = async (leadId) => (await DS().tryList(`leadx/${leadId}/files`)).map((x) => Object.assign({ id: x.id }, x.data)).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  /** Pictures, drawings, CAD files and specifications on a lead (any staff who can see the lead can open them). */
+  async function attachLeadFile(leadId, file, { label = "", kind = "other" } = {}) {
+    const u = me(); if (!u || u.role === "viewer") throw new Error("View-only access cannot attach files.");
+    if (!file || !LEADX_TYPES.test(file.name)) throw new Error("Use a picture, PDF, DWG/DXF/SKP drawing, Office document, CSV, text or ZIP file.");
+    if (file.size > LEADX_MAX) throw new Error("The file is larger than 8 MB.");
+    const f = /^image\/(jpeg|png|webp)$/.test(file.type) || file.type === "application/pdf" ? await root.DPOrders.prepareFile(file)
+      : { name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl: await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(fr.error); fr.readAsDataURL(file); }) };
+    const fid = rid("lf-"), base = `leadx/${leadId}/files/${fid}`;
+    await root.DPOrders.putFile(base, f);
+    await DS().set(base, { name: f.name, type: f.type, size: f.size, label: String(label).slice(0, 120), kind, by: u.id, at: now() });
+    await AU().auditLog("Lead file attached", { kind: "lead", target: leadId, detail: f.name }).catch(() => {});
+    return fid;
+  }
+  const leadFile = (leadId, fid) => root.DPOrders.getFile(`leadx/${leadId}/files/${fid}`);
+  async function removeLeadFile(leadId, fid, reason = "") { const base = `leadx/${leadId}/files/${fid}`, meta = await DS().tryGet(base); if (!meta) return;
+    if (meta.by !== me().id && !AU().isAdmin()) throw new Error("Only the person who attached the file or an administrator can remove it.");
+    await DS().del(base); for (const c of await DS().tryList(`${base}/c`)) await DS().del(`${base}/c/${c.id}`).catch(() => {});
+    await AU().auditLog("Lead file removed", { kind: "lead", target: leadId, reason, detail: meta.name }).catch(() => {}); }
+
   /* ---------------- administrator actions on leads ---------------- */
   const reqAdmin = () => { if (!AU().isAdmin()) throw new Error("Administrators only."); };
   function hist(lead, action, reason, detail) { return (lead.history || []).concat([{ at: now(), by: me().id, action, reason: reason || "", detail: detail || "" }]).slice(-120); }
@@ -272,6 +313,8 @@
     const order = { oid, pid: sub.pid, ownerId: sub.ownerId, ref: sub.ref, name: sub.name, client: sub.client, location: sub.location, type: projectType || sub.type, orgType, leadId: sub.leadId,
       currency: base.currency, subtotalMinor: base.subtotalMinor, discountMinor: base.discountMinor, afterDiscountMinor: base.afterDiscountMinor, taxMinor: base.taxMinor, totalMinor: base.totalMinor,
       passThroughMinor: base.passThroughMinor, quotedEligibleMinor: base.eligibleMinor, eligibleMinor, valueReason: approved.reason || "",
+      // 1.2: the sold lines (selling prices only — never cost), so invoices are prefilled from the order itself
+      lines: ((pricing && pricing.lines) || []).filter((l) => l.counted !== false && l.totalMinor).slice(0, 300).map((l) => ({ code: l.code || "", name: String(l.name || "").slice(0, 160), unit: l.unit || "", qty: l.qty, unitMinor: l.unitMinor, totalMinor: l.totalMinor })),
       costMinor: costMargin ? costMargin.costMinor : null, costMissing: costMargin ? costMargin.missing : null, sellingExpenses: [], payments: [],
       approvedAt: at, acceptedAt: sub.acceptedAt || at, bookedAt: now(), bookedBy: me().id, booking: auto ? "automatic" : "manual", period: period(at), approvedBy: me().id, status: "approved", rev: sub.rev,
       quotedTotalMinor: sub.base ? sub.base.totalMinor : null, valueCheck: sub.base && (sub.base.totalMinor !== base.totalMinor || sub.base.eligibleMinor !== base.eligibleMinor) ? { quotedTotalMinor: sub.base.totalMinor, quotedEligibleMinor: sub.base.eligibleMinor, bookedTotalMinor: base.totalMinor, bookedEligibleMinor: base.eligibleMinor } : null,
@@ -363,8 +406,9 @@
   async function listOrders() { return (await DS().tryList("orders")).map((x) => Object.assign({ oid: x.id }, x.data)); }
   async function myCommissions() { return (await DS().tryList(`commissions/${me().id}/r`)).map((x) => Object.assign({ oid: x.id }, x.data)); }
   async function allCommissions() { const ids = await uids(); const l = await Promise.all(ids.map((u) => DS().tryList(`commissions/${u}/r`).then((r) => r.map((x) => Object.assign({ oid: x.id, uid: u }, x.data))))); return l.flat(); }
+  const reqCommFin = () => { if (!(AU().isAdmin() || (AU().isFinance && AU().isFinance()))) throw new Error("Administrators or Finance only."); };
   async function updateCommission(uid, oid, fn, action, detail) {
-    reqAdmin(); const path = `commissions/${uid}/r/${oid}`, rec = await DS().get(path); if (!rec) throw new Error("Commission record not found.");
+    reqCommFin(); const path = `commissions/${uid}/r/${oid}`, rec = await DS().get(path); if (!rec) throw new Error("Commission record not found.");
     const next = fn(JSON.parse(JSON.stringify(rec))); await DS().set(path, next); await AU().adminLog(action, { target: oid, detail }); return next;
   }
   const setStatus = (rec, status, note) => { rec.status = status; rec.statusHistory = (rec.statusHistory || []).concat([{ status, at: now(), by: me().id, note: note || "" }]); return rec; };
@@ -381,6 +425,7 @@
   const owedMinor = (r) => (r.approvedMinor != null ? r.approvedMinor : 0) + (r.adjustments || []).reduce((a, x) => a + (x.amountMinor || 0), 0);
   const paidMinor = (r) => (r.payouts || []).reduce((a, x) => a + (x.amountMinor || 0), 0) + (r.status === "paid" && !(r.payouts || []).length && r.paidAt ? owedMinor(r) : 0);
   async function approveCommission(uid, oid, { amountMinor, reason = "" } = {}) {
+    if (!AU().isAdmin() && !(root.DPFin && root.DPFin.can("approveCommission"))) throw new Error("The administrator has not given you permission to approve commissions.");
     return updateCommission(uid, oid, (r) => {
       if (!["calculated", "pending", "returned"].includes(r.status)) throw new Error("This commission is already " + r.status + ". Use an adjustment to change an approved amount.");
       const calc = r.calculatedMinor != null ? r.calculatedMinor : r.amountMinor, amt = amountMinor == null ? calc : Math.round(amountMinor);
@@ -426,16 +471,17 @@
   async function myCollectRequests() { return (await DS().tryList(`requests/${me().id}/cc`)).map((x) => x.data); }
   async function allCollectRequests() { const ids = await uids(); const l = await Promise.all(ids.map((u) => DS().tryList(`requests/${u}/cc`).then((x) => x.map((y) => y.data)))); return l.flat(); }
   /** Record a payout (full or partial). Paid status follows the payouts, not a single flag. */
-  async function markPaid(uid, oid, { date, ref, amountMinor, proof = null }) {
+  async function markPaid(uid, oid, { date, ref, amountMinor, proof = null, txRef = null }) {
     if (!date) throw new Error("Enter the payment date.");
     const poid = rid("po-");
     // commission payout proof is the EMPLOYEE's record (commissions/<uid>/…): never stored with, or shown as, client payment evidence
-    if (proof) { reqAdmin(); await root.DPOrders.putFile(`commissions/${uid}/r/${oid}/po/${poid}`, proof); }
+    if (proof) { reqCommFin(); await root.DPOrders.putFile(`commissions/${uid}/r/${oid}/po/${poid}`, proof); }
     return updateCommission(uid, oid, (r) => {
       if (!["approved", "paid"].includes(r.status) || r.approvedMinor == null) throw new Error("Approve the commission before recording a payout.");
       const due = owedMinor(r) - paidMinor(r), amt = amountMinor == null ? due : Math.round(amountMinor);
       if (!(amt > 0)) throw new Error("Nothing is outstanding on this commission."); if (amt > due) throw new Error("The payout is larger than the outstanding amount.");
-      r.payouts = (r.payouts || []).concat([{ id: poid, date, ref: ref || "", amountMinor: amt, at: now(), by: me().id, proof: proof ? { name: proof.name, type: proof.type, size: proof.size } : null }]);
+      if (txRef && (r.payouts || []).some((x) => x.txRef === txRef)) throw new Error("This payout is already recorded.");
+      r.payouts = (r.payouts || []).concat([{ id: poid, date, ref: ref || "", amountMinor: amt, at: now(), by: me().id, proof: proof ? { name: proof.name, type: proof.type, size: proof.size } : null, txRef: txRef || null }]);
       if (paidMinor(r) >= owedMinor(r)) { r.paidAt = date; r.paidRef = ref || ""; return setStatus(r, "paid", `Paid ${date}${ref ? " · " + ref : ""}`); }
       r.statusHistory = (r.statusHistory || []).concat([{ status: r.status, at: now(), by: me().id, note: `Partial payout ${amt / 100} on ${date}` }]); return r;
     }, "Commission payout", `${date} ${ref || ""}`).then(async (r) => { if (root.DPNotify) await root.DPNotify.deliver(uid, { id: `comm-paid-${oid}-${(r.payouts || []).length}`, type: "commission", title: r.status === "paid" ? "Commission paid" : "Commission partly paid", body: `${r.name}: ${root.DPPricing.fmtMoney(paidMinor(r), r.currency)} paid.`, link: { view: "mycomm" }, ref: oid }).catch(() => {}); return r; });
@@ -459,7 +505,7 @@
   }
   /** Flag a commission as eligible for review when the configured milestone is reached (administrator sessions). */
   async function checkEligibility(oid) {
-    if (!AU().isAdmin()) return;
+    if (!AU().isAdmin() && !(AU().isFinance && AU().isFinance())) return;
     const o = await DS().tryGet(`orders/${oid}`); if (!o) return; const rec = await DS().tryGet(`commissions/${o.ownerId}/r/${oid}`); if (!rec || rec.eligibleAt || ["cancelled", "reversed"].includes(rec.status)) return;
     const cfg = eligibilityCfg(), verified = (o.payments || []).filter((p) => p.status === "verified").reduce((a, p) => a + p.amountMinor, 0);
     let met = cfg.milestone === "order";
@@ -470,7 +516,7 @@
     if (!met) return;
     const r2 = await updateCommission(o.ownerId, oid, (r) => { r.eligibleAt = now(); r.eligibleBy = MILESTONES[cfg.milestone]; if (r.status === "calculated") return setStatus(r, "pending", "Awaiting approval: " + MILESTONES[cfg.milestone]); r.statusHistory = (r.statusHistory || []).concat([{ status: r.status, at: now(), by: me().id, note: "Eligible for approval: " + MILESTONES[cfg.milestone] }]); return r; }, "Commission eligible for review", MILESTONES[cfg.milestone]);
     if (root.DPNotify) await root.DPNotify.deliver("@admins", { id: `comm-elig-${oid}`, type: "commission", title: "Commission eligible for review", body: `${o.name} (${AU().nameSync(o.ownerId)}): ${MILESTONES[cfg.milestone]}.`, link: { view: "commadmin" }, ref: oid }).catch(() => {});
-    if (cfg.autoApprove && r2.status === "pending") await approveCommission(o.ownerId, oid, { reason: "" });
+    if (cfg.autoApprove && r2.status === "pending") await approveCommission(o.ownerId, oid, { reason: "" }).catch(() => {});
   }
   async function setSellingExpenses(oid, list, reason) {
     reqAdmin(); const o = await DS().get(`orders/${oid}`); o.sellingExpenses = list; o.history = (o.history || []).concat([{ at: now(), by: me().id, action: "Selling expenses updated", detail: reason || "" }]);
@@ -524,7 +570,7 @@
   }
   function lastPeriods(n, from) { const d = from ? new Date(from + "-01T12:00:00") : new Date(), out = []; for (let i = 0; i < n; i++) { const x = new Date(d.getFullYear(), d.getMonth() - i, 15); out.push(x.toISOString().slice(0, 7)); } return out; }
 
-  root.DPLeads = { ORG_TYPES, STAGES, STAGE_LABEL, OWNER_STAGES, CONTACT_SUB, QUAL, contactLabel, priority, scoreOf, listLeads, claimsByLead, ownership, myCrm, listCrm, stageOf, claim, release, updateCrm, addCrmEntry, syncStage,
+  root.DPLeads = { ORIGIN_KINDS, createLead, leadFiles, attachLeadFile, leadFile, removeLeadFile, ORG_TYPES, STAGES, STAGE_LABEL, OWNER_STAGES, CONTACT_SUB, QUAL, contactLabel, priority, scoreOf, listLeads, claimsByLead, ownership, myCrm, listCrm, stageOf, claim, release, updateCrm, addCrmEntry, syncStage,
     saveLead, reassign, adminRelease, setLeadStatus, correct, merge, importLeads, uids };
   root.DPSales = { collectState, requestCollect, myCollectRequests, allCollectRequests, commissionConfig, currentRule, ruleById, saveCommissionConfig, estimate, submit, accept, clientRejected, orderIdFor, payoutProof, mySubmissions, allSubmissions, withdraw, approve, returnSubmission, listOrders, myCommissions, allCommissions,
     approveCommission, returnCommission, markPaid, adjust, recalcAsAdjustment, checkEligibility, MILESTONES, eligibilityCfg, owedMinor, paidMinor, setSellingExpenses, cancelOrder, staffDoc, targetFor, setTarget, salesFigures, lastPeriods, period, inPer, setProjectStatus };

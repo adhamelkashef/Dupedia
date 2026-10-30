@@ -121,13 +121,15 @@
   /* ---------------- navigation ---------------- */
   const PROJECT_VIEWS = ["setup", "plan", "quote", "review", "proposal"];
   const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission"];
-  const VIEWS = ["dash", "home", "proposals", "leads", "myleads", "mycomm", "profile", "tracking", "calls", "engorders", "workers", "research", "factory", "messages", "start", "intel"].concat(PROJECT_VIEWS, ADMIN_VIEWS);
+  const FIN_VIEWS = ["finance", "transfers", "finaccounts", "salaries", "purchases", "invoices", "taxes", "finreports"];
+  const VIEWS = ["dash", "home", "proposals", "leads", "myleads", "mycomm", "profile", "tracking", "calls", "engorders", "workers", "research", "factory", "messages", "start", "intel"].concat(PROJECT_VIEWS, ADMIN_VIEWS, FIN_VIEWS);
   /** Which views each access level may open (administrators: all). Enforcement of data is in the database rules. */
   const ROLE_VIEWS = {
     employee: ["dash", "home", "proposals", "leads", "myleads", "mycomm", "profile", "tracking", "calls", "messages", "start", "intel"].concat(PROJECT_VIEWS),
     engineer: ["dash", "engorders", "factory", "workers", "profile", "messages"],
     dataentry: ["dash", "research", "leads", "calls", "profile", "messages", "intel"],
     viewer: ["dash", "profile"],
+    accountant: ["dash", "profile", "messages", "payverify", "approvecomm", "workers"].concat(FIN_VIEWS),
   };
   const allowedView = (v) => isAdmin() || (ROLE_VIEWS[role()] || ROLE_VIEWS.viewer).includes(v);
   const renderers = {};
@@ -135,6 +137,7 @@
   function go(view, opts = {}) {
     if (!root.DPAuth || !root.DPAuth.A.ready) return;
     if (!VIEWS.includes(view)) view = "dash";
+    if (view === "dash" && role() === "accountant") view = "finance";   // 1.2: the Accountant's home is the Finance dashboard
     if (PROJECT_VIEWS.includes(view) && !App.open && !(view === "setup" && opts.isNew)) view = "home";
     if (!allowedView(view)) { toast("That page is not available for your role.", { err: true }); view = "dash"; }
     App.view = view; App.newSetup = view === "setup" && !!opts.isNew; App.viewOpts = opts; $("#app").dataset.view = view;
@@ -245,5 +248,5 @@
 
   try { root.addEventListener("beforeunload", (e) => { if (App.open && M.S.dirty && canWrite() && !App.sample) { e.preventDefault(); e.returnValue = ""; } }); } catch (e) {}
   root.DPUI = { $, $$, esc, svg, ICON, App, DEFAULT_SETTINGS, toast, openModal, closeModal, ask, form, busy, loadConfig, role, me, isAdmin, canWrite, userInfo, pricing, money,
-    register, go, header, banner, VIEWS, PROJECT_VIEWS, ADMIN_VIEWS, ROLE_VIEWS, allowedView, STATUS_LABEL, STATUS_PILL, setSaveState, scheduleAutosave, save, openProject, startProject, nextRef, pickFile, downloadOut, deepMerge };
+    register, go, header, banner, VIEWS, PROJECT_VIEWS, ADMIN_VIEWS, ROLE_VIEWS, FIN_VIEWS, allowedView, STATUS_LABEL, STATUS_PILL, setSaveState, scheduleAutosave, save, openProject, startProject, nextRef, pickFile, downloadOut, deepMerge };
 })(typeof self !== "undefined" ? self : this);

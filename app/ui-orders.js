@@ -180,6 +180,7 @@
             ${reps.map((x) => `<tr><td class="small">${esc(x.date)}</td><td class="r num">${esc(H.money2(x.amountMinor, cur))}</td><td class="small">${esc(x.method || "—")}</td><td class="small">${esc(x.ref || "—")}</td><td><span class="pill ${x.status === "rejected" ? "err" : "warn"}">${esc(x.status === "rejected" ? "Rejected" + (x.note ? ": " + x.note : "") : "Pending verification")}</span></td><td>${x.hasFile ? `<button class="btn ghost xs" data-rep="${esc(x.id)}" data-ru="${esc(x.uid || r.ownerId)}">${U.svg("eye")} View</button>` : '<span class="tiny muted">none</span>'}</td></tr>`).join("")}</tbody></table></div>`
             : `<p class="small muted">${r.accepted ? "No payments recorded yet." : "Payments can be recorded once the client accepts."}</p>`}
           <p class="tiny muted">A payment you record is <b>pending verification</b> until an administrator confirms the funds have cleared. Only verified payments count as collected cash.</p></div>
+        ${r.oid && r.accepted && (mine || admin) && root.DPFinUI2 ? `<div class="card stack" id="od-docs"><h3>Invoices &amp; receipts</h3><p class="small muted">Loading…</p></div>` : ""}
         <div class="card stack"><h3>Order items</h3>${items.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th>Code</th><th>Item</th><th class="r">Quantity</th><th>Unit</th></tr></thead><tbody>${items.slice(0, 200).map((i) => `<tr><td class="small"><b>${esc(i.displayCode || i.code || "")}</b></td><td>${esc(i.name)}</td><td class="r num">${esc(PR.fmtQty(i.qty, i.unit))}</td><td class="small">${esc(PR.UNIT_LABEL[i.unit] || i.unit)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">No items.</p>`}</div>
       </div><div class="stack">
         <div class="card stack"><h3>Production &amp; installation</h3>${r.accepted ? `
@@ -198,6 +199,7 @@
     ["#od-pay", "#od-pay2"].forEach((s) => { const b = $(s); if (b) b.onclick = () => recordPayment(r, refresh); });
     $("#od-more").onclick = (ev) => actionMenu(ev.currentTarget, r, refresh, back === "register");
     const pos = $("#od-pos"); if (pos && r.order) DPPayUI.bindPosition(pos, r.order, refresh);
+    const dc = $("#od-docs"); if (dc) root.DPFinUI2.salesDocsCard(dc, r, refresh);
     const ev = $("#od-ev"); if (ev) ev.onclick = async () => DPUI.showFile(await O.getFile(`submissions/${r.ownerId}/s/${r.p.id}/ev/main`));
     $$("[data-rcpt]", V).forEach((b) => (b.onclick = async () => { b.disabled = true; try { const f = await O.receipt(r.oid, b.dataset.rcpt); if (!f) U.toast("The proof is not available to you.", { err: true }); else DPUI.showFile(f, "Customer payment proof"); } finally { b.disabled = false; } }));
     $$("[data-rep]", V).forEach((b) => (b.onclick = async () => DPUI.showFile(await O.getFile(`paysub/${b.dataset.ru}/p/${b.dataset.rep}`), "Customer payment proof")));
