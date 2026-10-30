@@ -1,7 +1,7 @@
 {
   "name": "dupedia-xforce",
   "private": true,
-  "description": "X FORCE 1.1 — Dupedia's operating system on Cloudflare Workers + D1",
+  "description": "X FORCE 1.2 — Dupedia's operating system on Cloudflare Workers + D1",
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"

@@ -11,9 +11,10 @@
    Static files are served by Cloudflare's asset service; this Worker runs first only for "/", the sign-in/setup pages,
    the shim and /api/* (see wrangler.jsonc → assets.run_worker_first). */
 import "../app/store.js";
+import "../app/fincalc.js";
 import { computeSweep } from "./sweep.js";
 
-const RULES = globalThis.DPStore;
+const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
 const DOC_MAX = 256 * 1024, BODY_MAX = 4 * 1048576;
 const PATH_RE = /^(?!\.\.?(?:\/|$))[A-Za-z0-9_\-.~:@+]{1,200}(?:\/(?!\.\.?(?:\/|$))[A-Za-z0-9_\-.~:@+]{1,200}){0,14}$/;
 const now = () => new Date().toISOString();
@@ -95,15 +96,129 @@ async function failed(env, k, max = 5) {
   let n = f.n + 1, until = f.until; if (n >= max) { until = Date.now() + 15 * 60e3; n = 0; }
   await env.DB.prepare("INSERT INTO fails (k, n, until) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET n = excluded.n, until = excluded.until").bind(k, n, until).run();
 }
-const levelOf = (a) => (a.owner ? "owner" : a.level === "admin" ? "admin" : "interact");
-const can = (a, p, op) => RULES.allowed(p, op, levelOf(a), a.uid);
+const levelOf = (a) => (a.owner ? "owner" : a.level === "admin" ? "admin" : a.level === "finance" ? "finance" : "interact");
+const isAdminAcc = (a) => ["owner", "admin"].includes(levelOf(a));
+const can = (a, p, op) => (levelOf(a) === "finance" ? RULES.allowedFinance(p, op, a.uid) : RULES.allowed(p, op, levelOf(a), a.uid));
+const ACC_LEVELS = { admin: "admin", finance: "finance", interact: "interact" };
 
+/* 1.2 — a lead added by a sales or data-entry person: origin and creator must be theirs, nothing may pre-assign it. */
+async function staffRoleBase(env, uid) {
+  let d = await docOf(env, `directory/${uid}`);
+  if (!d || d.uid !== uid) { const rs = (await env.DB.prepare("SELECT data FROM docs WHERE parent = 'directory'").all()).results || []; d = rs.map((r) => JSON.parse(r.data)).find((x) => x.uid === uid) || null; }
+  if (!d || d.active === false) return null;
+  const roles = ((await docOf(env, "config/roles")) || {}).roles || [], r = roles.find((x) => x.id === d.role);
+  return (r && r.base) || d.role;
+}
+async function checkNewLead(env, acc, d) {
+  if (!d || typeof d !== "object") return "Lead data missing.";
+  const base = await staffRoleBase(env, acc.uid), kind = base === "employee" ? "sales" : base === "dataentry" ? "dataentry" : null;
+  if (!kind) return "Your role cannot add leads.";
+  if (d.createdBy !== acc.uid || d.originKind !== kind) return "A new lead must be recorded as created by you, with your role as its origin.";
+  if (!String(d.name || "").trim()) return "Enter the organisation name.";
+  if (d.assignedTo || d.assignedBy || d.extensions || d.releases || d.mergedInto) return "A new lead cannot be assigned, extended or merged by its creator.";
+  if (!["available", "research"].includes(d.status)) return "A new lead starts as Available or Under Research.";
+  return null;
+}
 /* ======================= documents ======================= */
 async function setDoc(env, p, data) {
   const r = await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO UPDATE SET data = excluded.data, v = docs.v + 1, at = excluded.at RETURNING v")
     .bind(p, parentOf(p), data, now()).first();
   return r ? r.v : 1;
 }
+/* ======================= 1.2 finance integrity (enforced here, whatever the browser sends) ======================= */
+async function finCfg(env) { const r = await env.DB.prepare("SELECT data FROM docs WHERE path = 'fin/cfg'").first(); return FC.cfgOf(r ? JSON.parse(r.data) : null); }
+const docOf = async (env, p) => { const r = await env.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(p).first(); return r ? JSON.parse(r.data) : null; };
+const eqv = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const frozen = (old, next, fields) => fields.find((f) => !eqv(old[f], next[f]));
+const who = (acc) => ({ uid: acc.uid, level: levelOf(acc) });
+// which approved record lets a payout skip the approval step
+const PRE_APPROVED = [["commission", (l) => l.commission && `commissions/${l.commission.uid}/r/${l.commission.oid}`, (d) => ["approved", "paid"].includes(d.status)],
+  ["payroll", (l) => l.payroll && `fin/payroll/r/${l.payroll}`, (d) => ["approved", "partly_paid"].includes(d.status)],
+  ["wdue", (l) => l.wdue && `fin/wdue/d/${l.wdue}`, (d) => ["approved", "partly_paid"].includes(d.status)],
+  ["purchase", (l) => l.purchase && `fin/purch/p/${l.purchase}`, (d) => ["approved", "received"].includes(d.status)]];
+const GUARDS = [
+  { re: /^leadx\/[^/]+\/files\/[^/]+$/, del: (old, acc) => (old && old.by !== acc.uid && !isAdminAcc(acc) ? "Only the person who attached the file or an administrator can remove it." : null),
+    check: async (env, acc, p, old, next) => (old && old.by !== acc.uid && !isAdminAcc(acc) ? "Only the person who attached the file or an administrator can change it." : next.by !== acc.uid && !old ? "The file must be recorded as attached by you." : null) },
+  { re: /^fin\/tx\/t\/[^/]+$/, del: (old) => (old && old.status !== "draft" ? "Only a draft transaction can be deleted. Cancel it or record a reversal." : null),
+    check: async (env, acc, p, old, next) => {
+      if (p.split("/")[3] !== next.ref) return "The document id must be the transaction reference.";
+      const cfg = await finCfg(env), e = FC.guardTx(who(acc), old, next, cfg); if (e) return e;
+      const ids = [next.fromAcct, next.toAcct].filter(Boolean), accounts = {};
+      for (const id of ids) { const a = await docOf(env, `fin/accounts/a/${id}`); if (a) accounts[id] = Object.assign({ id }, a); }
+      const e2 = FC.validateTx(next, accounts); if (e2) return e2;
+      if (next.preApproved && !old) { const l = next.links || {}, hit = PRE_APPROVED.find(([k]) => l[k]);
+        if (!hit) return "A payout without approval must be linked to an approved record.";
+        const rec = await docOf(env, hit[1](l)); if (!rec || !hit[2](rec)) return "The linked record is not approved, so this payment needs approval."; }
+      if (next.type === "reversal" && !old) {
+        const o = await docOf(env, `fin/tx/t/${next.reversalOf}`);
+        if (!o || !FC.POSTED(o)) return "Only a verified transaction can be reversed.";
+        if (o.reversedBy) return "This transaction is already reversed.";
+        if (o.amountMinor !== next.amountMinor || o.currency !== next.currency) return "A reversal must have the same amount and currency as the original.";
+        const flip = { in: "out", out: "in", internal: "internal" }[o.direction];
+        if (next.direction !== flip || (o.direction === "internal" ? next.fromAcct !== o.toAcct || next.toAcct !== o.fromAcct : (next.fromAcct || next.toAcct) !== (o.toAcct || o.fromAcct))) return "A reversal must undo the original movement on the same account(s).";
+        if (!(next.reason && String(next.reason).trim().length >= 5)) return "A reversal needs a reason.";
+      }
+      if (old && FC.POSTED(old) && !eqv(old.reversedBy, next.reversedBy)) {   // marking the original as reversed: only by a verified reversal of it
+        const r = await docOf(env, `fin/tx/t/${next.reversedBy}`); if (!r || r.reversalOf !== old.ref || !FC.POSTED(r)) return "Link a verified reversal first."; }
+      return null;
+    } },
+  { re: /^fin\/inv\/i\/[^/]+$/, del: (old) => (old && old.status !== "draft" ? "An issued document is never deleted. Cancel it or issue a credit note." : null),
+    check: async (env, acc, p, old, next) => {
+      const cfg = await finCfg(env);
+      if (levelOf(acc) === "finance" && next.status === "issued" && (!old || old.status !== "issued") && !cfg.accountant.finalizeInvoices) return "You are not authorised to issue invoices.";
+      if (old && old.status === "issued") {
+        const f = frozen(old, next, ["number", "kind", "orderId", "paymentId", "txRef", "date", "customer", "lines", "subtotalMinor", "discountMinor", "taxLines", "taxMinor", "totalMinor", "receivedMinor", "issuedBy", "issuedAt"]);
+        if (f) return "An issued document cannot be changed (" + f + "). Cancel it or issue a credit note.";
+        if (!["issued", "cancelled"].includes(next.status)) return "An issued document can only be cancelled.";
+        if (next.status === "cancelled" && !(next.cancelReason && next.cancelledBy === acc.uid)) return "Cancelling needs a reason.";
+      }
+      if (old && old.status === "cancelled" && !eqv(old, next)) return "A cancelled document cannot be changed.";
+      if (next.status === "issued" && next.kind === "receipt" && (!old || old.status !== "issued")) {   // the payment must REALLY be verified on the order
+        const o = await docOf(env, `orders/${next.orderId}`), pay = o && (o.payments || []).find((x) => x.id === next.paymentId);
+        if (!pay || pay.status !== "verified") return "A receipt can only be issued for a verified payment.";
+        if (pay.amountMinor !== next.receivedMinor) return "The receipt amount must equal the verified payment.";
+      }
+      if (next.status === "issued" && (!old || old.status !== "issued") && next.issuedBy !== acc.uid) return "The issuer must be the person issuing.";
+      return null;
+    } },
+  { re: /^fin\/payroll\/r\/[^/]+$/, del: (old) => (old && !["prepared", "pending_approval"].includes(old.status) ? "Approved payroll is never deleted." : null),
+    check: async (env, acc, p, old, next) => {
+      const L = ["approved", "partly_paid", "paid"];
+      if (old && L.includes(old.status)) { const f = frozen(old, next, ["uid", "period", "baseMinor", "allowances", "bonuses", "deductions", "recoveries", "adjustments", "grossMinor", "netMinor", "approvedBy", "approvedAt"]);
+        if (f) return "Approved payroll cannot be changed (" + f + "). Record an adjustment in the next period."; }
+      if (L.includes(next.status) && (!old || !L.includes(old.status))) {
+        const cfg = await finCfg(env), fin = levelOf(acc) === "finance";
+        if (fin && !cfg.accountant.approvePayroll) return "You are not authorised to approve payroll.";
+        if (next.approvedBy !== acc.uid) return "The approver must be the person approving.";
+        if (fin && cfg.sod && next.preparedBy === acc.uid) return "Separation of duties: you prepared this payroll, so another person must approve it.";
+        const calc = FC.payroll(next); if (calc.netMinor !== next.netMinor || calc.grossMinor !== next.grossMinor) return "The payroll totals do not match their lines.";
+      }
+      return null;
+    } },
+  { re: /^fin\/(purch\/p|wdue\/d)\/[^/]+$/, del: (old) => (old && !["pending_approval", "draft"].includes(old.status) ? "Approved records are never deleted. Cancel them instead." : null),
+    check: async (env, acc, p, old, next) => {
+      const A = ["approved", "received", "partly_paid", "paid"];
+      if (A.includes(next.status) && (!old || !A.includes(old.status))) {
+        const cfg = await finCfg(env), fin = levelOf(acc) === "finance";
+        if (fin && !cfg.accountant.approveExpenses) return "You are not authorised to approve this.";
+        if (next.approvedBy !== acc.uid) return "The approver must be the person approving.";
+        if (fin && cfg.sod && next.preparedBy === acc.uid) return "Separation of duties: another person must approve what you prepared.";
+      }
+      if (old && A.includes(old.status)) { const f = frozen(old, next, p.includes("/purch/") ? ["totalMinor", "lines", "supplierId", "approvedBy"] : ["amountDueMinor", "wid", "approvedBy"]); if (f) return "An approved record cannot be changed (" + f + "). Cancel it and record a new one."; }
+      return null;
+    } },
+  // the Accountant may record and verify payments on orders, but never change what was sold or its value
+  { re: /^orders\/[^/]+$/, levels: ["finance"], del: () => "Finance cannot delete orders.",
+    check: async (env, acc, p, old, next) => { if (!old) return "Finance cannot create orders."; const f = frozen(old, next, ["ownerId", "pid", "items", "lines", "subtotalMinor", "discountMinor", "afterDiscountMinor", "taxMinor", "totalMinor", "costMinor", "valueAdjustments", "status", "client", "name", "ref"]); return f ? "Finance cannot change the order (" + f + ")." : null; } },
+  { re: /^commissions\/[^/]+\/r\/[^/]+$/, levels: ["finance"], del: () => "Finance cannot delete commission records.",
+    check: async (env, acc, p, old, next) => {
+      if (!old) return "Commission records are created by the system.";
+      const f = frozen(old, next, ["uid", "oid", "calculatedMinor", "rateBp", "basis", "eligibleMinor"]); if (f) return "The calculated commission cannot be changed (" + f + ").";
+      if (!eqv(old.approvedMinor, next.approvedMinor) || !eqv(old.approvals, next.approvals)) { const cfg = await finCfg(env); if (!cfg.accountant.approveCommission) return "You are not authorised to approve commissions."; }
+      return null;
+    } },
+  { re: /^fin\/cfg$/, check: async (env, acc) => (isAdminAcc(acc) ? null : "Only the administrator changes finance permissions.") },
+];
 async function dbOp(env, acc, b) {
   const { op } = b, p = String(b.path || "");
   if (!PATH_RE.test(p)) return { error: "invalid_argument", message: "Invalid path." };
@@ -118,17 +233,32 @@ async function dbOp(env, acc, b) {
     // the stored JSON is passed through as is: no parsing on the hot path (Workers Free allows 10 ms of CPU per request)
     return { raw: `{"docs":[${out.map(([id, d]) => `{"id":${JSON.stringify(id)},"data":${d}}`).join(",")}]}` };
   }
-  if (op === "set" || op === "update" || op === "delete") {
+  if (op === "set" || op === "update" || op === "delete" || op === "create") {
     if (p.split("/").length % 2) return { error: "invalid_argument", message: "Not a document path." };
-    if (!can(acc, p, "write")) return { error: "invalid_argument", message: "no such artifact, collection, or document (or no access)" };
-    if (op === "delete") { await env.DB.prepare("DELETE FROM docs WHERE path = ?").bind(p).run(); return { ok: true }; }
-    let data = b.data; if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "invalid_argument", message: "Document data must be an object." };
-    if (op === "update") {
-      const cur = await env.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(p).first();
-      if (!cur) return { error: "not_found", message: "missing" };
-      data = Object.assign(JSON.parse(cur.data), data);
+    const audit = /^audit\/[^/]+$/.test(p);
+    // 1.2: sales and data-entry staff may ADD a new lead (create only — never change or delete one); the server checks the fields
+    const leadNew = op === "create" && /^leads\/[^/]+$/.test(p) && levelOf(acc) === "interact";
+    if (leadNew) { const e = await checkNewLead(env, acc, b.data); if (e) return { error: "refused", message: e }; }
+    // the audit trail is append-only for everyone: any signed-in person may ADD an entry about their own action
+    if (!audit && !leadNew && !can(acc, p, "write")) return { error: "invalid_argument", message: "no such artifact, collection, or document (or no access)" };
+    if (audit && op !== "create") return { error: "invalid_argument", message: "The audit trail cannot be changed or deleted." };
+    const guarded = GUARDS.find((g) => g.re.test(p) && (!g.levels || g.levels.includes(levelOf(acc))));
+    const curRow = op === "update" || guarded || op === "create" ? await env.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(p).first() : null;
+    const old = curRow ? JSON.parse(curRow.data) : null;
+    if (op === "delete") {
+      if (guarded && guarded.del) { const e = guarded.del(old, acc); if (e) return { error: "refused", message: e }; }
+      await env.DB.prepare("DELETE FROM docs WHERE path = ?").bind(p).run(); return { ok: true };
     }
+    let data = b.data; if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "invalid_argument", message: "Document data must be an object." };
+    if (op === "create" && old) return { ok: true, created: false };
+    if (op === "update") { if (!old) return { error: "not_found", message: "missing" }; data = Object.assign({}, old, data); }
+    if (audit) data = Object.assign({}, data, { by: acc.uid, at: now() });   // who and when are stamped by the server, never by the browser
+    if (guarded) { const e = await guarded.check(env, acc, p, old, data); if (e) return { error: "refused", message: e }; }
     const s = JSON.stringify(data); if (enc.encode(s).length > DOC_MAX) return { error: "invalid_argument", message: "Document larger than 256 KiB." };
+    if (op === "create") {
+      const r = await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING RETURNING v").bind(p, parentOf(p), s, now()).first();
+      return { ok: true, created: !!r, version: r ? r.v : undefined };
+    }
     return { ok: true, version: await setDoc(env, p, s) };
   }
   if (op === "acquire") {
@@ -273,7 +403,7 @@ async function route(req, env) {
   if (p.startsWith("/api/ingest/")) return json(501, { error: "not_available", message: "Research ingest is not available on the Cloudflare version yet. Market Intelligence research runs on claude.ai." });
   if (!acc) return json(401, { error: "unauthenticated", message: "Signed out — sign in again." });
   if (M !== "GET" && !csrfOk(req)) return json(403, { error: "forbidden" });
-  const admin = levelOf(acc) !== "interact";
+  const admin = isAdminAcc(acc);
   if (p === "/api/me") return json(200, { uid: acc.uid, name: acc.name, username: acc.username, level: levelOf(acc), owner: !!acc.owner, mustChange: !!acc.must_change });
   if (p === "/api/logout" && M === "POST") { const t = cookies(req).xf_s; if (t) await env.DB.prepare("DELETE FROM sessions WHERE th = ?").bind(await sha256(t)).run(); return json(200, { ok: true }, { "Set-Cookie": cookie(req, "", 0) }); }
   if (p === "/api/db" && M === "POST") { const r = await dbOp(env, acc, await body(req)); return r.raw ? rawJson(200, r.raw) : json(200, r); }
@@ -302,15 +432,15 @@ async function route(req, env) {
     const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: "Temporary password: " + prob });
     const uid = uidNew(), h = await hashPw(env, b.password);
     await env.DB.prepare("INSERT INTO users (uid, username, name, level, owner, active, must_change, salt, hash, iter, created_at, created_by) VALUES (?, ?, ?, ?, 0, 1, 1, ?, ?, ?, ?, ?)")
-      .bind(uid, un, String(b.name || un).slice(0, 80), b.level === "admin" ? "admin" : "interact", h.salt, h.hash, h.iter, now(), acc.uid).run();
+      .bind(uid, un, String(b.name || un).slice(0, 80), ACC_LEVELS[b.level] || "interact", h.salt, h.hash, h.iter, now(), acc.uid).run();
     return json(200, { uid });
   }
   const m = p.match(/^\/api\/accounts\/(u_[A-Za-z0-9]{10,40})$/);
   if (m && M === "POST") {
     const a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(m[1]).first(); if (!a) return json(404, { error: "not_found" });
     const b = await body(req);
-    if (a.owner && (b.active === false || b.level === "interact")) return json(400, { error: "owner", message: "The owner account cannot be deactivated or demoted." });
-    if (b.level) a.level = b.level === "admin" ? "admin" : "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
+    if (a.owner && (b.active === false || (b.level && b.level !== "admin"))) return json(400, { error: "owner", message: "The owner account cannot be deactivated or demoted." });
+    if (b.level) a.level = ACC_LEVELS[b.level] || "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
     const st = [];
     if (b.password) { const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob }); const h = await hashPw(env, b.password); Object.assign(a, { salt: h.salt, hash: h.hash, iter: h.iter, must_change: 1 }); }
     st.push(env.DB.prepare("UPDATE users SET level = ?, active = ?, name = ?, salt = ?, hash = ?, iter = ?, must_change = ? WHERE uid = ?").bind(a.level, a.active, a.name, a.salt, a.hash, a.iter, a.must_change, a.uid));

@@ -1,4 +1,4 @@
-# X FORCE 1.1 on Cloudflare — live, shared, signed-in
+# X FORCE 1.2 on Cloudflare — live, shared, signed-in
 
 Everyone opens the same address and signs in with their own username and password. They all work on the same orders, payments, leads and engineering records, stored in one Cloudflare D1 database.
 
@@ -13,7 +13,15 @@ Everyone opens the same address and signs in with their own username and passwor
 | D1 database `xforce-db` | All business data: people, leads, quotations, orders, payments and their proof files, engineering, commission, messages. |
 | `wrangler.jsonc` | Cloudflare configuration. |
 
-The permission rules are the app's own access rules (`DPStore.RULES` in `app/store.js`), the same table used on claude.ai. They are checked by the Worker on every read and write, so a salesperson cannot fetch costs, margins or another person's commission even by calling the API directly.
+## 1.2 — Finance Command Center
+
+- **New role: Accountant** (department Finance). Create it in User Management like any other user and choose the role *Accountant*. The server then gives that login its own access level, `finance`: the ledger, accounts, payroll, purchases, invoices, taxes and reports — but no user administration, settings, backups or CEO intelligence.
+- **What the Accountant may approve** is set by the Administrator in *Finance Dashboard › Finance settings*. The Worker enforces these switches and the separation of duties (whoever prepares or records a payment cannot approve or verify it).
+- **Balances are book balances** calculated from verified transactions. X FORCE is not connected to any bank: reconcile by importing the bank's CSV statement in *Financial Accounts*.
+- **Tax rules are entered by you**, each with its source and effective date. X FORCE does not supply rates and does not file anything.
+- **No database migration is needed.** Finance data are new records in the same D1 table (`fin/…`, `payslips/…`, `audit/…`, `leadx/…`); existing records are untouched.
+
+The permission rules are the app's own access rules (`DPStore.RULES` in `app/store.js`), the same table used on claude.ai. They are checked by the Worker on every read and write, so a salesperson cannot fetch costs, margins, salaries, balances or another person's commission even by calling the API directly. In 1.2 the Worker also checks the content of finance writes (status changes, approvals, frozen verified transactions and issued invoices, receipts only for verified payments) and keeps an append-only audit trail (`audit/…`) whose author and time it stamps itself.
 
 ## One-time Cloudflare setup
 

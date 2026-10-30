@@ -15,7 +15,7 @@
   const snap = (id, r) => ({ id, exists: !!r.exists, data: () => r.data, metadata: { version: r.version } });
   const doc = (path) => ({ id: path.split("/").pop(), path, get: () => call({ op: "get", path }).then((r) => snap(path.split("/").pop(), r)),
     set: (data) => call({ op: "set", path, data }).then(() => {}), update: (data) => call({ op: "update", path, data }).then(() => {}), delete: () => call({ op: "delete", path }).then(() => {}),
-    acquire: (o) => call(Object.assign({ op: "acquire", path }, o)), collection: (c) => coll(path + "/" + c), onSnapshot: () => () => {} });
+    acquire: (o) => call(Object.assign({ op: "acquire", path }, o)), create: (data) => call({ op: "create", path, data }).then((r) => ({ created: !!r.created })), collection: (c) => coll(path + "/" + c), onSnapshot: () => () => {} });
   const query = (path, ord, lim) => ({ orderBy: (f, dir = "asc") => query(path, [f, dir], lim), limit: (n) => query(path, ord, n), onSnapshot: () => () => {},
     get: () => call({ op: "list", path }).then((r) => { let l = r.docs.slice(); if (ord) l.sort((a, b) => { const x = a.data[ord[0]], y = b.data[ord[0]]; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * (ord[1] === "desc" ? -1 : 1); });
       if (lim) l = l.slice(0, lim); return { docs: l.map((d) => snap(d.id, { exists: true, data: d.data })), size: l.length, empty: !l.length }; }) });
@@ -25,9 +25,9 @@
   const names = {};
   const prof = (id, isMe) => ({ id, name: names[id] || "", email: null, avatarUrl: "", color: "#888", isMe: !!isMe, guest: false });
   const user = {
-    isOwner: async () => !!(await me()).owner, canEdit: async () => (await me()).level !== "interact", can: async (n) => (n === "data.write" ? true : null),
+    isOwner: async () => !!(await me()).owner, canEdit: async () => ["admin", "owner"].includes((await me()).level), can: async (n) => (n === "data.write" ? true : null),
     id: async () => (await me()).uid,
-    me: async () => { const m = await me(); names[m.uid] = m.name; return { id: m.uid, name: m.name, email: null, avatarUrl: "", color: "#888", isOwner: !!m.owner, canEdit: m.level !== "interact" }; },
+    me: async () => { const m = await me(); names[m.uid] = m.name; return { id: m.uid, name: m.name, email: null, avatarUrl: "", color: "#888", isOwner: !!m.owner, canEdit: ["admin", "owner"].includes(m.level) }; },
     profiles: async (ids) => { ids = [].concat(ids).filter(Boolean); const miss = ids.filter((i) => !(i in names)); if (miss.length) { const r = await api("/api/people?ids=" + encodeURIComponent(miss.join(","))).catch(() => ({ people: [] })); for (const p of r.people) names[p.id] = p.name; for (const i of miss) if (!(i in names)) names[i] = ""; }
       const m = await me(); return Object.fromEntries(ids.map((i) => [i, prof(i, i === m.uid)])); },
     search: async (q) => { const r = await api("/api/people?q=" + encodeURIComponent(q || "")).catch(() => ({ people: [] })); for (const p of r.people) names[p.id] = p.name; return r.people.map((p) => prof(p.id)); },
