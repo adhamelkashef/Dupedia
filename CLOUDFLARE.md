@@ -1,4 +1,4 @@
-# X FORCE 1.2 on Cloudflare — live, shared, signed-in
+# X FORCE 1.4 on Cloudflare — live, shared, signed-in
 
 Everyone opens the same address and signs in with their own username and password. They all work on the same orders, payments, leads and engineering records, stored in one Cloudflare D1 database.
 
@@ -12,6 +12,21 @@ Everyone opens the same address and signs in with their own username and passwor
 | `xf-shim.js` | Connects the app to the backend. It contains no secrets. |
 | D1 database `xforce-db` | All business data: people, leads, quotations, orders, payments and their proof files, engineering, commission, messages. |
 | `wrangler.jsonc` | Cloudflare configuration. |
+
+## 1.4 — Growth & Marketing Center
+
+- **New role: Marketing** (staff level). Campaigns and content, Project Radar, partnerships, sending accounts to the Lead Mine. No orders, prices, costs, salaries or other people's commission — the Worker refuses them.
+- **No external service is connected.** Nothing is published, advertised or sent by X FORCE: content is approved by an administrator in X FORCE and posted by a person on the platform. Draft texts are built from the product catalogue with templates, not an AI service. No paid API, key or subscription is needed.
+- **Spend** is what Finance records as a verified payment linked to the campaign (Transfers → "Marketing campaign").
+- **Database:** new records only (`mkt/…`); leads gain a `campaignId` field. Nothing existing is changed.
+
+## 1.3 — Factory & Operations
+
+- **Live updates.** Each open page asks the Worker every 8 seconds (every 60 seconds in a background tab) which records it may read have changed (`/api/changes`), and redraws only what changed. No extra Cloudflare product is needed. Expect roughly 4,500 requests per person per 10-hour working day: the free plan's 100,000 requests a day covers about 15–20 people working all day; above that, use the Workers Paid plan.
+- **Notifications** from staff are delivered by the Worker straight into the recipient's inbox; "Mark all as read" and "Clear all" are one server request (`/api/notif`).
+- **The hourly job** also sends due reminders, production deadline and maintenance alerts, and payment dates that fall on bank closures (`app/jobs13.js`).
+- **Internal folders are never served**: the Worker answers 404 for `/ops/…`, `/server/…` and `/qa/…` even if they are in the repository.
+- **Database:** new records only (`fac/…`, `facc/…`, `prod/…`, `prodx/…`, `rem/…`, `hol/cal`), one new index on `docs(at)` and one new table `gone` (deleted paths for the change feed). Both are created automatically on first use; nothing existing is changed.
 
 ## 1.2 — Finance Command Center
 

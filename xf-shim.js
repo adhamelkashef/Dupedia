@@ -1,4 +1,4 @@
-/* X FORCE 1.1 — self-hosted mode. Gives the app the same `claude.use("db" | "user" | "downloads")` capabilities it uses on
+/* X FORCE 1.3 — self-hosted mode. Gives the app the same `claude.use("db" | "user" | "downloads")` capabilities it uses on
    claude.ai, backed by the X FORCE server (/api/*). The server — not this file — decides what each signed-in person may read
    or write, using the app's own access rules. Served only to signed-in sessions. */
 (function () {
@@ -44,6 +44,8 @@
     backupUrl: "/api/backup",
     changePassword: (old, password) => api("/api/password", { method: "POST", body: JSON.stringify({ old, password }) }),
     runSweep: () => api("/api/jobs/sweep", { method: "POST", body: "{}" }),
+    changes: (since) => api("/api/changes?since=" + encodeURIComponent(since || "")),
+    notif: (b) => api("/api/notif", { method: "POST", body: JSON.stringify(b) }),
     logout: () => api("/api/logout", { method: "POST", body: "{}" }).finally(toLogin),
   };
 })();

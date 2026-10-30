@@ -1,5 +1,5 @@
 {
-  // X FORCE 1.1 on Cloudflare: one Worker (worker/index.js) + the app's static files + one D1 database.
+  // X FORCE 1.3 on Cloudflare: one Worker (worker/index.js) + the app's static files + one D1 database.
   "name": "dupedia",
   "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
@@ -8,7 +8,7 @@
     "directory": ".",
     "binding": "ASSETS",
     // these paths go through the Worker (sign-in, setup, the app page, the API); everything else is a static file
-    "run_worker_first": ["/", "/index.html", "/login", "/setup", "/xf-login.js", "/xf-shim.js", "/api/*"]
+    "run_worker_first": ["/", "/index.html", "/login", "/setup", "/xf-login.js", "/xf-shim.js", "/api/*", "/ops/*", "/server/*", "/qa/*"]
   },
   "d1_databases": [
     // created automatically on the first deploy if it does not exist yet (or create it yourself with this exact name)
