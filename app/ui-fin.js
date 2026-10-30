@@ -105,6 +105,7 @@
     const pend = D.txs.filter((t) => t.status === "pending_approval"); if (pend.length) alerts.push(["warn", `${pend.length} payment(s) wait for approval.`, { view: "finance", opts: { tab: "approvals" } }]);
     const ver = D.txs.filter((t) => ["payment_recorded", "awaiting_verification"].includes(t.status)); if (ver.length) alerts.push(["warn", `${ver.length} recorded payment(s) wait for verification.`, { view: "finance", opts: { tab: "approvals" } }]);
     const stale = Object.values(D.accounts).filter((a) => a.status !== "closed" && a.type !== "petty" && (!a.lastRecon || Date.now() - Date.parse(a.lastRecon.at) > 35 * 864e5)); if (stale.length) alerts.push(["", `${stale.length} account(s) not reconciled in the last 35 days.`, { view: "finaccounts" }]);
+    if (root.DPHolUI) for (const w of DPHolUI.finWarnings(D)) alerts.push([w.c.closedOnDue ? "warn" : "", `${w.what}: ${w.c.text}${w.c.provisional ? " (provisional date)" : ""}`, { view: "holidays" }]);
     if (!Object.keys(D.accounts).length) alerts.push(["err", "No financial accounts yet. Add your bank, InstaPay and wallet accounts with their opening balances first.", { view: "finaccounts" }]);
     box.innerHTML = `${alerts.length ? `<div class="stack fin-alerts">${alerts.map(([c, t, g]) => `<button type="button" class="note ${c} small" data-go='${esc(JSON.stringify(g))}'>${esc(t)}</button>`).join("")}</div>` : ""}
       <h3 class="fin-h">Cash</h3><div class="kcards">

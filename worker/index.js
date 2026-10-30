@@ -12,6 +12,9 @@
    the shim and /api/* (see wrangler.jsonc → assets.run_worker_first). */
 import "../app/store.js";
 import "../app/fincalc.js";
+import "../app/fab.js";
+import "../app/holidays.js";
+import "../app/jobs13.js";
 import { computeSweep } from "./sweep.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
@@ -32,6 +35,10 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS fails (k TEXT PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS leases (path TEXT PRIMARY KEY, holder TEXT NOT NULL, exp INTEGER NOT NULL)`,
+  // 1.3 — change feed for live updates: documents changed since a moment (docs.at), plus deleted paths
+  `CREATE INDEX IF NOT EXISTS docs_at ON docs(at)`,
+  `CREATE TABLE IF NOT EXISTS gone (path TEXT PRIMARY KEY, at TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS gone_at ON gone(at)`,
 ];
 let schemaReady = null;
 function ensureSchema(env) {
@@ -119,6 +126,68 @@ async function checkNewLead(env, acc, d) {
   if (!["available", "research"].includes(d.status)) return "A new lead starts as Available or Under Research.";
   return null;
 }
+/* 1.3 — notifications are delivered by the server: an event a person posts to their outbox is copied at once into each
+   recipient's inbox (same id as the in-app copy, "<author>-<event>", so nothing is ever duplicated). Money never travels this way. */
+const MONEY = /amount|minor|total|price|commission|salary|cost|margin/i;
+async function fanOut(env, acc, p, d) {
+  const evId = p.split("/")[3], to = Array.isArray(d.to) ? d.to.slice(0, 50) : []; if (!to.length) return;
+  if (d.data && MONEY.test(JSON.stringify(d.data))) return;
+  const ids = new Set();
+  for (const t of to) {
+    if (t === "@admins") { const rs = (await env.DB.prepare("SELECT uid FROM users WHERE active = 1 AND (level = 'admin' OR owner = 1)").all()).results || []; rs.forEach((r) => ids.add(r.uid)); }
+    else if (t === "@finance") { const rs = (await env.DB.prepare("SELECT uid FROM users WHERE active = 1 AND level = 'finance'").all()).results || []; rs.forEach((r) => ids.add(r.uid)); }
+    else if (typeof t === "string" && /^[A-Za-z0-9_\-.~:@+]{1,80}$/.test(t)) ids.add(t);
+  }
+  ids.delete(acc.uid);
+  const copy = Object.assign({}, d, { id: `${acc.uid}-${evId}`.slice(0, 180), from: acc.uid, read: false }); delete copy.to;
+  const t = now(), st = [...ids].map((u) => env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind(`notif/${u}/n/${copy.id}`, `notif/${u}/n`, JSON.stringify(copy), t));
+  if (st.length) await env.DB.batch(st);
+}
+/** Mark read / clear my own notifications in ONE statement (1.2 did one request per notification, so leaving the page
+ *  half-way left most of them unread). Only the caller's inbox is touched; items newer than `before` are left alone. */
+async function notifBulk(env, acc, b) {
+  const parent = `notif/${acc.uid}/n`, t = now(), action = b.action;
+  if (!["read", "clear", "unread"].includes(action)) return { error: "invalid_argument", message: "Unknown action." };
+  const ids = Array.isArray(b.ids) ? b.ids.filter((x) => typeof x === "string").slice(0, 2000) : null, before = typeof b.before === "string" ? b.before : null;
+  const set = action === "read" ? "json_set(data, '$.read', json('true'), '$.readAt', ?)" : action === "unread" ? "json_set(data, '$.read', json('false'), '$.readAt', ?)" : "json_set(data, '$.read', json('true'), '$.cleared', json('true'), '$.clearedAt', ?)";
+  let sql = `UPDATE docs SET data = ${set}, v = v + 1, at = ? WHERE parent = ?`; const args = [t, t, parent];
+  if (ids) { sql += " AND path IN (SELECT ? || value FROM json_each(?))"; args.push(parent + "/", JSON.stringify(ids)); }
+  if (before) { sql += " AND json_extract(data, '$.at') <= ?"; args.push(before); }
+  if (action === "read") sql += " AND json_extract(data, '$.read') IS NOT 1";
+  if (action === "clear") sql += " AND json_extract(data, '$.cleared') IS NOT 1";
+  const r = await env.DB.prepare(sql).bind(...args).run();
+  return { ok: true, changed: (r.meta && r.meta.changes) || 0, at: t };
+}
+/** Change feed: which records the caller may read changed since `since` (server time). The browser re-reads only those. */
+async function changes(env, acc, since) {
+  const t = now(); if (!since || !/^\d{4}-\d\d-\d\dT/.test(since)) return { now: t, paths: [], reset: true };
+  const rs = ((await env.DB.prepare("SELECT path FROM docs WHERE at > ? ORDER BY at LIMIT 400").bind(since).all()).results || []).concat((await env.DB.prepare("SELECT path FROM gone WHERE at > ? ORDER BY at LIMIT 200").bind(since).all()).results || []);
+  const out = new Set(); for (const r of rs) if (can(acc, r.path, "read")) out.add(r.path.split("/").slice(0, 4).join("/"));
+  return { now: t, paths: [...out].slice(0, 300), more: rs.length >= 400 };
+}
+
+async function facGuard(env, acc, p, old, next) {
+  if (isAdminAcc(acc)) return null;
+  const seg = p.split("/"), base = await staffRoleBase(env, acc.uid), eng = base === "engineer";
+  if (seg[1] === "asg" && !old) return next.by === acc.uid ? null : "The assignment record must be written by its author.";      // auto-assignment at acceptance (sales session)
+  if (seg[1] === "jobs" && !old && ["employee", "engineer"].includes(base)) return next.stage && next.stage !== "review" ? "A new job starts in technical review." : null;
+  if (!eng) return "Only engineers and administrators can change factory records.";
+  if (["cfg", "prof", "mat"].includes(seg[1])) return "Only an administrator can change factory settings, engineer profiles and the material library.";
+  if (seg[1] === "mov" || seg[1] === "asg") return old ? "Material movements and assignment history cannot be changed. Record a correcting movement." : next.by === acc.uid ? null : "A movement must be recorded by its author.";
+  if (seg[1] === "jobs") {
+    if (old && old.engineerUid && old.engineerUid !== acc.uid) return "Only the engineer assigned to this job (or an administrator) can change it.";
+    if (old && (next.engineerUid || null) !== (old.engineerUid || null)) return "Only an administrator can reassign a job.";
+    if (old && JSON.stringify(old.techApproved || null) !== JSON.stringify(next.techApproved || null)) return "Technical approval is given by an administrator.";
+    if (old && JSON.stringify(old.override || null) !== JSON.stringify(next.override || null)) return "Exceptions are approved by an administrator.";
+    const was = Object.fromEntries((old && old.bom || []).filter((b) => b.approvedQty != null).map((b) => [b.id, b]));
+    for (const b of next.bom || []) { const w = was[b.id]; if (w && (b.approvedQty !== w.approvedQty || b.approvedBy !== w.approvedBy)) return "An approved material estimate cannot be changed; record the overrun with its reason instead."; }
+    if (Object.keys(was).some((id) => !(next.bom || []).some((b) => b.id === id))) return "An approved BOM line cannot be removed.";
+    if (old && next.stage !== old.stage) { const why = globalThis.DPFab.gate(old.stage ? Object.assign({}, next, { stage: old.stage }) : next, next.stage, { requireApproval: !!next.requireApproval, override: next.override }); if (why.length) return why[0]; }
+    return null;
+  }
+  return null;
+}
+
 /* ======================= documents ======================= */
 async function setDoc(env, p, data) {
   const r = await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO UPDATE SET data = excluded.data, v = docs.v + 1, at = excluded.at RETURNING v")
@@ -137,6 +206,9 @@ const PRE_APPROVED = [["commission", (l) => l.commission && `commissions/${l.com
   ["wdue", (l) => l.wdue && `fin/wdue/d/${l.wdue}`, (d) => ["approved", "partly_paid"].includes(d.status)],
   ["purchase", (l) => l.purchase && `fin/purch/p/${l.purchase}`, (d) => ["approved", "received"].includes(d.status)]];
 const GUARDS = [
+  // 1.3 — factory records: written by engineers and administrators only; material movements and assignment history are
+  // append-only; approved material estimates, technical approval and gate overrides need an administrator.
+  { re: /^fac\//, del: (old, acc) => (isAdminAcc(acc) ? null : "Only an administrator can delete factory records."), check: facGuard },
   { re: /^leadx\/[^/]+\/files\/[^/]+$/, del: (old, acc) => (old && old.by !== acc.uid && !isAdminAcc(acc) ? "Only the person who attached the file or an administrator can remove it." : null),
     check: async (env, acc, p, old, next) => (old && old.by !== acc.uid && !isAdminAcc(acc) ? "Only the person who attached the file or an administrator can change it." : next.by !== acc.uid && !old ? "The file must be recorded as attached by you." : null) },
   { re: /^fin\/tx\/t\/[^/]+$/, del: (old) => (old && old.status !== "draft" ? "Only a draft transaction can be deleted. Cancel it or record a reversal." : null),
@@ -247,7 +319,7 @@ async function dbOp(env, acc, b) {
     const old = curRow ? JSON.parse(curRow.data) : null;
     if (op === "delete") {
       if (guarded && guarded.del) { const e = guarded.del(old, acc); if (e) return { error: "refused", message: e }; }
-      await env.DB.prepare("DELETE FROM docs WHERE path = ?").bind(p).run(); return { ok: true };
+      await env.DB.batch([env.DB.prepare("DELETE FROM docs WHERE path = ?").bind(p), env.DB.prepare("INSERT INTO gone (path, at) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET at = excluded.at").bind(p, now())]); return { ok: true };
     }
     let data = b.data; if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "invalid_argument", message: "Document data must be an object." };
     if (op === "create" && old) return { ok: true, created: false };
@@ -259,7 +331,9 @@ async function dbOp(env, acc, b) {
       const r = await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING RETURNING v").bind(p, parentOf(p), s, now()).first();
       return { ok: true, created: !!r, version: r ? r.v : undefined };
     }
-    return { ok: true, version: await setDoc(env, p, s) };
+    const version = await setDoc(env, p, s);
+    if (/^outbox\/[^/]+\/e\/[^/]+$/.test(p)) await fanOut(env, acc, p, data).catch(() => {});
+    return { ok: true, version };
   }
   if (op === "acquire") {
     if (!can(acc, p, "write")) return { error: "invalid_argument", message: "lease refused" };
@@ -359,12 +433,29 @@ async function sweep(env) {
   if (o.releases.length) { const d = o.now.slice(0, 10); put(`adminlog/${d}-sweep-${o.now.slice(11, 16).replace(":", "")}`, { day: d, entries: o.releases.map((r) => ({ at: o.now, by: "server-sweep", action: "Lead released (inactivity)", target: r.lead, reason: o.reason, detail: `${r.leadName} · ${r.ownerName}` })) }); }
   await DB.batch(st);   // one atomic batch
   await DB.prepare("DELETE FROM sessions WHERE exp < ?").bind(Date.now()).run();
-  return { ok: true, releases: o.releases.length, reminders: o.reminders.length, overdue: o.overdue.length, researchQueued: o.researchFire };
+  const j13 = await alerts13(env).catch((e) => ({ error: String(e.message || e).slice(0, 200) }));
+  return { ok: true, alerts: j13, releases: o.releases.length, reminders: o.reminders.length, overdue: o.overdue.length, researchQueued: o.researchFire };
+}
+
+/** 1.3 — reminders, factory deadlines, unassigned jobs, maintenance, payment dates near bank closures (see app/jobs13.js). */
+async function alerts13(env) {
+  const rs = (await env.DB.prepare(`SELECT path, data FROM docs WHERE parent IN ('assign','fac/jobs/j','fac/eq/e','fin/purch/p','orders') OR parent GLOB 'rem/*/r' OR path = 'hol/cal'`).all()).results || [];
+  const docs = {}; for (const r of rs) { try { docs[r.path] = JSON.parse(r.data); } catch (e) {} }
+  const list = globalThis.DPJobs13.plan(docs, Date.now()); if (!list.length) return { notifications: 0 };
+  const lv = (q) => env.DB.prepare(q).all().then((x) => (x.results || []).map((r) => r.uid));
+  const admins = await lv("SELECT uid FROM users WHERE active = 1 AND (level = 'admin' OR owner = 1)"), fin = await lv("SELECT uid FROM users WHERE active = 1 AND level = 'finance'");
+  const t = now(), st = [];
+  for (const { to, n } of list) { const ids = new Set(); for (const x of to) (x === "@admins" ? admins : x === "@finance" ? fin : [x]).forEach((u) => ids.add(u));
+    for (const u of ids) st.push(env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind(`notif/${u}/n/${n.id}`, `notif/${u}/n`, JSON.stringify(n), t)); }
+  for (let i = 0; i < st.length; i += 80) await env.DB.batch(st.slice(i, i + 80));
+  return { notifications: st.length };
 }
 
 /* ======================= router ======================= */
 async function route(req, env) {
   const u = new URL(req.url), p = decodeURIComponent(u.pathname), M = req.method;
+  // 1.3 — internal folders are never website files, whatever .assetsignore says (ops/ holds the manufacturing cost model)
+  if (/^\/(ops|server|qa|worker|node_modules|\.git|\.github|\.wrangler)(\/|$)/i.test(p) || /^\/(\.dev\.vars|\.assetsignore|\.gitignore|wrangler\.jsonc|package(-lock)?\.json|[^/]*\.md|[^/]*-contents\.txt)$/i.test(p)) return respond(404, "Not found", "text/plain");
   if (p === "/xf-login.js") return respond(200, LOGIN_JS, "text/javascript; charset=utf-8");
   await ensureSchema(env);
   // ---- public: setup (once) and sign-in
@@ -406,6 +497,8 @@ async function route(req, env) {
   const admin = isAdminAcc(acc);
   if (p === "/api/me") return json(200, { uid: acc.uid, name: acc.name, username: acc.username, level: levelOf(acc), owner: !!acc.owner, mustChange: !!acc.must_change });
   if (p === "/api/logout" && M === "POST") { const t = cookies(req).xf_s; if (t) await env.DB.prepare("DELETE FROM sessions WHERE th = ?").bind(await sha256(t)).run(); return json(200, { ok: true }, { "Set-Cookie": cookie(req, "", 0) }); }
+  if (p === "/api/changes" && M === "GET") return json(200, await changes(env, acc, new URL(req.url).searchParams.get("since")));
+  if (p === "/api/notif" && M === "POST") return json(200, await notifBulk(env, acc, await body(req)));
   if (p === "/api/db" && M === "POST") { const r = await dbOp(env, acc, await body(req)); return r.raw ? rawJson(200, r.raw) : json(200, r); }
   if (p === "/api/people") {
     const ids = String(u.searchParams.get("ids") || "").split(",").filter(Boolean).slice(0, 100), q = String(u.searchParams.get("q") || "").toLowerCase();

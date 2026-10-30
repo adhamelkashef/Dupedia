@@ -18,7 +18,7 @@
   async function deliver(to, n) {
     const tos = [].concat(to).filter(Boolean); if (!tos.length) return;
     const id = safeId(n.id || ("n-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)));
-    const doc = { id, type: n.type || "info", title: n.title || "", body: n.body || "", link: n.link || null, ref: n.ref || null, at: now(), from: meId() || null, read: false, celebrate: !!n.celebrate, data: n.data || null, priority: n.priority || null };
+    const doc = { id, type: n.type || "info", title: n.title || "", body: n.body || "", link: n.link || null, ref: n.ref || null, at: now(), from: meId() || null, read: false, celebrate: !!n.celebrate, data: n.data || null, priority: n.priority || null, mandatory: !!n.mandatory };
     if (AU().isAdmin()) {
       const ids = new Set(); for (const t of tos) { if (t === "@admins") AU().A.directory.filter((r) => r.uid && r.active !== false && AU().baseOf(r.role) === "admin").forEach((r) => ids.add(r.uid)); else ids.add(t); }
       for (const u of ids) { const path = `notif/${u}/n/${id}`; if (!(await DS().tryGet(path))) await DS().set(path, doc); }
@@ -31,16 +31,25 @@
   async function toSelf(n) {
     const me = meId(); if (!me) return; const id = safeId(n.id || ("n-" + Date.now().toString(36)));
     const path = `notif/${me}/n/${id}`; if (await DS().tryGet(path)) return false;
-    await DS().set(path, { id, type: n.type || "info", title: n.title || "", body: n.body || "", link: n.link || null, ref: n.ref || null, at: n.at || now(), from: me, read: false, celebrate: !!n.celebrate, data: n.data || null, priority: n.priority || null });
+    await DS().set(path, { id, type: n.type || "info", title: n.title || "", body: n.body || "", link: n.link || null, ref: n.ref || null, at: n.at || now(), from: me, read: false, celebrate: !!n.celebrate, data: n.data || null, priority: n.priority || null, mandatory: !!n.mandatory });
     if (!N.items.some((x) => x.id === id)) { N.items.unshift({ id, type: n.type || "info", title: n.title, body: n.body, link: n.link || null, at: n.at || now(), read: false, celebrate: !!n.celebrate, data: n.data || null }); emit(); }
     return true;
   }
   /** Categories shown as filters in the Notification Center. */
-  const CATEGORIES = { all: "All", order: "Orders & quotations", payment: "Payments", engineering: "Engineering", commission: "Commission", lead: "Leads & follow-ups", message: "Messages", access: "Access & admin" };
-  const categoryOf = (n) => ({ deal: "order", order: "order", quote: "order", payment: "payment", engineering: "engineering", commission: "commission", lead: "lead", followup: "lead", message: "message", chat: "message", access: "access", info: "access" }[n.type] || "access");
-  /** Copy outbox events addressed to me into my inbox (idempotent), then load my inbox. */
-  async function pull() {
+  const CATEGORIES = { all: "All", order: "Orders & quotations", payment: "Payments", engineering: "Engineering", commission: "Commission", lead: "Leads & follow-ups", factory: "Factory", reminder: "Reminders", product: "Products", message: "Messages", access: "Access & admin" };
+  const categoryOf = (n) => ({ deal: "order", order: "order", quote: "order", payment: "payment", engineering: "engineering", commission: "commission", lead: "lead", followup: "lead", factory: "factory", reminder: "reminder", product: "product", holiday: "payment", finance: "payment", message: "message", chat: "message", access: "access", info: "access" }[n.type] || "access");
+  /** Copy outbox events addressed to me into my inbox (idempotent), then load my inbox.
+   *  1.3: on the Cloudflare server the server itself copies outbox events into the recipients' inboxes the moment they are
+   *  written, so the routine pull only reads my inbox; the full outbox scan runs once per session for older events. */
+  async function pull({ full = false } = {}) {
     const me = meId(); if (!me) return [];
+    if (root.XFServer && !full && N.scanned) {
+      const inbox = await DS().tryList(`notif/${me}/n`);
+      N.items = inbox.map((x) => Object.assign({ id: x.id }, x.data)).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+      if (!N.primed) { N.primed = true; if (root.DPSound) root.DPSound.seen(N.items.map((x) => x.id)); }
+      emit(); return N.items;
+    }
+    N.scanned = true;
     const admin = AU().isAdmin(), dir = AU().A.directory.filter((r) => r.uid && r.uid !== me);
     const inbox = await DS().tryList(`notif/${me}/n`), have = new Set(inbox.map((x) => x.id));
     const lists = await Promise.all(dir.map((r) => DS().tryList(`outbox/${r.uid}/e`).then((l) => l.map((x) => Object.assign({ author: r.uid }, x)))));
@@ -59,14 +68,32 @@
     if (!N.primed) { N.primed = true; if (root.DPSound) root.DPSound.seen(N.items.map((x) => x.id)); }
     emit(); return N.items;
   }
-  const unread = () => N.items.filter((x) => !x.read).length;
-  async function markRead(ids) { const me = meId(); for (const id of ids) { const it = N.items.find((x) => x.id === id); if (!it || it.read) continue; it.read = true; it.readAt = now(); const copy = Object.assign({}, it); delete copy.id; await DS().set(`notif/${me}/n/${id}`, Object.assign(copy, { id })).catch(() => {}); } emit(); }
+  const visible = () => N.items.filter((x) => !x.cleared);
+  const unread = () => N.items.filter((x) => !x.read && !x.cleared).length;
+  /** 1.3 — bulk changes in ONE server request (1.2 wrote one request per notification: leaving the page half-way left the
+   *  rest unread, so "cleared" notifications came back). The screen updates first; the server call follows. */
+  async function bulk(action, ids, { before = null } = {}) {
+    const me = meId(), at = now(), sel = ids ? new Set(ids) : null;
+    const hit = N.items.filter((x) => (!sel || sel.has(x.id)) && (!before || String(x.at) <= before));
+    for (const x of hit) { if (action === "read") { x.read = true; x.readAt = at; } else if (action === "clear") { x.read = true; x.cleared = true; x.clearedAt = at; } else if (action === "unread") x.read = false; }
+    emit();
+    if (root.XFServer) { const r = await root.XFServer.notif({ action, ids: ids || null, before }); return r.changed; }
+    for (const x of hit) { const copy = Object.assign({}, x); await DS().set(`notif/${me}/n/${x.id}`, copy).catch(() => {}); }
+    return hit.length;
+  }
+  const markAllRead = (ids = null) => bulk("read", ids, { before: N.items.length ? N.items.reduce((m, x) => (String(x.at) > m ? String(x.at) : m), "") : now() });
+  const dismiss = (ids) => bulk("clear", [].concat(ids));
+  const clearAll = (ids = null) => bulk("clear", ids, { before: N.items.length ? N.items.reduce((m, x) => (String(x.at) > m ? String(x.at) : m), "") : now() });
+  async function markRead(ids) { if (root.XFServer) return bulk("read", ids.filter((id) => { const it = N.items.find((x) => x.id === id); return it && !it.read; })); return markReadLocal(ids); }
+  async function markReadLocal(ids) { const me = meId(); for (const id of ids) { const it = N.items.find((x) => x.id === id); if (!it || it.read) continue; it.read = true; it.readAt = now(); const copy = Object.assign({}, it); delete copy.id; await DS().set(`notif/${me}/n/${id}`, Object.assign(copy, { id })).catch(() => {}); } emit(); }
   async function markCelebrated(id) { const it = N.items.find((x) => x.id === id); if (!it) return; it.celebrated = now(); const copy = Object.assign({}, it); await DS().set(`notif/${meId()}/n/${id}`, copy).catch(() => {}); }
   function on(fn) { N.listeners.push(fn); }
   function emit() { for (const f of N.listeners) try { f(N.items); } catch (e) {} chimeNew(); checkCelebration(); }
   /** 1.1: a chime for notifications that arrive while the app is open — never for the backlog present at sign-in, never twice. */
   function chimeNew() {
-    if (!root.DPSound || !N.primed) return;
+    if (!N.primed) return;
+    if (root.DPLive) root.DPLive.popNew(N.items.filter((x) => !x.read && !x.cleared));
+    if (!root.DPSound) return;
     for (const n of N.items.filter((x) => !x.read)) root.DPSound.notify(n);
   }
   /** Start: live updates through the database subscription when the platform offers it, plus a polling fallback. */
@@ -74,7 +101,8 @@
     stop(); pull().catch(() => {});
     const db = DS().st.db, me = meId();
     if (db && db.collection && me) { try { N.unsub = db.collection(`notif/${me}/n`).onSnapshot((snap) => { N.items = snap.docs.map((d) => Object.assign({ id: d.id }, d.data())).sort((a, b) => String(b.at).localeCompare(String(a.at))); emit(); }, () => {}); } catch (e) { N.unsub = null; } }
-    N.timer = setInterval(() => pull().catch(() => {}), 45000);
+    // 1.3: on the server, the live change feed (DPLive) triggers a pull the moment my inbox changes; this is only a safety net
+    N.timer = setInterval(() => pull().catch(() => {}), root.XFServer ? 300000 : 45000);
     root.addEventListener && root.addEventListener("focus", focusPull);
   }
   const focusPull = () => pull().catch(() => {});
@@ -114,5 +142,5 @@
       if (k < 2600 && cv.isConnected) requestAnimationFrame(frame); else ctx.clearRect(0, 0, cv.width, cv.height); })(t0);
   }
 
-  root.DPNotify = { N, deliver, toSelf, pull, unread, markRead, on, start, stop, celebrate, CATEGORIES, categoryOf };
+  root.DPNotify = { N, deliver, toSelf, pull, unread, visible, markRead, markAllRead, dismiss, clearAll, bulk, on, start, stop, celebrate, CATEGORIES, categoryOf };
 })(typeof self !== "undefined" ? self : this);

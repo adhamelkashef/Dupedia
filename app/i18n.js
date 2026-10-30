@@ -17,6 +17,9 @@
     "User Management": "إدارة المستخدمين", "Commission Rules": "قواعد العمولة", "Product Pricing": "تسعير المنتجات", "Reports": "التقارير", "Audit Log": "سجل التدقيق", "Company Search": "البحث في الشركة", "Settings": "الإعدادات",
     "Finance Dashboard": "لوحة المالية", "Transfers": "التحويلات", "Financial Accounts": "الحسابات المالية", "Salaries & Payroll": "الرواتب والأجور", "Purchases": "المشتريات", "Invoices & Receipts": "الفواتير والإيصالات",
     "Commissions": "العمولات", "Taxes": "الضرائب", "Finance Reports": "التقارير المالية",
+    "Production Jobs": "أوامر الإنتاج", "Factory Dashboard": "لوحة المصنع", "Machines & Tools": "الماكينات والأدوات", "Dupedia Products": "منتجات ديوبيديا", "Products": "المنتجات", "Holidays": "العطلات", "Reminders": "التذكيرات", "Factory & products": "المصنع والمنتجات",
+    "New reminder": "تذكير جديد", "Done": "تم", "Open": "فتح", "Overdue": "متأخر", "All": "الكل", "Clear all…": "مسح الكل…", "Mark all as read": "تعليم الكل كمقروء", "Show cleared": "عرض الممسوح", "Notification Center": "مركز الإشعارات",
+    "Needs your attention": "يحتاج انتباهك", "Factory progress": "تقدم التصنيع", "Stage": "المرحلة", "Overview": "نظرة عامة", "Measurements & drawings": "القياسات والرسومات", "BOM & cutting plans": "الخامات وخطط القص", "Materials & waste": "الخامات والهالك", "Quality & notes": "الجودة والملاحظات", "History": "السجل",
     // common actions
     "Save": "حفظ", "Cancel": "إلغاء", "Close": "إغلاق", "Edit": "تعديل", "Details": "التفاصيل", "Open": "فتح", "Approve": "اعتماد", "Reject": "رفض", "Reject…": "رفض…", "Cancel…": "إلغاء…", "Reverse…": "عكس القيد…",
     "Print": "طباعة", "PDF": "PDF", "Export CSV": "تصدير CSV", "Search": "بحث", "Add": "إضافة", "Remove": "إزالة", "remove": "إزالة", "Attach…": "إرفاق…", "Attach proof…": "إرفاق إثبات…", "Pay…": "دفع…", "Post": "ترحيل",

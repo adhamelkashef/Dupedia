@@ -182,12 +182,12 @@
   async function renderAll() {
     const V = $("#view-allleads");
     V.innerHTML = `<div class="page"><div class="phead"><div><span class="eyebrow">Administration</span><h1>All <em>leads</em></h1><p class="lead small">Every lead with its owner and stage. Reassign, release, merge, correct or archive — every action asks for a reason and is logged.</p></div>
-      <div class="row"><button class="btn ghost sm" id="al-add">Add lead</button><button class="btn ghost sm" id="al-csv">Import CSV…</button><button class="btn ghost sm" id="al-exp">Export CSV</button><button class="btn lime sm" id="al-seed">Import researched accounts</button></div></div>
+      <div class="row"><button class="btn ghost sm" id="al-add">Add lead</button><button class="btn ghost sm" id="al-csv">Import CSV / Excel…</button><button class="btn ghost sm" id="al-exp">Export CSV</button><button class="btn lime sm" id="al-seed">Import researched accounts</button></div></div>
       <div id="al-flags"></div>${filterBar("al")}<div class="card" style="padding:0"><div class="tablewrap" id="al-list"><div class="empty"><div class="spinner"></div></div></div></div></div>`;
     bindFilters("al", table);
     $("#al-add").onclick = () => editLead(null);
     $("#al-seed").onclick = importSeed;
-    $("#al-csv").onclick = () => U.pickFile(".csv", importCsv);
+    $("#al-csv").onclick = () => U.pickFile(".csv,.xlsx", (f) => (root.DPLeadImport ? DPLeadImport.wizard(f, () => renderAll()) : importCsv(f)));   // 1.3: mapped CSV / Excel import
     $("#al-exp").onclick = exportCsv;
     await load(true);
     const ids = await L.uids(); const crmL = await Promise.all(ids.map((u) => L.listCrm(u).then((l) => l.map((x) => Object.assign({ uid: u }, x))))); cache.allCrm = crmL.flat();

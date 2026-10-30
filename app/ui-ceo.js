@@ -26,9 +26,22 @@
     await O.intake().catch(() => {});
     const [rows, comms, jobs, leads, claims, dir, workers, logs] = await Promise.all([DPUI.loadOrderRows({ all: true }), DPSales.allCommissions(), O.listJobs(), DPLeads.listLeads(), DPLeads.claimsByLead(), DPAuth.listDirectory(), O.listWorkers().catch(() => []), DPStore.tryList("adminlog"), DPLeadOps.loadActs()]);
     const uids = dir.filter((r) => r.uid).map((r) => r.uid), staffs = {}; await Promise.all(uids.map(async (u) => { staffs[u] = await DPSales.staffDoc(u); }));
-    return { rows, comms, jobs, leads, claims, dir, workers, staffs, log: logs.flatMap((x) => (x.data.entries || []).map((e) => Object.assign({ day: x.id }, e))).sort((a, b) => String(b.at).localeCompare(String(a.at))) };
+    const docs = root.DPFin ? await DPFin.docs().catch(() => null) : null, inv = docs ? docs.filter((x) => x.status === "issued") : null;
+    return { invoiced: inv ? inv.filter((x) => x.kind === "tax_invoice").reduce((t, x) => t + (x.totalMinor || 0), 0) - inv.filter((x) => x.kind === "credit_note").reduce((t, x) => t + (x.totalMinor || 0), 0) : null, rows, comms, jobs, leads, claims, dir, workers, staffs, log: logs.flatMap((x) => (x.data.entries || []).map((e) => Object.assign({ day: x.id }, e))).sort((a, b) => String(b.at).localeCompare(String(a.at))) };
   }
   /** The exception list: every item names the record, why it is flagged, and the action. */
+  /** 1.3 — compact "Needs your attention": urgent exceptions first (strong colour only for them), then ordinary items and
+   *  my overdue reminders in a quiet list; one line each, details on demand, three-plus more behind "Show all". */
+  function attention(al) {
+    const rem = (root.DPLive && DPLive.L.reminders || []).filter((r) => DPLive.isOverdue(r)).map((r) => ({ sev: r.priority === "urgent" ? 3 : 1, cat: "Reminder", title: r.title, body: (r.notes || "").slice(0, 160), action: "Open", go: { view: "reminders" }, when: DPLive.dueAt(r) }));
+    const all = rem.concat(al), urgent = all.filter((a) => a.sev >= 3), rest = all.filter((a) => a.sev < 3), ic = { Reminder: "⏰", Payments: "¤", Payment: "¤", Engineering: "⚙", Factory: "⚙", Commission: "%", Leads: "◎", Orders: "◆", Access: "⚿" };
+    const row = (a, i, cls) => `<details class="att ${cls}"><summary><span class="ai">${ic[a.cat] || "•"}</span><span class="at"><b>${esc(a.title)}</b><span class="tiny muted">${esc(a.cat)}${a.when ? " · " + esc(new Date(a.when).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : ""}</span></span><button class="btn ${cls === "u" ? "lime" : "ghost"} xs" data-al="${i}">${esc(a.action || "Open")}</button></summary><div class="small muted">${esc(a.body || "")}</div></details>`;
+    if (!all.length) return `<div class="card att-wrap"><div class="row between"><h3>Needs your attention</h3><span class="pill ok">All clear</span></div></div>`;
+    const idx = (a) => al.indexOf(a) >= 0 ? al.indexOf(a) : "r" + rem.indexOf(a);
+    return `<div class="card att-wrap"><div class="row between"><h3>Needs your attention</h3><span class="tiny muted">${urgent.length ? `<b class="neg">${urgent.length} urgent</b> · ` : ""}${rest.length} other</span></div>
+      ${urgent.map((a) => row(a, idx(a), "u")).join("")}${rest.slice(0, 4).map((a) => row(a, idx(a), "")).join("")}
+      ${rest.length > 4 ? `<details class="att-more"><summary class="small">Show all (${rest.length - 4} more)</summary>${rest.slice(4).map((a) => row(a, idx(a), "")).join("")}</details>` : ""}</div>`;
+  }
   function alerts(d) {
     const out = [], set = App.config.settings.ceo || {}, big = Math.round((+set.largeQuote || 1000000) * 100), today = new Date().toISOString().slice(0, 10), cur = App.config.pricebook.currency || "EGP";
     const add = (sev, cat, title, body, go, action) => out.push({ sev, cat, title, body, go, action });
@@ -95,14 +108,13 @@
     const card = (go, label, val, sub, cls = "") => `<button type="button" class="kcard ${cls}" data-go='${esc(JSON.stringify(go))}'><span class="eyebrow">${esc(label)}</span><b class="num">${val}</b><span class="tiny">${sub}</span></button>`;
     const cats = [...new Set(al.map((a) => a.cat))];
     $("#ceo-body").innerHTML = `<div class="stack">
-      <div class="card stack alerts"><div class="row between"><h2>Needs your <em>attention</em></h2><div class="chips">${["", ...cats].map((c) => `<button type="button" class="chip${D.ac === c ? " is-on" : ""}" data-ac="${esc(c)}">${esc(c || "All")} ${c ? al.filter((a) => a.cat === c).length : al.length}</button>`).join("")}</div></div>
-        ${al.length ? `<div class="alist">${al.filter((a) => !D.ac || a.cat === D.ac).slice(0, 40).map((a, i) => `<div class="alert s${a.sev}"><span class="sev" aria-label="${a.sev >= 3 ? "Urgent" : a.sev === 2 ? "Important" : "Notice"}">${a.sev >= 3 ? "!" : a.sev === 2 ? "•" : "i"}</span><div><b>${esc(a.title)}</b><div class="small muted">${esc(a.cat)} · ${esc(a.body)}</div></div><button class="btn ${a.sev >= 3 ? "lime" : "ghost"} xs" data-al="${i}">${esc(a.action)} →</button></div>`).join("")}</div>` : `<div class="note ok">Nothing needs a decision right now.</div>`}</div>
+      ${attention(al)}
       <h3 class="sect-h">Sales &amp; revenue · ${esc(PERIODS[D.per])}</h3>
       <div class="kcards">${card({ view: "register", opts: { filter: "accepted" } }, "Signed orders", accIn.length, esc(H.money(sum(accIn, (x) => x.total), cur)) + " contract value")}${card({ view: "register", opts: { filter: "issued" } }, "Quotations issued", issuedIn.length, `${accIn.length} accepted · ${rejectedIn.length} rejected · ${awaiting.length} awaiting`)}
         ${card({ view: "register", opts: { filter: "issued" } }, "Pipeline value", esc(H.money(sum(awaiting, (x) => x.total), cur)), `${awaiting.length} quotations awaiting the client`)}${card({ view: "reports" }, "Conversion", conv == null ? "—" : Math.round(conv * 100) + "%", "accepted ÷ issued in the period")}
         ${card({ view: "register" }, "Average order value", aov == null ? "—" : esc(H.money(aov, cur)), "orders signed in the period")}${card({ view: "register", opts: { filter: "accepted" } }, "Order pipeline", live.length, `${stage("accepted").length + stage("review").length} awaiting engineering · ${stage("production").length} in production · ${stage("ready").length} ready · ${stage("installing").length} installing · ${stage("completed").length} completed`)}</div>
       <h3 class="sect-h">Financial control <span class="tiny muted">(all open orders)</span></h3>
-      <div class="kcards">${card({ view: "register", opts: { filter: "accepted" } }, "Signed contract value", esc(H.money(signed, cur)), "accepted orders, incl. VAT")}${card({ view: "register" }, "Invoiced", "Not tracked", "X FORCE has no invoicing module")}
+      <div class="kcards">${card({ view: "register", opts: { filter: "accepted" } }, "Signed contract value", esc(H.money(signed, cur)), "accepted orders, incl. VAT")}${card({ view: "invoices" }, "Invoiced", d.invoiced == null ? "—" : esc(H.money(d.invoiced, cur)), "issued tax invoices − credit notes (Finance)")}
         ${card({ view: "approvals" }, "Collected cash", esc(H.money(collected, cur)), "verified payments only")}${card({ view: "payverify" }, "Pending verification", esc(H.money(pending, cur)), "recorded, not yet verified", pending ? "warn" : "")}
         ${card({ view: "register", opts: { filter: "unpaid" } }, "Outstanding receivables", esc(H.money(Math.max(0, signed - collected), cur)), overdue ? esc(H.money(overdue, cur)) + " overdue by schedule" : "none overdue", overdue ? "bad" : "")}
         ${card({ view: "reports" }, "Estimated gross profit", esc(H.money(estGP, cur)), estRev ? `margin ${Math.round(estGP / estRev * 100)}%${noCost ? ` · ${noCost} order(s) without cost data excluded` : ""}` : "no cost data yet")}
@@ -122,7 +134,7 @@
         <div class="card stack"><div class="row between"><h3>Recent system activity</h3><button class="btn ghost xs" data-go='${esc(JSON.stringify({ view: "audit" }))}'>Audit Log</button></div>${d.log.length ? `<div class="tl">${d.log.slice(0, 8).map((e) => `<div><span class="tiny muted">${esc(new Date(e.at).toLocaleString([], { dateStyle: "short", timeStyle: "short" }))}</span><span><b>${esc(e.action)}</b> — ${esc(DPAuth.nameSync(e.by) || "system")}${e.detail ? " · " + esc(String(e.detail).slice(0, 90)) : ""}</span></div>`).join("")}</div>` : `<p class="small muted">Nothing yet.</p>`}</div></div></div>`;
     const B = $("#ceo-body"), vis = al.filter((a) => !D.ac || a.cat === D.ac);
     $$("[data-ac]", B).forEach((b) => (b.onclick = () => { D.ac = b.dataset.ac; renderCeo(); }));
-    $$("[data-al]", B).forEach((b) => (b.onclick = () => { const a = vis[+b.dataset.al]; if (a && a.go) U.go(a.go.view, a.go.opts || {}); }));
+    $$("[data-al]", B).forEach((b) => (b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); const k = b.dataset.al; if (k[0] === "r") return U.go("reminders"); const a = al[+k]; if (a && a.go) U.go(a.go.view, a.go.opts || {}); }));
     $$("[data-go]", B).forEach((b) => (b.onclick = () => { const g = JSON.parse(b.dataset.go); U.go(g.view, g.opts || {}); }));
     $$("[data-oid]", B).forEach((b) => (b.onclick = () => U.go("register", { oid: b.dataset.oid })));
     $$("[data-pid]", B).forEach((b) => (b.onclick = () => U.go("register", { pid: b.dataset.pid, owner: b.dataset.owner })));

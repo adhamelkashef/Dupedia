@@ -1,4 +1,4 @@
-# X FORCE 1.4 on Cloudflare — live, shared, signed-in
+# X FORCE 1.3 on Cloudflare — live, shared, signed-in
 
 Everyone opens the same address and signs in with their own username and password. They all work on the same orders, payments, leads and engineering records, stored in one Cloudflare D1 database.
 
@@ -12,13 +12,6 @@ Everyone opens the same address and signs in with their own username and passwor
 | `xf-shim.js` | Connects the app to the backend. It contains no secrets. |
 | D1 database `xforce-db` | All business data: people, leads, quotations, orders, payments and their proof files, engineering, commission, messages. |
 | `wrangler.jsonc` | Cloudflare configuration. |
-
-## 1.4 — Growth & Marketing Center
-
-- **New role: Marketing** (staff level). Campaigns and content, Project Radar, partnerships, sending accounts to the Lead Mine. No orders, prices, costs, salaries or other people's commission — the Worker refuses them.
-- **No external service is connected.** Nothing is published, advertised or sent by X FORCE: content is approved by an administrator in X FORCE and posted by a person on the platform. Draft texts are built from the product catalogue with templates, not an AI service. No paid API, key or subscription is needed.
-- **Spend** is what Finance records as a verified payment linked to the campaign (Transfers → "Marketing campaign").
-- **Database:** new records only (`mkt/…`); leads gain a `campaignId` field. Nothing existing is changed.
 
 ## 1.3 — Factory & Operations
 

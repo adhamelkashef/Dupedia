@@ -4,13 +4,14 @@
   "use strict";
   const U = DPUI, { $, $$, esc, App } = U;
   const NAV = {
-    employee: [["dash", "Dashboard", "dash"], ["planner", "Site Planner", "planner"], ["proposals", "My Orders & Proposals", "doc"], ["home", "Drafts & Projects", "folder"], ["leads", "Lead Mine", "mine"], ["myleads", "My Leads", "target"], ["calls", "Calls & Follow-ups", "phone"], ["intel", "Market Intelligence", "radar"], ["mycomm", "My Commission", "coins"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
-    engineer: [["dash", "Dashboard", "dash"], ["engorders", "Engineering Orders", "truck"], ["factory", "Factory", "factory"], ["workers", "Worker Directory", "team"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
-    dataentry: [["dash", "Dashboard", "dash"], ["research", "Lead Research", "leads"], ["leads", "Lead Mine", "mine"], ["calls", "Call Log", "phone"], ["intel", "Market Intelligence", "radar"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
+    employee: [["dash", "Dashboard", "dash"], ["planner", "Site Planner", "planner"], ["proposals", "My Orders & Proposals", "doc"], ["home", "Drafts & Projects", "folder"], ["leads", "Lead Mine", "mine"], ["myleads", "My Leads", "target"], ["calls", "Calls & Follow-ups", "phone"], ["intel", "Market Intelligence", "radar"], ["mycomm", "My Commission", "coins"], ["catalog", "Dupedia Products", "tag"], ["reminders", "Reminders", "check"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
+    engineer: [["dash", "Dashboard", "dash"], ["engorders", "Engineering Orders", "truck"], ["factory", "Factory", "factory"], ["workers", "Worker Directory", "team"], ["facjobs", "Production Jobs", "factory"], ["facdash", "Factory Dashboard", "report"], ["equipment", "Machines & Tools", "gear"], ["catalog", "Dupedia Products", "tag"], ["reminders", "Reminders", "check"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
+    dataentry: [["dash", "Dashboard", "dash"], ["research", "Lead Research", "leads"], ["leads", "Lead Mine", "mine"], ["calls", "Call Log", "phone"], ["intel", "Market Intelligence", "radar"], ["reminders", "Reminders", "check"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
     viewer: [["dash", "Dashboard", "dash"], ["profile", "My Profile", "user"]],
     accountant: [["finance", "Finance Dashboard", "finance"], ["transfers", "Transfers", "transfer"], ["finaccounts", "Financial Accounts", "bank"], ["payverify", "Payment Verification", "shield"], ["salaries", "Salaries & Payroll", "payroll"], ["purchases", "Purchases", "cart"],
-      ["invoices", "Invoices & Receipts", "receipt"], ["approvecomm", "Commissions", "coins"], ["taxes", "Taxes", "tax"], ["finreports", "Finance Reports", "report"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
+      ["invoices", "Invoices & Receipts", "receipt"], ["approvecomm", "Commissions", "coins"], ["taxes", "Taxes", "tax"], ["finreports", "Finance Reports", "report"], ["holidays", "Holidays", "doc"], ["reminders", "Reminders", "check"], ["messages", "Messages", "chat"], ["profile", "My Profile", "user"]],
   };
+  const NAV_OPS = [["facjobs", "Production Jobs", "factory"], ["facdash", "Factory Dashboard", "report"], ["equipment", "Machines & Tools", "gear"], ["products", "Products", "tag"], ["catalog", "Dupedia Products", "tag"], ["holidays", "Holidays", "doc"], ["reminders", "Reminders", "check"]];
   const NAV_FIN = [["finance", "Finance Dashboard", "finance"], ["transfers", "Transfers", "transfer"], ["finaccounts", "Financial Accounts", "bank"], ["salaries", "Salaries & Payroll", "payroll"], ["purchases", "Purchases", "cart"], ["invoices", "Invoices & Receipts", "receipt"], ["taxes", "Taxes", "tax"], ["finreports", "Finance Reports", "report"]];
   const NAV_EMP = NAV.employee;
   const NAV_ADM = [["mission", "Mission Control", "globe"], ["askceo", "Ask CEO Inbox", "inbox"], ["register", "Order Register", "doc"], ["payverify", "Payment Verification", "shield"], ["approvals", "Payments & Approvals", "check"], ["approvecomm", "Approve Commission", "coins"], ["engqueue", "Engineering", "truck"], ["factory", "Factory", "factory"], ["workers", "Worker Directory", "team"], ["allleads", "All Leads", "leads"], ["research", "Lead Research", "mine"], ["workforce", "Work Force", "users"], ["employees", "Employees", "team"], ["users", "User Management", "users"], ["commadmin", "Commission Rules", "coins"], ["pricing", "Product Pricing", "tag"], ["reports", "Reports", "report"], ["audit", "Audit Log", "audit"], ["search", "Company Search", "search2"], ["settings", "Settings", "gear"]];
@@ -23,7 +24,7 @@
     const item = ([k, l, ic]) => `<button type="button" class="ri${on(k) ? " is-on" : ""}" data-nav="${k}" title="${esc(l)}">${U.svg(ic)}<span>${esc(l)}</span>${badge(k) ? `<em>${badge(k)}</em>` : ""}</button>`;
     const mine = adm ? [["dash", "CEO Control Center", "dash"]].concat(NAV_EMP.filter((x) => x[0] !== "dash")) : (NAV[U.role()] || NAV.viewer);
     const adm2 = NAV_ADM.filter(([k]) => k !== "askceo" || (root.DPAskCeo && DPAskCeo.canReadInbox()));
-    r.innerHTML = `<div class="rtop"><button type="button" class="ri rtog" id="rail-tog" aria-label="Collapse or expand the menu"></button></div><div class="rg">${mine.map(item).join("")}</div>${adm ? `<div class="rh">Finance</div><div class="rg">${NAV_FIN.map(item).join("")}</div><div class="rh">Administration</div><div class="rg">${adm2.map(item).join("")}</div>` : ""}
+    r.innerHTML = `<div class="rtop"><button type="button" class="ri rtog" id="rail-tog" aria-label="Collapse or expand the menu"></button></div><div class="rg">${mine.map(item).join("")}</div>${adm ? `<div class="rh">Factory &amp; products</div><div class="rg">${NAV_OPS.filter(([k]) => !mine.some((x) => x[0] === k)).map(item).join("")}</div><div class="rh">Finance</div><div class="rg">${NAV_FIN.map(item).join("")}</div><div class="rh">Administration</div><div class="rg">${adm2.map(item).join("")}</div>` : ""}
       <div class="rfoot">${root.DPI18n ? DPI18n.toggleHtml() : ""}<button type="button" class="ri" id="r-out" title="Sign out">${U.svg("out")}<span>Sign out</span></button></div>`;
     $$("[data-nav]", r).forEach((b) => (b.onclick = () => nav(b.dataset.nav)));
     $("#r-out").onclick = signOut;
@@ -40,7 +41,7 @@
   }
   async function signOut() {
     if (App.open && DPModel.S.dirty && U.canWrite() && !App.sample) await U.save();
-    DPAuth.logActivity("Signed out").catch(() => {}); DPNotify.stop(); if (root.DPChat) DPChat.stop(); if (root.DPAssist) DPAssist.stop(); if (root.DPCeo2) DPCeo2.closeDrawer(); clearInterval(App.loop); DPAuth.signOut(); App.open = false; App.myPic = null;
+    DPAuth.logActivity("Signed out").catch(() => {}); DPNotify.stop(); if (root.DPLive) DPLive.stop(); if (root.DPChat) DPChat.stop(); if (root.DPAssist) DPAssist.stop(); if (root.DPCeo2) DPCeo2.closeDrawer(); clearInterval(App.loop); DPAuth.signOut(); App.open = false; App.myPic = null;
     try { sessionStorage.removeItem("dp.sp21.cloudok"); } catch (e) {}
     if (root.XFServer) return root.XFServer.logout();
     gate();
@@ -135,7 +136,7 @@
     if (U.isAdmin()) { try { App.commissionCfg = await DPSales.commissionConfig(); } catch (e) { App.commissionCfg = null; } DPPrice.syncCopies().catch((e) => console.warn("price copies", e)); }
     DPAuth.touchActivity().catch(() => {});
     App.myPic = await DPAuth.avatarUrl(DPAuth.A.me.id).catch(() => null);
-    DPNotify.on(bellUpdate); DPNotify.start();
+    DPNotify.on(bellUpdate); DPNotify.start(); if (root.DPLive) DPLive.start();
     $("#btn-bell").onclick = notifPanel;
     if (root.DPChatUI) DPChatUI.init();
     if (root.DPAssist) DPAssist.init();
@@ -181,27 +182,33 @@
   /* ---------------- notifications ---------------- */
   function bellUpdate() { const n = DPNotify.unread(), b = $("#bell-n"); if (!b) return; b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n); }
   const NICON = { deal: "★", order: "◆", quote: "◆", payment: "¤", commission: "%", engineering: "⚙", lead: "◎", followup: "⏰", message: "✉", chat: "✉", access: "⚿", info: "•" };
-  let NF = { cat: "all", unread: false };
+  let NF = { cat: "all", unread: false, history: false };
+  /** Open the record a notification points to (Notification Center and pop-ups). */
+  async function openNotif(n) {
+    if (DPNotify.N.items.some((x) => x.id === n.id && !x.read)) DPNotify.markRead([n.id]).catch(() => {}); const L = n.link || {};
+    if (n.type === "deal" && n.celebrate) DPNotify.celebrate(n);
+    else if (L.chat && root.DPChatUI) DPChatUI.open({ dm: L.chat });
+    else if (L.askceo && U.allowedView("askceo")) U.go("askceo", { uid: L.askceo });
+    else if (L.assist && root.DPAssist) DPAssist.open(L.assist);
+    else if (U.isAdmin() && n.ref && /^O-/.test(n.ref) && ["register", "proposals", "tracking", "approvals"].includes(L.view) && root.DPCeo2) DPCeo2.orderPanel(n.ref);
+    else if (L.view && U.allowedView(L.view)) U.go(L.view, L.opts || {});
+  }
   function notifPanel() {
     const draw = (m) => {
-      const all = DPNotify.N.items, items = all.filter((n) => (NF.cat === "all" || DPNotify.categoryOf(n) === NF.cat) && (!NF.unread || !n.read));
+      const all = NF.history ? DPNotify.N.items : DPNotify.visible(), items = all.filter((n) => (NF.cat === "all" || DPNotify.categoryOf(n) === NF.cat) && (!NF.unread || !n.read));
       const counts = {}; all.filter((n) => !n.read).forEach((n) => { const c = DPNotify.categoryOf(n); counts[c] = (counts[c] || 0) + 1; });
       $("#np-cats", m).innerHTML = Object.entries(DPNotify.CATEGORIES).map(([k, l]) => `<button type="button" data-cat="${k}" class="${NF.cat === k ? "is-on" : ""}">${esc(l)}${k !== "all" && counts[k] ? ` <em>${counts[k]}</em>` : ""}</button>`).join("");
       $$("[data-cat]", m).forEach((b) => (b.onclick = () => { NF.cat = b.dataset.cat; draw(m); }));
-      $("#np-list", m).innerHTML = items.length ? items.slice(0, 120).map((n) => `<div class="nitem${n.read ? "" : " unread"}" data-n="${esc(n.id)}" role="button" tabindex="0"><span class="ni">${NICON[n.type] || "•"}</span><span class="nt"><b></b><span></span><small>${esc(new Date(n.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))} · ${esc(DPNotify.CATEGORIES[DPNotify.categoryOf(n)])}</small></span>${n.read ? "" : `<button class="btn ghost xs" data-mr="${esc(n.id)}">Mark read</button>`}</div>`).join("") : `<div class="empty small">${all.length ? "Nothing in this filter." : "No notifications yet."}</div>`;
+      $("#np-list", m).innerHTML = items.length ? items.slice(0, 120).map((n) => `<div class="nitem${n.read ? "" : " unread"}" data-n="${esc(n.id)}" role="button" tabindex="0"><span class="ni">${NICON[n.type] || "•"}</span><span class="nt"><b></b><span></span><small>${esc(new Date(n.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))} · ${esc(DPNotify.CATEGORIES[DPNotify.categoryOf(n)])}</small></span><span class="nacts">${n.read ? "" : `<button class="btn ghost xs" data-mr="${esc(n.id)}">Mark read</button>`}${n.cleared ? `<span class="tiny muted">cleared</span>` : `<button class="nx" data-dis="${esc(n.id)}" title="Clear this notification" aria-label="Clear">✕</button>`}</span></div>`).join("") : `<div class="empty small">${all.length ? "Nothing in this filter." : "No notifications yet."}</div>`;
       items.slice(0, 120).forEach((n) => { const b = $(`[data-n="${CSS.escape(n.id)}"]`, m); if (!b) return; b.querySelector("b").textContent = n.title; b.querySelector(".nt span").textContent = n.body;
-        const openIt = async () => { await DPNotify.markRead([n.id]); U.closeModal(); const L = n.link || {};
-          if (n.type === "deal" && n.celebrate) DPNotify.celebrate(n);
-          else if (L.chat && root.DPChatUI) DPChatUI.open({ dm: L.chat });
-          else if (L.askceo && U.allowedView("askceo")) U.go("askceo", { uid: L.askceo });
-          else if (L.assist && root.DPAssist) DPAssist.open(L.assist);
-          else if (U.isAdmin() && n.ref && /^O-/.test(n.ref) && ["register", "proposals", "tracking", "approvals"].includes(L.view) && root.DPCeo2) DPCeo2.orderPanel(n.ref);
-          else if (L.view && U.allowedView(L.view)) U.go(L.view, L.opts || {}); };
+        const openIt = async () => { U.closeModal(); openNotif(n); };
         b.onclick = (e) => { if (e.target.closest("[data-mr]")) return; openIt(); }; b.onkeydown = (e) => { if (e.key === "Enter") openIt(); }; });
       $$("[data-mr]", m).forEach((x) => (x.onclick = async (e) => { e.stopPropagation(); await DPNotify.markRead([x.dataset.mr]); draw(m); }));
+      $$("[data-dis]", m).forEach((x) => (x.onclick = async (e) => { e.stopPropagation(); try { await DPNotify.dismiss([x.dataset.dis]); } catch (er) { U.toast(er.message, { err: true }); } draw(m); }));
+      bellUpdate();
     };
     const sp = root.DPSound ? DPSound.prefs() : null;
-    U.openModal(`<div class="row between"><h2>Notification Center</h2><div class="row"><label class="check small"><input type="checkbox" id="np-un" ${NF.unread ? "checked" : ""}> Unread only</label><button class="btn ghost xs" id="np-all">Mark all as read</button>${sp ? `<button class="btn ghost xs" id="np-snd" aria-pressed="${sp.on}" title="Notification sound">${U.svg(sp.on ? "sound" : "mute")} ${sp.on ? "Sound on" : "Muted"}</button>` : ""}</div></div>
+    U.openModal(`<div class="row between"><h2>Notification Center</h2><div class="row"><label class="check small"><input type="checkbox" id="np-un" ${NF.unread ? "checked" : ""}> Unread only</label><button class="btn ghost xs" id="np-all">Mark all as read</button><button class="btn ghost xs" id="np-clr">Clear all…</button><label class="check small"><input type="checkbox" id="np-hist" ${NF.history ? "checked" : ""}> Show cleared</label>${sp ? `<button class="btn ghost xs" id="np-snd" aria-pressed="${sp.on}" title="Notification sound">${U.svg(sp.on ? "sound" : "mute")} ${sp.on ? "Sound on" : "Muted"}</button>` : ""}</div></div>
       ${sp ? `<details class="small" id="np-sp"><summary>Sound settings</summary><div class="row" style="gap:12px;flex-wrap:wrap;margin-top:6px">${[["message", "Messages & Ask CEO"], ["payment", "Payments"], ["order", "Orders"], ["engineering", "Engineering"], ["followup", "Follow-ups"], ["commission", "Commission"], ["lead", "Leads"]].map(([k, l]) => `<label class="check"><input type="checkbox" data-snd="${k}" ${sp.kinds[k] ? "checked" : ""}> ${l}</label>`).join("")}<label class="row" style="gap:6px">Volume <input type="range" id="np-vol" min="0" max="1" step="0.1" value="${sp.volume}"></label><button class="btn ghost xs" id="np-test">Play test sound</button></div><p class="tiny muted">Browsers only play sound after you have clicked or typed on the page; until then notifications stay silent but still appear here. Saved in this browser.</p></details>` : ""}
       <div class="chips" id="np-cats" role="tablist" aria-label="Notification categories"></div><div class="nlist" id="np-list"></div><div class="acts"><button class="btn ghost" id="np-x">Close</button></div>`, (m) => {
       draw(m); $("#np-x", m).onclick = () => U.closeModal(); $("#np-un", m).onchange = (e) => { NF.unread = e.target.checked; draw(m); };
@@ -210,7 +217,11 @@
         $$("[data-snd]", m).forEach((c) => (c.onchange = () => { const p = DPSound.prefs(); p.kinds[c.dataset.snd] = c.checked; DPSound.save(p); }));
         $("#np-vol", m).onchange = (e) => { const p = DPSound.prefs(); p.volume = +e.target.value; DPSound.save(p); };
         $("#np-test", m).onclick = () => { if (!DPSound.test()) U.toast("This browser did not allow sound. Click anywhere on the page and try again.", { err: true }); }; }
-      $("#np-all", m).onclick = async () => { await DPNotify.markRead(DPNotify.N.items.filter((x) => !x.read && (NF.cat === "all" || DPNotify.categoryOf(x) === NF.cat)).map((x) => x.id)); draw(m); };
+      const inCat = () => DPNotify.visible().filter((x) => NF.cat === "all" || DPNotify.categoryOf(x) === NF.cat).map((x) => x.id);
+      $("#np-all", m).onclick = async () => { try { await DPNotify.markAllRead(NF.cat === "all" ? null : inCat()); } catch (e) { U.toast(e.message, { err: true }); } draw(m); };
+      $("#np-clr", m).onclick = async () => { const n = inCat().length; if (!n) return; if (!(await U.ask("Clear notifications?", `${n} notification(s)${NF.cat === "all" ? "" : " in this category"} will be cleared from your list. They stay in your history (tick “Show cleared”) and nobody else's notifications change.`, [{ label: "Cancel", value: false, cls: "ghost" }, { label: "Clear", value: true }]))) return notifPanel();
+        try { await DPNotify.clearAll(NF.cat === "all" ? null : inCat()); U.toast("Notifications cleared."); } catch (e) { U.toast(e.message, { err: true }); } notifPanel(); };
+      $("#np-hist", m).onchange = (e) => { NF.history = e.target.checked; draw(m); };
       DPNotify.pull().then(() => { if ($("#np-list", m)) draw(m); }); }, { wide: true });
   }
 
@@ -237,5 +248,5 @@
 
   /** Circular picture (or initials) for a user id. */
   async function picHtml(uid, size = 40, cls = "") { const src = await DPAuth.avatarUrl(uid); return `<img class="pic ${cls}" width="${size}" height="${size}" style="width:${size}px;height:${size}px" alt="" src="${esc(src)}">`; }
-  root.DPShell = { startLoops, rail, nav, gate, enter, signOut, notifPanel, picHtml, ownerIds, myOwnedLeads, refreshBadges, money, money2, pctS, dateS, perLabel, curPer, perSelect, ring, stat, bars };
+  root.DPShell = { openNotif, bellUpdate, startLoops, rail, nav, gate, enter, signOut, notifPanel, picHtml, ownerIds, myOwnedLeads, refreshBadges, money, money2, pctS, dateS, perLabel, curPer, perSelect, ring, stat, bars };
 })(typeof self !== "undefined" ? self : this);

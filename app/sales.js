@@ -369,23 +369,31 @@
     const defEng = (settings && settings.engineering && settings.engineering.defaultEngineer) || null, defRow = defEng ? AU().A.directory.find((r) => r.uid === defEng && r.active !== false && AU().baseOf(r.role) === "engineer") : null;
     sub.defaultEngineer = defRow ? defEng : null;
     sub.oid = orderIdFor(sub);
+    // 1.3: automatic, workload-balanced engineer assignment (Factory › Settings). The default engineer above is the fallback
+    // only when automatic assignment is switched off.
+    let autoAsg = null;
+    if (root.DPFac) { try { const fc = await root.DPFac.cfg(true); if (fc.autoAssign === "balanced") {
+      const lease = await DS().acquire("locks/fac-assign", { holder: uid, ttlMs: 8000 }).catch(() => null);
+      autoAsg = await root.DPFac.pick({ products: [], skills: [] }); sub.defaultEngineer = autoAsg.uid; sub.assignVia = "auto"; void lease; } } catch (e) { console.warn("auto-assign", e); } }
     if (evidence) { await root.DPOrders.putFile(`submissions/${owner}/s/${m.id}/ev/main`, evidence); sub.evidence = { name: evidence.name, type: evidence.type, size: evidence.size }; }
     await DS().set(`submissions/${owner}/s/${m.id}`, sub);
     // engineering receives the order now: technical pack only (DPOrders.handoverFrom strips every price, total and discount)
     const ho = root.DPOrders.handoverFrom(project, { oid: sub.oid, ref: sub.ref, name: sub.name, client: sub.client, location: sub.location, type: sub.type });
     Object.assign(ho, { pid: m.id, salesUid: owner, acceptedAt: at, deadlineOriginal: deadline || null, priority, contact: sub.contact, status: "accepted", defaultEngineer: sub.defaultEngineer,
-      history: [{ at: now(), by: uid, action: "Client acceptance recorded" }].concat(sub.defaultEngineer ? [{ at: now(), by: uid, action: "Assigned automatically to the default engineer", detail: AU().nameSync(sub.defaultEngineer) }] : [{ at: now(), by: uid, action: "No default engineer configured — waiting in the Unassigned Engineering Orders queue" }]) });
+      history: [{ at: now(), by: uid, action: "Client acceptance recorded" }].concat(sub.defaultEngineer ? [{ at: now(), by: uid, action: sub.assignVia === "auto" ? "Assigned automatically (balanced workload)" : "Assigned automatically to the default engineer", detail: AU().nameSync(sub.defaultEngineer) + (autoAsg ? " — " + autoAsg.reason : "") }] : [{ at: now(), by: uid, action: "No default engineer configured — waiting in the Unassigned Engineering Orders queue" }]) });
     if (JSON.stringify(ho).length > 240000) { ho.project = null; ho.planOmitted = true; }
     await DS().set(`handoff/${owner}/o/${sub.oid}`, ho);
+    if (root.DPFac) { try { await root.DPFac.ensureJob({ oid: sub.oid, ref: sub.ref, name: sub.name, client: sub.client, location: sub.location, salesUid: owner, engineerUid: sub.defaultEngineer || null, deadlineOriginal: deadline || null }, ho);
+      if (autoAsg) await root.DPFac.logAssignment(sub.oid, autoAsg.uid, { via: "auto", reason: autoAsg.reason, ranking: autoAsg.ranking }); } catch (e) { console.warn("factory job", e); } }
     if (m.leadId) { const crm = await DS().tryGet(`crm/${owner}/l/${m.leadId}`); if (crm) await DS().set(`crm/${owner}/l/${m.leadId}`, Object.assign({}, crm, { stage: "won", wonOrderId: sub.oid, updatedAt: now(), stageHistory: (crm.stageHistory || []).concat([{ stage: "won", at: now(), note: "Client accepted " + sub.oid }]) })).catch(() => {}); }
     AU().logActivity("Recorded client acceptance", `${sub.ref} → ${sub.oid}`).catch(() => {});
     if (root.DPNotify) {
       const N = root.DPNotify, engs = AU().A.directory.filter((r) => r.uid && r.active !== false && AU().baseOf(r.role) === "engineer").map((r) => r.uid);
       await N.deliver("@admins", { id: `accept-${sub.oid}`, type: "order", title: "Client accepted — new order", body: `${sub.name}${sub.client ? " — " + sub.client : ""} (${me().name || "sales"}). Sent to Engineering.`, link: { view: "register", opts: { oid: sub.oid } }, ref: sub.oid }).catch(() => {});
-      if (sub.defaultEngineer) await N.deliver(sub.defaultEngineer, { id: `eng-asg-${sub.oid}-${sub.defaultEngineer}`, type: "engineering", title: "New order assigned to you", body: `${sub.name}${sub.location ? " · " + sub.location : ""} — assigned automatically as default engineer.`, link: { view: "engorders", opts: { oid: sub.oid } }, ref: sub.oid, priority: "high" }).catch(() => {});
+      if (sub.defaultEngineer) await N.deliver(sub.defaultEngineer, { id: `eng-asg-${sub.oid}-${sub.defaultEngineer}`, type: "engineering", title: "New order assigned to you", body: `${sub.name}${sub.location ? " · " + sub.location : ""} — assigned automatically${sub.assignVia === "auto" ? " (balanced workload)" : " as default engineer"}. Open it to accept the job.`, mandatory: true, link: { view: "engorders", opts: { oid: sub.oid } }, ref: sub.oid, priority: "high" }).catch(() => {});
       const others = engs.filter((u) => u !== sub.defaultEngineer);
       if (others.length) await N.deliver(others, { id: `eng-new-${sub.oid}`, type: "engineering", title: sub.defaultEngineer ? "New order accepted" : "New unassigned order", body: `${sub.name}${sub.location ? " · " + sub.location : ""}${sub.defaultEngineer ? " — assigned to " + AU().nameSync(sub.defaultEngineer) : " — in the Unassigned Engineering Orders queue"}`, link: { view: "engorders", opts: { oid: sub.oid } }, ref: sub.oid }).catch(() => {});
-      if (!sub.defaultEngineer) await N.deliver("@admins", { id: `eng-nodef-${sub.oid}`, type: "engineering", title: "Order needs an engineer", body: `${sub.name}: no default engineer is configured (Admin › Settings › Engineering). Assign one or set a default.`, link: { view: "engqueue" }, ref: sub.oid, priority: "high" }).catch(() => {});
+      if (!sub.defaultEngineer) await N.deliver("@admins", { id: `eng-nodef-${sub.oid}`, type: "engineering", title: "Order needs an engineer", body: `${sub.name}: ${autoAsg ? "no engineer is eligible for automatic assignment (all unavailable or over capacity)" : "no default engineer is configured (Admin › Settings › Engineering)"}. Assign one from the queue.`, link: { view: "engqueue" }, ref: sub.oid, priority: "high" }).catch(() => {});
       await N.toSelf({ id: `deal-${sub.oid}`, type: "deal", title: "You closed a deal!", body: `${sub.name}${sub.client ? " — " + sub.client : ""} is now an accepted order.`, celebrate: true, data: { project: sub.name, client: sub.client || "" }, link: { view: "proposals", opts: { oid: sub.oid } }, ref: sub.oid }).catch(() => {});
     }
     if (root.DPChat) root.DPChat.system(`accept-${sub.oid}`, "Deal closed: a client has accepted a quotation. The order is on its way to Engineering.", { view: "proposals", opts: { oid: sub.oid } }).catch(() => {});

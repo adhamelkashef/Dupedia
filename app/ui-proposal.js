@@ -15,7 +15,7 @@
     const tbc = (v) => !v || /\[to be completed/i.test(v);
     $("#view-proposal").innerHTML = `<div class="page" style="max-width:1400px">
       <div class="phead"><div><span class="eyebrow">Step 5 of 5 · Proposal</span><h1>Client proposal</h1><p class="lead small">A branded A4 proposal built from the plan and quotation. The preview below is the real PDF.</p></div>
-        <div class="row"><button class="btn ghost" id="pp-review">← Review</button><button class="btn lime" id="pp-dl">${U.svg("export")} Download proposal (PDF)</button></div></div>
+        <div class="row"><button class="btn ghost" id="pp-review">← Review</button><button class="btn lime" id="pp-dl">${U.svg("export")} Download proposal (PDF)</button><button class="btn ghost" id="pp-send">Send by WhatsApp / e-mail…</button></div></div>
       ${App.sample ? `<div class="note warn">Sample project: the proposal is marked “illustrative prices, not a quotation” on every page.</div>` : ""}
       ${S.project.meta.status !== "issued" && !App.sample ? `<div class="note">This proposal is a draft. Mark it as issued in Review when it is ready to send.</div>` : ""}
       <div class="pgrid"><aside class="pnav">
@@ -30,6 +30,12 @@
     const V = $("#view-proposal");
     $("#pp-review").onclick = () => U.go("review");
     $("#pp-dl").onclick = download;
+    $("#pp-send").onclick = async () => {   // 1.3: review, then hand the PDF to WhatsApp or e-mail (nothing is sent automatically)
+      if (U.canWrite() && !App.sample && M.S.dirty && !(await U.save())) return U.toast("Save the project first.", { err: true });
+      const b = U.busy("Building the proposal…"); try { const out = await build((s) => b.set(s + "…")); b.done(); const meta = M.S.project.meta || {};
+        const lc = meta.leadId ? await DPStore.tryGet(`leadcontact/${meta.leadId}`).catch(() => null) : null, ct = (lc && lc.contact) || {};
+        root.DPShare.dialog(out, { customer: meta.client || "", ref: meta.ref || "", project: meta.name || "", total: DPPricing.fmtMoney(out.total, out.currency), phone: ct.phone || "", email: ct.email || "" }); }
+      catch (e) { b.done(); U.toast("The proposal could not be built: " + (e.message || e), { err: true, ms: 9000 }); } };
     $("#pp-refresh").onclick = preview;
     $$("[data-sec]", V).forEach((c) => (c.onchange = () => { ST.sections[c.dataset.sec] = c.checked; preview(); }));
     let t = 0;

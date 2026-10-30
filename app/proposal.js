@@ -205,6 +205,17 @@
     if (y < D.H - 60) { eyebrow(D, "At a glance", 14, D.H - 52); hline(D, 14, 164, D.H - 48.5, C.line, 0.2);
       figs.forEach(([big, unit, sub], i) => { const x = 14 + i * 52; txt(D, big, x, D.H - 32, { size: 26, font: "serif" }); txt(D, unit, x, D.H - 25, { size: 8.5, color: C.graphite }); if (sub) txt(D, sub, x, D.H - 20.5, { size: 7, color: C.pebble, maxW: 48 }); }); }
     void scope;
+    // 1.3 — featured equipment: fills the open space with what the client is buying (photo cropped to fit, top view if none)
+    const feat = (X.featured || []).filter((c) => DPCat.BY[c]), top = y + 6, bottom = D.H - 60;
+    if (feat.length && bottom - top >= 46) {
+      eyebrow(D, "Featured equipment", 14, top); const gap = 5, cols = Math.max(2, feat.length), cw = (colW - gap * (cols - 1)) / cols, ph = Math.min(cw * 0.7, bottom - top - 24);
+      feat.forEach((code, i) => { const pp = DPCat.BY[code], x = 14 + i * (cw + gap), yy = top + 4, im = (X.fimgs || {})[code];
+        if (im) { const P = D.pen(); P.save(); P.begin().roundRect(x, yy, cw, ph, [2, 2, 2, 2]).clip(); const sc = Math.max(cw / im.w, ph / im.h); D.doc.addImage(im.data, im.fmt || "JPEG", x + (cw - im.w * sc) / 2, yy + (ph - im.h * sc) / 2, im.w * sc, im.h * sc, undefined, "FAST"); P.restore(); }
+        else { rect(D, x, yy, cw, ph, C.cream); if (pp.dims) { const s2 = Math.min((cw - 4) / pp.dims.l, (ph - 4) / pp.dims.w); const P = D.pen(); P.translate(x + cw / 2, yy + ph / 2).scale(s2); DPSymbols.drawProduct(P, pp, { lod: s2 * 6, mode: "presentation" }); } }
+        const P = D.pen(); P.begin().circle(x + cw - 4.5, yy + ph - 4.5, 3.4).fill(C.ink); txt(D, `×${X.counts[code]}`, x + cw - 4.5, yy + ph - 3.5, { size: 6.5, font: "sansBold", color: C.white, align: "center" });
+        txt(D, pp.displayCode || pp.code, x, yy + ph + 5, { size: 6.5, font: "sansBold", color: C.limeInk });
+        para(D, pp.name, x, yy + ph + 9.5, cw, { size: 8.5, font: "serif", maxLines: 2 }); });
+    }
     // right facts card
     const cx = 178, cw = D.W - 14 - cx; rect(D, cx, 28, cw, D.H - 48, C.stone);
     eyebrow(D, "Site facts", cx + 8, 38);
@@ -401,7 +412,10 @@
     progress && progress("Building the cover");
     await pageCover(D, X);
     const sec = Object.assign({ overview: true, plan: true, schedule: true, technical: true, quotation: true, notes: true }, opts.sections || {});
-    if (sec.overview) { D.doc.addPage(); pageOverview(D, X, ++n); }
+    if (sec.overview) { // 1.3: featured equipment on the overview page (photographs, never stretched)
+      X.featured = Object.keys(X.counts).sort((a, b) => X.counts[b] - X.counts[a]).slice(0, 4); X.fimgs = {};
+      await Promise.all(X.featured.map(async (c) => { const pp = DPCat.BY[c]; if (pp) X.fimgs[c] = await productPhoto(c, pp.thumb).catch(() => null); }));
+      D.doc.addPage(); pageOverview(D, X, ++n); }
     if (sec.plan && DPIO.extent(X.p)) { D.doc.addPage(); pagePlan(D, X, ++n); }
     progress && progress("Drawing the plan and overview");
     if (sec.schedule && Object.keys(X.counts).length) { progress && progress("Adding product photographs"); D.doc.addPage(); await pagesSchedule(D, X, ++n); }
@@ -409,7 +423,7 @@
     if (sec.quotation && X.r.lines.length) { D.doc.addPage(); pagesQuotation(D, X, ++n); }
     if (sec.notes) { D.doc.addPage(); pageNotes(D, X, ++n); }
     pageNumbers(D);
-    D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.2" });
+    D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.3" });
     progress && progress("Checking the document");
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("proposal"), pages: D.doc.getNumberOfPages(), warnings: chk.warnings, total: X.r.total, currency: X.r.currency }, 2);
   }
@@ -421,7 +435,7 @@
     // compact title block instead of a cover
     pagesQuotation(D, X, 1, { standalone: true });
     D.doc.setPage(1); rect(D, 160, 20, 0.01, 0.01, C.white);
-    pageNumbers(D, false); D.doc.setProperties({ title: `${X.p.meta.name} — quotation`, creator: "Dupedia X FORCE 1.2" });
+    pageNumbers(D, false); D.doc.setProperties({ title: `${X.p.meta.name} — quotation`, creator: "Dupedia X FORCE 1.3" });
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("quotation"), pages: D.doc.getNumberOfPages() });
   }
   /** A3 technical drawing: design mode with dimensions, labels and zones, title block, standard scale where possible. */
@@ -443,7 +457,7 @@
     scaleBar(D, tx + 6, y + 4, s, tbW - 20); northArrow(D, tx + tbW - 12, y + 24, (X.p.site && X.p.site.north) || 0);
     para(D, M.DISCLAIMER, tx + 6, H - 54, tbW - 12, { size: 6.4, color: C.pebble, lh: 1.35 });
     if (!DPIO.scaleVerified()) txt(D, "SCALE NOT VERIFIED", tx + 6, H - 20, { size: 9, font: "sansBold", color: C.red });
-    D.doc.setProperties({ title: `${X.p.meta.name} — technical drawing`, creator: "Dupedia X FORCE 1.2" });
+    D.doc.setProperties({ title: `${X.p.meta.name} — technical drawing`, creator: "Dupedia X FORCE 1.3" });
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("technical-drawing-A3"), pages: D.doc.getNumberOfPages() });
   }
 

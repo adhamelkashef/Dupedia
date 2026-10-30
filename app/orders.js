@@ -331,6 +331,7 @@
       if (prev && prev !== engUid) await NT().deliver(prev, { id: `eng-unassign-${oid}-${Date.now().toString(36)}`, type: "engineering", title: "Order reassigned", body: `${a.name} was reassigned to another engineer.`, link: { view: "engorders" }, ref: oid });
       await NT().deliver(a.salesUid, { id: `eng-assigned-sales-${oid}-${engUid}`, type: "engineering", title: "Engineer assigned", body: `${a.name}: ${AU().nameSync(engUid)} is the project engineer.`, link: { view: "proposals", opts: { oid } }, ref: oid });
     }
+    if (root.DPFac) { await root.DPFac.mutate(oid, (jj) => { if (jj.engineerUid === engUid) return false; jj.engineerUid = engUid; jj.accepted = null; jj.reassignRequest = null; }, "Engineer reassigned by an administrator", `${AU().nameSync(engUid)}${reason ? " — " + reason : ""}`).catch(() => {}); await root.DPFac.logAssignment(oid, engUid, { via: "admin", reason }); }
     JB.at = 0;
   }
   async function setAssignField(oid, patch, reason) {

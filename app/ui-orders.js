@@ -189,6 +189,7 @@
           <span>Target completion</span><span>${esc((e && e.expectedCompletion) || (r.job && r.job.deadlineOriginal) || "—")}</span><span>Installation</span><span>${esc(e && e.installDate ? H.dateS(e.installDate) : "Not scheduled")}${e && e.installProgress ? ` · ${e.installProgress}%` : ""}</span>
           <span>Quality check</span><span>${esc(e && e.qc ? O.QC[e.qc.status] || e.qc.status : "—")}</span><span>Completed</span><span>${esc(e && e.actualCompletion ? H.dateS(e.actualCompletion) : "—")}</span>${e && e.salesNote ? `<span>Note from engineering</span><span>${esc(e.salesNote)}</span>` : ""}</div>
           <div class="prog ${e && e.progress === 100 ? "done" : ""}"><i style="width:${(e && e.progress) || 0}%"></i></div>` : `<p class="small muted">Engineering receives the order automatically when you record the client's acceptance.</p>`}</div>
+        ${r.oid && r.accepted && root.DPFacUI ? `<div class="card stack" id="od-fac"><h3>Factory progress</h3><p class="small muted">Loading…</p></div>` : ""}
         <div class="card stack"><h3>Recent updates</h3>${notes.length ? `<div class="tl">${notes.map((n) => `<div><span class="tiny muted">${esc(new Date(n.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}</span><span><b>${esc(n.title)}</b> — ${esc(n.body)}</span></div>`).join("")}</div>` : `<p class="small muted">No notifications for this order yet.</p>`}</div>
         <div class="card stack"><h3>History</h3><div class="tl">${tl.slice(0, 40).map((x) => `<div><span class="tiny muted">${esc(new Date(x.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}</span><span>${esc(x.t)}</span></div>`).join("") || "<span class='small muted'>—</span>"}</div></div>
       </div></div></div>`;
@@ -200,6 +201,7 @@
     $("#od-more").onclick = (ev) => actionMenu(ev.currentTarget, r, refresh, back === "register");
     const pos = $("#od-pos"); if (pos && r.order) DPPayUI.bindPosition(pos, r.order, refresh);
     const dc = $("#od-docs"); if (dc) root.DPFinUI2.salesDocsCard(dc, r, refresh);
+    const fc = $("#od-fac"); if (fc) root.DPFacUI.salesTracker(fc, r.oid).catch((e) => { fc.innerHTML = `<p class="small muted">${esc(e.message)}</p>`; });
     const ev = $("#od-ev"); if (ev) ev.onclick = async () => DPUI.showFile(await O.getFile(`submissions/${r.ownerId}/s/${r.p.id}/ev/main`));
     $$("[data-rcpt]", V).forEach((b) => (b.onclick = async () => { b.disabled = true; try { const f = await O.receipt(r.oid, b.dataset.rcpt); if (!f) U.toast("The proof is not available to you.", { err: true }); else DPUI.showFile(f, "Customer payment proof"); } finally { b.disabled = false; } }));
     $$("[data-rep]", V).forEach((b) => (b.onclick = async () => DPUI.showFile(await O.getFile(`paysub/${b.dataset.ru}/p/${b.dataset.rep}`), "Customer payment proof")));

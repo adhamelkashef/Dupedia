@@ -276,7 +276,15 @@
     { path: "payslips", read: "admin", write: "admin" },                   // payslip copies written by Finance…
     { path: "payslips/{self}", read: "interact", write: "admin" },         // …each employee reads only their own
     { path: "audit", read: "admin", write: "admin" },                      // append-only audit trail (the server only ever adds entries)
-    { path: "leadx", read: "interact", write: "interact" },                // lead attachments (pictures, drawings, CAD, specifications)
+    { path: "leadx", read: "interact", write: "interact" },
+    // 1.3 — reminders, factory, products, holidays
+    { path: "rem", read: "admin", write: "admin" },                        // reminders: administrators set them for anyone…
+    { path: "rem/{self}", read: "interact", write: "interact" },           // …each person reads and keeps their own
+    { path: "fac", read: "interact", write: "interact" },                  // factory jobs, materials, equipment (no money; the server limits writers)
+    { path: "facc", read: "admin", write: "admin" },                       // factory costs: material prices, job cost estimates, equipment cost
+    { path: "prod", read: "interact", write: "admin" },                    // Dupedia Products catalogue (selling prices only — never cost)
+    { path: "prodx", read: "admin", write: "admin" },                      // product internal costing and supplier terms
+    { path: "hol", read: "interact", write: "admin" },                     // holiday and business-day calendar                // lead attachments (pictures, drawings, CAD, specifications)
   ];
   /** 1.2 — what the Accountant (account level "finance") may read / write. The most specific matching prefix wins;
    *  anything not listed is evaluated exactly as for staff ("interact"). Enforced by the Cloudflare Worker. */
@@ -284,7 +292,7 @@
     ["fin", "rw"], ["fin/cfg", "r"], ["audit", "r"],
     ["orders", "rw"], ["salesorders", "rw"], ["paysub", "rw"], ["submissions", "r"], ["commissions", "rw"], ["requests", "rw"],
     ["payslips", "rw"], ["notif", "w"], ["config/pricebook", "r"], ["config/commission", "r"], ["restricted/costs", "r"],
-    ["handoff", "r"], ["assign", "r"], ["eng", "r"],
+    ["handoff", "r"], ["assign", "r"], ["eng", "r"], ["facc", "r"], ["prodx", "r"], ["hol", "r"],
   ];
   function allowedFinance(path, op, uid) {
     const seg = path.split("/"); let best = null, len = -1;
