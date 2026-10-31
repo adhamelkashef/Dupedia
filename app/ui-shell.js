@@ -128,6 +128,8 @@
   /** Self-hosted: a temporary password is replaced at the first sign-in; the temporary one stops working once changed. */
   async function serverFirstLogin() {
     const m = await root.XFServer.me(); if (!m.mustChange) return;
+    // 1.4.5: the server refuses everything else until the password is changed; the sign-in page holds the (non-skippable) step
+    try { location.replace("/login?change=1"); return new Promise(() => {}); } catch (x) {}
     for (;;) { const f = await U.form("Choose your password", [{ id: "old", label: "Temporary password", type: "password", required: true }, { id: "pw", label: "New password (10+ characters, letters and a digit)", type: "password", required: true }, { id: "pw2", label: "Repeat the new password", type: "password", required: true }], { submit: "Set password", intro: "Your administrator gave you a temporary password. Choose your own to continue." });
       if (!f) return; if (f.pw !== f.pw2) { U.toast("The two passwords differ.", { err: true }); continue; }
       try { await root.XFServer.changePassword(f.old, f.pw); U.toast("Password changed."); return; } catch (e) { U.toast(e.message, { err: true }); } }

@@ -9,6 +9,7 @@
     const r = await fetch(url, Object.assign({ credentials: "same-origin", headers: H }, opts));
     if (r.status === 401) { toLogin(); const e = new Error("Signed out — sign in again."); e.code = "unauthenticated"; throw e; }
     const j = await r.json().catch(() => ({ error: "server", message: `Server error (${r.status}).` }));
+    if (j.error === "must_change") { try { location.replace("/login?change=1"); } catch (x) {} }   // 1.4.5: a temporary password must be replaced before anything else
     if (j.error) { const e = new Error(j.message || j.error); e.code = j.error; throw e; } return j;
   }
   const call = (b) => api("/api/db", { method: "POST", body: JSON.stringify(b) });
@@ -47,7 +48,7 @@
     changes: (since) => api("/api/changes?since=" + encodeURIComponent(since || "")),
     notif: (b) => api("/api/notif", { method: "POST", body: JSON.stringify(b) }),
     researchStatus: () => api("/api/research/status"),
-    resetAccount: (uid, mode) => api("/api/accounts/" + encodeURIComponent(uid) + "/reset", { method: "POST", body: JSON.stringify({ mode }) }),
+    resetAccount: (uid, mode, o) => api("/api/accounts/" + encodeURIComponent(uid) + "/reset", { method: "POST", body: JSON.stringify(Object.assign({ mode }, o || {})) }),
     researchRun: (id, job) => api("/api/research/run", { method: "POST", body: JSON.stringify({ id, job: job || null }) }),
     logout: () => api("/api/logout", { method: "POST", body: "{}" }).finally(toLogin),
   };

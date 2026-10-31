@@ -99,31 +99,48 @@
   }
   function resetDialog(r, hr, info, mailOn) {
     const email = r.email || hr.email || "", name = A.fullName(r) || r.email || "this person";
+    const role = [roleLabel(r.role), info && info.owner ? "Owner" : ""].filter(Boolean).join(" · ");
     const linkWhy = !mailOn ? "E-mail is not set up on the server yet (see CLOUDFLARE.md → Password recovery)." : !email ? "No e-mail address on file — add one in their profile first." : "";
-    U.openModal(`<h2>Reset password — ${esc(name)}</h2>
+    const fmt = (d) => new Date(d).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    U.openModal(`<h2>Password — ${esc(name)}</h2>
+      <dl class="rp-who"><div><dt>Name</dt><dd>${esc(name)}</dd></div><div><dt>Registered e-mail</dt><dd>${esc(email || "— none on file")}</dd></div><div><dt>Role</dt><dd>${esc(role || "—")}</dd></div></dl>
       <p class="small muted">Nobody can see the current password. Resetting also unlocks an account locked by failed sign-ins.${info && info.locked ? ' <span class="pill warn">Locked out now</span>' : ""}</p>
       ${info && info.lastReset ? `<div class="note small">Last: ${esc(resetLine(info.lastReset))}${String(info.lastReset.mail || "").startsWith("failed") ? " — " + esc(String(info.lastReset.mail).replace(/^failed:\s*/, "")) : ""}</div>` : ""}
-      <div class="rp-opts">
+      <div id="rp-main"><div class="rp-opts">
+        <div class="card stack rp-o"><h3>Generate temporary password</h3><p class="small">A new random password replaces the current one and their open sessions end. They sign in with it once and must choose their own straight away.</p>
+          <label class="field"><span>Expires after</span><select class="in" id="rp-h"><option value="4">4 hours</option><option value="24" selected>24 hours</option><option value="72">3 days</option></select></label>
+          <label class="check small"><input type="checkbox" id="rp-n" ${linkWhy ? "disabled" : ""}> E-mail them sign-in instructions (never the password)</label>${linkWhy ? `<span class="tiny muted">${esc(linkWhy)}</span>` : ""}
+          <button class="btn lime sm" id="rp-temp">Generate temporary password</button></div>
         <div class="card stack rp-o"><h3>E-mail a reset link</h3><p class="small">Sends a single-use link to <b>${esc(email || "—")}</b>. It expires in 24 hours. Their current password keeps working until they use it.</p>
-          ${linkWhy ? `<p class="tiny muted">${esc(linkWhy)}</p>` : ""}<button class="btn lime sm" id="rp-link" ${linkWhy ? "disabled" : ""}>Send the reset link</button></div>
-        <div class="card stack rp-o"><h3>Create a temporary password</h3><p class="small">Ends their sessions now. You give them the password in person; it works for 24 hours and must be changed at the next sign-in.</p>
-          <button class="btn sm" id="rp-temp">Create temporary password</button></div></div>
+          <button class="btn ghost sm" id="rp-link" ${linkWhy ? "disabled" : ""}>Send the reset link</button></div></div></div>
       <div id="rp-out" aria-live="polite"></div>
-      <div class="acts"><button class="btn ghost" id="rp-x">Close</button></div>`, (m) => {
+      <div class="acts" id="rp-acts"><button class="btn ghost" id="rp-x">Close</button></div>`, (m) => {
       const out = $("#rp-out", m), busy = (b, on) => { b.disabled = on; b.setAttribute("aria-busy", on ? "true" : "false"); };
-      $("#rp-x", m).onclick = () => { U.closeModal(); renderUsers(); };
+      const close = () => { out.innerHTML = ""; U.closeModal(); renderUsers(); };   // the password lives only in this dialog
+      $("#rp-x", m).onclick = close;
       const l = $("#rp-link", m); if (l) l.onclick = async () => { busy(l, true);
         try { const x = await root.XFServer.resetAccount(r.uid, "link"); out.innerHTML = `<div class="note ok small"><b>Reset link sent</b> to ${esc(x.to)} at ${esc(new Date(x.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}. The e-mail service accepted it; delivery to the inbox can take a few minutes.</div>`; }
         catch (e) { out.innerHTML = `<div class="note err small"><b>Not sent.</b> ${esc(e.message)}</div>`; } busy(l, false); };
-      const t = $("#rp-temp", m); t.onclick = async () => {
-        if (!t.dataset.armed) { t.dataset.armed = "1"; t.textContent = "Confirm — end their sessions and create"; t.classList.add("danger"); return; }
-        busy(t, true);
-        try { const x = await root.XFServer.resetAccount(r.uid, "temp");
-          out.innerHTML = `<div class="card stack rp-pw"><span class="small">Temporary password for <b>${esc(name)}</b> — shown only now:</span><div class="row"><code class="rp-code" id="rp-code">${esc(x.tempPassword)}</code><button class="btn ghost xs" id="rp-copy">Copy</button></div><span class="tiny muted">Valid until ${esc(new Date(x.expiresAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}. Give it to them in person or by phone — not in a group chat.</span></div>`;
-          $("#rp-copy", m).onclick = () => { try { navigator.clipboard.writeText(x.tempPassword); U.toast("Copied."); } catch (e) {} };
-          t.disabled = true; t.textContent = "Temporary password created";
-        } catch (e) { out.innerHTML = `<div class="note err small"><b>Not reset.</b> ${esc(e.message)}</div>`; busy(t, false); } };
-    }, { wide: true });
+      $("#rp-temp", m).onclick = () => {
+        const hours = +$("#rp-h", m).value, notify = $("#rp-n", m).checked, main = $("#rp-main", m);
+        main.hidden = true;
+        out.innerHTML = `<div class="card stack rp-conf" role="alertdialog" aria-labelledby="rp-ch"><h3 id="rp-ch">Generate a temporary password for ${esc(name)}?</h3>
+          <p class="small">Their current password stops working and they are signed out everywhere. The new password expires after ${esc(hours === 72 ? "3 days" : hours + " hours")}${notify ? " and sign-in instructions are e-mailed to " + esc(email) : ""}.</p>
+          <div class="row"><button class="btn ghost sm" id="rp-no">Cancel</button><button class="btn danger sm" id="rp-yes">Confirm and generate</button></div></div>`;
+        $("#rp-no", m).onclick = () => { out.innerHTML = ""; main.hidden = false; };
+        const y = $("#rp-yes", m); y.focus();
+        y.onclick = async () => { busy(y, true); $("#rp-no", m).disabled = true;
+          try { const x = await root.XFServer.resetAccount(r.uid, "temp", { hours, notify });
+            const ml = !x.mail || !x.mail.requested ? "" : x.mail.ok ? `<span class="tiny">Sign-in instructions e-mailed to ${esc(x.mail.to || email)} (the password is not in the e-mail).</span>` : `<span class="tiny rp-bad">Instructions e-mail NOT sent: ${esc(x.mail.error || "unknown error")}</span>`;
+            out.innerHTML = `<div class="card stack rp-pw"><div class="note ok small"><b>Temporary login password generated successfully. The user must change this password after signing in.</b></div>
+              <span class="small">Temporary password for <b>${esc(name)}</b> — shown only now, never again:</span>
+              <div class="row"><code class="rp-code" id="rp-code">${esc(x.tempPassword)}</code><button class="btn ghost xs" id="rp-copy">Copy password</button></div>
+              <span class="tiny muted">Expires ${esc(fmt(x.expiresAt))}. Username: <b>${esc((info && info.username) || "")}</b>. Give it to them in person or by phone — not in a group chat.</span>${ml}</div>`;
+            $("#rp-copy", m).onclick = async () => { try { await navigator.clipboard.writeText(x.tempPassword); U.toast("Copied."); } catch (e) { const rg = document.createRange(); rg.selectNodeContents($("#rp-code", m)); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(rg); U.toast("Selected — press Ctrl/⌘ C to copy."); } };
+            $("#rp-x", m).textContent = "Done — I have the password";
+          } catch (e) { out.innerHTML = `<div class="note err small"><b>Not reset.</b> ${esc(e.message)}</div>`; main.hidden = false; } };
+      };
+    }, { wide: true, onClose: () => { const o = document.getElementById("rp-out"); if (o) o.innerHTML = ""; } });
   }
   async function editUser(r) {
     const roles = A.A.roles || A.DEFAULT_ROLES, cloud = DPStore.st.mode === "cloud", uid = r.uid, hr = uid ? (((await DPStore.tryGet(`staff/${uid}`)) || {}).hr || {}) : {};

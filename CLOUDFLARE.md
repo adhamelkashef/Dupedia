@@ -157,3 +157,17 @@ the temporary password still works and the Forgot page says recovery by e-mail i
 Security: only a SHA-256 hash of each link is stored; links work once; a new link cancels older ones; using a link ends
 every session of that account; the Forgot form answers the same way whether or not the address exists and is limited to
 3 requests per address and 10 per network per 15 minutes; tokens and temporary passwords are never written to logs.
+
+## Temporary login passwords (1.4.5)
+
+**User Management → the person → Reset password… → Generate temporary password → Confirm and generate.** Works for every
+account — employees, sales, finance, engineering and other administrators. The password is shown once; copy it and give it
+in person or by phone. Optionally tick *E-mail them sign-in instructions* (the e-mail never contains the password).
+
+- At sign-in the person must choose their own password on the sign-in page before X FORCE opens; the server refuses every
+  other request until they do. The temporary password stops working the moment it is changed, or when it expires.
+- Expiry: the administrator picks 4 hours, 24 hours or 3 days. Optional **Text** variables:
+  `TEMP_PASSWORD_HOURS` (default 24, used when no choice is sent) and `TEMP_PASSWORD_MAX_HOURS` (upper limit, default 168 = 7 days).
+  The first password of a newly created account also expires after `TEMP_PASSWORD_MAX_HOURS`.
+- Safeguards: nobody resets their own password here (use My Profile → Change password); only the owner can reset the
+  owner. Every generation and every refusal is written to the audit log (who, whom, when, e-mail result) — never the password.

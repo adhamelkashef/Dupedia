@@ -17,7 +17,7 @@ import "../app/holidays.js";
 import "../app/jobs13.js";
 import { computeSweep } from "./sweep.js";
 import { researchConfig, runRequestJob, researchTick } from "./research.js";
-import { mailConfigured, sendMail, resetEmail } from "./mail.js";
+import { mailConfigured, sendMail, resetEmail, tempEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
 const DOC_MAX = 256 * 1024, BODY_MAX = 4 * 1048576;
@@ -485,7 +485,12 @@ const LOGIN_JS = `(function(){var f=document.getElementById("f");if(!f)return;va
 var mode=f.dataset.mode||"";var tok="";if(mode==="reset"){var m=/[#&]t=([A-Za-z0-9_-]{20,200})/.exec(location.hash);tok=m?m[1]:"";try{history.replaceState(null,"",location.pathname);}catch(x){}
 if(!tok){f.innerHTML='<h1>This link is incomplete</h1><p class="sub">Open the link from your e-mail again, or ask for a new one.</p><a class="fgt" href="/forgot">Send a new link</a>';return;}}
 function done(h,t,l,lt){f.innerHTML='<div class="done"><div class="ic"></div><h1>'+h+'</h1><p class="sub">'+t+'</p>'+(l?'<a class="btn" href="'+l+'">'+lt+'</a>':'')+'</div>';}
-f.querySelectorAll("[data-peek-for]").forEach(function(c){c.onchange=function(){var i=document.getElementById(c.dataset.peekFor);i.type=c.checked?"text":"password";i.toggleAttribute("data-peek",c.checked);};});
+function peeks(){f.querySelectorAll("[data-peek-for]").forEach(function(c){c.onchange=function(){var i=document.getElementById(c.dataset.peekFor);i.type=c.checked?"text":"password";i.toggleAttribute("data-peek",c.checked);};});}peeks();
+var oldpw="";function change(o){mode="change";oldpw=o||"";f.dataset.mode="change";
+f.innerHTML='<h1>Choose your own password</h1><p class="sub">You signed in with a temporary password. Choose a new one to continue — the temporary password stops working as soon as you do.</p><div class="err" id="e" role="alert"></div>'+(oldpw?'':'<label>Temporary password<input name="old" type="password" autocomplete="current-password" required autofocus></label>')+'<label>New password<span class="fld"><input id="pw" name="password" type="password" autocomplete="new-password" required'+(oldpw?' autofocus':'')+'><label class="peek"><input type="checkbox" data-peek-for="pw"> Show</label></span><span class="tiny">10 or more characters, with letters and a digit.</span></label><label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label><button>Save and continue</button><a class="fgt" href="#" id="so">Sign out</a>';
+er=document.getElementById("e");b=f.querySelector("button");peeks();var fi=f.querySelector("[autofocus]");if(fi)fi.focus();
+document.getElementById("so").onclick=function(ev){ev.preventDefault();fetch("/api/logout",{method:"POST",headers:{"x-xf":"1"}}).finally(function(){location.href="/login";});};}
+if(!mode&&/[?&]change=1/.test(location.search))change("");
 function bad(m,el){er.textContent=m;er.classList.add("on");f.setAttribute("data-bad","");if(el)el.focus();}
 f.addEventListener("input",function(){if(er.classList.contains("on")){er.classList.remove("on");f.removeAttribute("data-bad");}});
 f.onsubmit=async function(e){e.preventDefault();er.classList.remove("on");f.removeAttribute("data-bad");
@@ -493,10 +498,11 @@ var miss=[].slice.call(f.querySelectorAll("input[required]")).find(function(i){r
 if(miss){return bad("Enter your "+(miss.closest("label").firstChild.textContent||"details").trim().toLowerCase()+".",miss);}
 var d=Object.fromEntries(new FormData(f));
 if(mode==="forgot"&&!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(d.email.trim()))return bad("Enter a valid e-mail address.",f.querySelector("input[name=email]"));
-if(mode==="reset"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d={token:tok,password:d.password};}
+if(mode==="reset"||mode==="change"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d=mode==="reset"?{token:tok,password:d.password}:{old:oldpw||d.old,password:d.password};}
 b.disabled=true;b.setAttribute("aria-busy","true");
-var r=await fetch(mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d)}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server cannot be reached. Check your connection and try again."};});
-if(r.error){b.disabled=false;b.removeAttribute("aria-busy");var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
+var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d)}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server cannot be reached. Check your connection and try again."};});
+if(r.error){b.disabled=false;b.removeAttribute("aria-busy");if(mode==="change"&&r.error==="old"){if(oldpw){location.href="/login";return;}r.message="The temporary password is not correct.";}var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
+if(!mode&&r.mustChange){b.disabled=false;b.removeAttribute("aria-busy");return change(d.password);}
 if(mode==="forgot")return done("Check your e-mail",r.message,"/login","Back to sign in");
 if(mode==="reset")return done("Password changed","You can now sign in with your new password. Your other sessions were signed out.","/login","Sign in");
 document.body.classList.add("leaving");setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:320);};})();`;
@@ -596,7 +602,10 @@ async function alerts13(env) {
 
 /* ======================= router ======================= */
 /* ======================= 1.4.4 password recovery ======================= */
-const RESET_SELF_MIN = 30, RESET_ADMIN_MIN = 24 * 60, TEMP_HOURS = 24;
+const RESET_SELF_MIN = 30, RESET_ADMIN_MIN = 24 * 60;
+/** 1.4.5 — temporary passwords expire: the administrator picks 1–168 hours (default and maximum from TEMP_PASSWORD_HOURS, default 24 / 168). */
+const tempHours = (env, asked) => { const max = Math.max(1, Math.min(168, parseInt(env.TEMP_PASSWORD_MAX_HOURS || "168", 10) || 168)), def = Math.max(1, Math.min(max, parseInt(env.TEMP_PASSWORD_HOURS || "24", 10) || 24));
+  const a = parseInt(asked, 10); return Number.isFinite(a) && a >= 1 ? Math.min(max, a) : def; };
 const GENERIC_FORGOT = "If an account exists with this e-mail address, password recovery instructions have been sent.";
 const tokenNew2 = () => b64(rand(32)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const appOrigin = (env, req) => String(env.APP_URL || new URL(req.url).origin).replace(/\/+$/, "");
@@ -700,12 +709,14 @@ async function route(req, env, ctx) {
   }
   // ---- everything below needs a session
   const acc = await account(env, req);
-  if (p === "/" || p === "/index.html") { if (!(await setupDone(env))) return redirect("/setup"); if (!acc) return redirect("/login"); return indexHtml(env, req); }
+  if (p === "/" || p === "/index.html") { if (!(await setupDone(env))) return redirect("/setup"); if (!acc) return redirect("/login"); if (acc.must_change) return redirect("/login?change=1"); return indexHtml(env, req); }
   if (p === "/xf-shim.js") return acc ? env.ASSETS.fetch(req) : respond(401, "", "text/plain");
   if (!p.startsWith("/api/")) return respond(404, "Not found", "text/plain");
   if (p.startsWith("/api/ingest/")) return json(501, { error: "not_available", message: "Research results are not uploaded from outside on Cloudflare: research runs inside this Worker (Mission Control → Run research now)." });
   if (!acc) return json(401, { error: "unauthenticated", message: "Signed out — sign in again." });
   if (M !== "GET" && !csrfOk(req)) return json(403, { error: "forbidden" });
+  // 1.4.5 — a temporary password only lets you choose your own: nothing else answers until it is changed
+  if (acc.must_change && !["/api/me", "/api/password", "/api/logout"].includes(p)) return json(403, { error: "must_change", message: "Choose a new password first." });
   const admin = isAdminAcc(acc);
   if (p === "/api/me") return json(200, { uid: acc.uid, name: acc.name, username: acc.username, level: levelOf(acc), owner: !!acc.owner, mustChange: !!acc.must_change });
   if (p === "/api/logout" && M === "POST") { const t = cookies(req).xf_s; if (t) await env.DB.prepare("DELETE FROM sessions WHERE th = ?").bind(await sha256(t)).run(); return json(200, { ok: true }, { "Set-Cookie": cookie(req, "", 0) }); }
@@ -722,7 +733,9 @@ async function route(req, env, ctx) {
     const b = await body(req);
     if (!(await checkPw(b.old, acc))) return json(403, { error: "old", message: "The current password is not correct." });
     const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob });
+    if (String(b.password) === String(b.old)) return json(400, { error: "password", message: "Choose a password different from the current one." });
     const h = await hashPw(env, b.password), keep = await sha256(cookies(req).xf_s || "");
+    if (acc.must_change) await env.DB.batch([env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND kind = 'admin-temp' AND used_at IS NULL").bind(now(), acc.uid)]);
     await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 0 WHERE uid = ?").bind(h.salt, h.hash, h.iter, acc.uid),
       env.DB.prepare("DELETE FROM sessions WHERE uid = ? AND th <> ?").bind(acc.uid, keep), env.DB.prepare("DELETE FROM kv WHERE k = ?").bind("tempexp:" + acc.uid)]);
     return json(200, { ok: true });
@@ -739,8 +752,8 @@ async function route(req, env, ctx) {
   if (mr && M === "POST") {
     const b = await body(req), a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(mr[1]).first();
     if (!a) return json(404, { error: "not_found", message: "No such account." });
-    if (a.uid === acc.uid) return json(400, { error: "self", message: "Change your own password in My Profile → Change password (or use “Forgot your password?” on the sign-in page)." });
-    if (a.owner && !acc.owner) return json(403, { error: "owner", message: "Only the owner can reset the owner's password." });
+    if (a.uid === acc.uid) { await auditSrv(env, acc.uid, "Password reset refused", a.uid, "Own account — use My Profile → Change password"); return json(400, { error: "self", message: "Change your own password in My Profile → Change password (or use “Forgot your password?” on the sign-in page)." }); }
+    if (a.owner && !acc.owner) { await auditSrv(env, acc.uid, "Password reset refused", a.uid, "Owner account — only the owner may reset it"); return json(403, { error: "owner", message: "Only the owner can reset the owner's password." }); }
     await env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username).run();   // a locked-out person can be helped at once
     if (b.mode === "link") {
       if (!mailConfigured(env)) return json(400, { error: "not_configured", message: "E-mail is not set up yet (RESEND_API_KEY and MAIL_FROM). Use a temporary password instead." });
@@ -748,14 +761,24 @@ async function route(req, env, ctx) {
       return json(r.ok ? 200 : 400, r.ok ? { ok: true, mode: "link", sentAt: r.sentAt, to: r.to } : { error: "mail", message: r.error });
     }
     if (b.mode === "temp") {
-      const pw = tempPassword(), h = await hashPw(env, pw), exp = Date.now() + TEMP_HOURS * 3600e3;
+      const hrs = tempHours(env, b.hours), pw = tempPassword(), h = await hashPw(env, pw), exp = Date.now() + hrs * 3600e3;
       await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 1 WHERE uid = ?").bind(h.salt, h.hash, h.iter, a.uid),
         env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid),
         env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(exp)),
         env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND used_at IS NULL").bind("superseded " + now(), a.uid),
         env.DB.prepare("INSERT INTO resets (th, uid, kind, exp, created_at, created_by, mail) VALUES (?, ?, 'admin-temp', ?, ?, ?, 'not e-mailed — given in person')").bind(await sha256("temp:" + tokenNew2()), a.uid, exp, now(), acc.uid)]);
-      await auditSrv(env, acc.uid, "Temporary password issued by an administrator", a.uid, "Sessions ended; must be changed at next sign-in; expires in 24 hours");
-      return json(200, { ok: true, mode: "temp", tempPassword: pw, expiresAt: new Date(exp).toISOString() }, { "Cache-Control": "no-store" });
+      // optional: e-mail sign-in instructions — never the password itself
+      let mail = { requested: !!b.notify, ok: false, error: null };
+      if (b.notify) {
+        const d = await dirOf(env, a.uid), to = emailOf(d);
+        if (!mailConfigured(env)) mail.error = "E-mail is not set up on the server.";
+        else if (!to) mail.error = "No e-mail address on file.";
+        else { const m = tempEmail({ name: (d && (d.firstName || d.displayName)) || a.name, username: a.username, hours: hrs, origin: appOrigin(env, req) });
+          const r = await sendMail(env, { to, subject: m.subject, html: m.html, text: m.text }); mail = { requested: true, ok: r.ok, error: r.ok ? null : r.error, to: to.replace(/^(.).*(@.*)$/, "$1…$2") }; }
+        await env.DB.prepare("UPDATE resets SET mail = ? WHERE uid = ? AND kind = 'admin-temp' AND exp = ?").bind(mail.ok ? "instructions sent " + now() : "instructions NOT sent: " + mail.error, a.uid, exp).run();
+      }
+      await auditSrv(env, acc.uid, "Temporary password generated", a.uid, `Generated (${a.level === "admin" || a.owner ? "administrator" : a.level} account); sessions ended; must be changed at sign-in; expires in ${hrs} h; e-mail: ${b.notify ? (mail.ok ? "instructions sent" : "not sent — " + mail.error) : "not requested"}`);
+      return json(200, { ok: true, mode: "temp", tempPassword: pw, expiresAt: new Date(exp).toISOString(), hours: hrs, mail }, { "Cache-Control": "no-store" });
     }
     return json(400, { error: "invalid_argument", message: "Choose how to reset: e-mail link or temporary password." });
   }
@@ -767,6 +790,7 @@ async function route(req, env, ctx) {
     const uid = uidNew(), h = await hashPw(env, b.password);
     await env.DB.prepare("INSERT INTO users (uid, username, name, level, owner, active, must_change, salt, hash, iter, created_at, created_by) VALUES (?, ?, ?, ?, 0, 1, 1, ?, ?, ?, ?, ?)")
       .bind(uid, un, String(b.name || un).slice(0, 80), ACC_LEVELS[b.level] || "interact", h.salt, h.hash, h.iter, now(), acc.uid).run();
+    await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + uid, String(Date.now() + tempHours(env, env.TEMP_PASSWORD_MAX_HOURS || 168) * 3600e3)).run();
     return json(200, { uid });
   }
   const m = p.match(/^\/api\/accounts\/(u_[A-Za-z0-9]{10,40})$/);
@@ -776,6 +800,9 @@ async function route(req, env, ctx) {
     if (a.owner && (b.active === false || (b.level && b.level !== "admin"))) return json(400, { error: "owner", message: "The owner account cannot be deactivated or demoted." });
     if (b.level) a.level = ACC_LEVELS[b.level] || "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
     const st = [];
+    if (b.password && a.uid === acc.uid) return json(400, { error: "self", message: "Change your own password in My Profile." });
+    if (b.password && a.owner && !acc.owner) return json(403, { error: "owner", message: "Only the owner can reset the owner's password." });
+    if (b.password) { await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(Date.now() + tempHours(env) * 3600e3)).run(); await auditSrv(env, acc.uid, "Temporary password set by an administrator", a.uid, "Chosen by the administrator; must be changed at sign-in"); }
     if (b.password) { const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob }); const h = await hashPw(env, b.password); Object.assign(a, { salt: h.salt, hash: h.hash, iter: h.iter, must_change: 1 }); }
     st.push(env.DB.prepare("UPDATE users SET level = ?, active = ?, name = ?, salt = ?, hash = ?, iter = ?, must_change = ? WHERE uid = ?").bind(a.level, a.active, a.name, a.salt, a.hash, a.iter, a.must_change, a.uid));
     if (!a.active || b.password) st.push(env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid));   // deactivation / reset ends their sessions at once

@@ -254,6 +254,9 @@ details.xsect[open]>.stack{animation:xfIn .2s var(--ease)}
 .rp-o{box-shadow:none;background:var(--sunk);border-color:var(--line)}.rp-o h3{font-size:16px}.rp-o .btn{align-self:flex-start}
 .rp-code{font:600 18px/1.2 ui-monospace,Menlo,Consolas,monospace;background:var(--surface);border:1px dashed var(--line-strong);border-radius:10px;padding:8px 12px;letter-spacing:.04em;user-select:all}
 .rp-pw{background:var(--lime-soft);border-color:color-mix(in srgb,var(--lime) 60%,var(--line))}
+.rp-who{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px;margin:4px 0 10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.rp-who dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.rp-who dd{margin:2px 0 0;font-weight:600;overflow-wrap:anywhere}
+.rp-conf{border-color:color-mix(in srgb,var(--danger,#B3261E) 40%,var(--line))}.rp-conf h3{font-size:16px}.rp-bad{color:var(--danger,#B3261E);font-weight:600}
 
 /* ---------- 1.4.4 Needs your attention ---------- */
 .att2{padding:0;overflow:hidden}
