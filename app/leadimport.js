@@ -60,8 +60,8 @@
     let res = null;
     U.openModal(`<h2>Import leads — ${esc(file.name)}</h2><p class="small muted">${body.length} data row(s). 1 · match the columns · 2 · check the preview · 3 · import.</p>
       <div class="card"><b class="small">Columns</b><div class="grid2">${FIELDS.map(([k, l]) => `<label class="field"><span>${esc(l)}</span><select class="in sm" data-map="${k}"><option value="">— not in the file —</option>${head.map((h, i) => `<option value="${i}"${map[k] === String(i) ? " selected" : ""}>${esc(h || "column " + (i + 1))}</option>`).join("")}</select></label>`).join("")}</div>
-        <div class="grid2"><label class="field"><span>Where the contact details come from (required to keep phones and e-mails)</span><input class="in sm" id="li-src" placeholder="e.g. Cityscape 2026 visitor list, our own CRM export"></label><label class="field"><span>After import</span><select class="in sm" id="li-st"><option value="available">Available in the Lead Mine (sales can claim)</option><option value="research">Under research (data entry completes them first)</option></select></label></div></div>
-      <div id="li-prev"></div><p class="small fin-err" style="color:var(--red)"></p><div class="acts"><button class="btn ghost" id="li-x">Cancel</button><button class="btn ghost" id="li-c">Check</button><button class="btn lime" id="li-ok" disabled>Import</button></div>`, (m) => {
+        <div class="grid2"><label class="field"><span>Where the contact details come from (required to keep phones and e-mails)</span><input class="in sm" id="li-src" placeholder="e.g. Cityscape 2026 visitor list, our own CRM export"></label><label class="field"><span>After import</span><select class="in sm" id="li-st"><option value="available">Available in the Lead Mine (sales can claim)</option><option value="research">Under research (data entry completes them first)</option></select></label></div><label class="field"><span>Campaign that produced this list (lead source for reporting)</span><select class="in sm" id="li-cp"><option value="">— none —</option></select></label></div>
+      <div id="li-prev"></div><p class="small fin-err" style="color:var(--red)"></p><div class="acts"><button class="btn ghost" id="li-x">Cancel</button><button class="btn ghost" id="li-c">Check</button><button class="btn lime" id="li-ok" disabled>Import</button></div>`, (m) => { if (root.DPMkt) DPMkt.campaigns().then((cs) => { const sel = $("#li-cp", m); if (sel) sel.insertAdjacentHTML("beforeend", cs.filter((c) => !["cancelled"].includes(c.status)).map((c) => `<option value="${esc(c.id)}">${esc(c.name)} · ${esc(c.source)}</option>`).join("")); }).catch(() => {});
       const read = () => { $$("[data-map]", m).forEach((s) => (map[s.dataset.map] = s.value)); };
       const check = () => { read(); if (!map.name) { $(".fin-err", m).textContent = "Choose the column with the company name."; return; } $(".fin-err", m).textContent = "";
         res = analyse(body, map, existing, people); const c = (s) => res.filter((r) => r.status === s).length;
@@ -71,19 +71,19 @@
           ${c("rejected") ? `<button class="btn ghost xs" id="li-rej">Download rejected rows (CSV)</button>` : ""}`;
         $("#li-ok", m).disabled = !c("ok") && !c("possible"); const rj = $("#li-rej", m); if (rj) rj.onclick = () => downloadRejected(res, head, body); };
       $$("[data-map]", m).forEach((s) => (s.onchange = check)); $("#li-c", m).onclick = check; $("#li-x", m).onclick = () => U.closeModal(); check();
-      $("#li-ok", m).onclick = async () => { read(); const src = $("#li-src", m).value.trim(), status = $("#li-st", m).value, take = new Set($$("[data-pos]", m).filter((x) => x.checked).map((x) => +x.dataset.pos));
+      $("#li-ok", m).onclick = async () => { read(); const src = $("#li-src", m).value.trim(), status = $("#li-st", m).value, campaignId = ($("#li-cp", m) || {}).value || null, take = new Set($$("[data-pos]", m).filter((x) => x.checked).map((x) => +x.dataset.pos));
         const list = res.filter((r, i) => r.status === "ok" || (r.status === "possible" && take.has(i)));
         if (list.some((r) => r.v.phone || r.v.email) && !src) { $(".fin-err", m).textContent = "Say where the contact details come from — otherwise phones and e-mails cannot be kept."; return; }
         const btn = $("#li-ok", m); btn.disabled = true; btn.textContent = "Importing…";
-        try { const r = await importRows(list, { file: file.name, source: src, status }); U.closeModal(); summary(r, res, head, body); done && done(r); } catch (e) { $(".fin-err", m).textContent = e.message; btn.disabled = false; btn.textContent = "Import"; } };
+        try { const r = await importRows(list, { file: file.name, source: src, status, campaignId }); U.closeModal(); summary(r, res, head, body); done && done(r); } catch (e) { $(".fin-err", m).textContent = e.message; btn.disabled = false; btn.textContent = "Import"; } };
     }, { wide: true });
   }
-  async function importRows(list, { file, source, status }) {
+  async function importRows(list, { file, source, status, campaignId = null }) {
     if (!U.isAdmin()) throw new Error("Administrators only."); const at = new Date().toISOString(), me = DPAuth.A.me.id, origin = `File import: ${file}`;
     let added = 0, skipped = 0; const owners = [];
     const work = list.map((r) => async () => { const id = idFor(r.v.name), path = `leads/${id}`; if (await DPStore.tryGet(path)) { skipped++; return; }
       const orgType = Object.keys(L().ORG_TYPES).find((k) => k === r.v.category || L().ORG_TYPES[k].toLowerCase() === r.v.category.toLowerCase()) || "other";
-      const keep = !!source, lead = { name: r.v.name, orgType, category: r.v.category || "", location: r.v.location, country: "Egypt", status, origin, originKind: "import", sources: /^https?:\/\//.test(r.v.source) ? [{ url: r.v.source, date: at.slice(0, 10) }] : [], sourceNote: /^https?:\/\//.test(r.v.source) ? "" : r.v.source,
+      const keep = !!source, lead = { name: r.v.name, orgType, category: r.v.category || "", location: r.v.location, country: "Egypt", status, origin, originKind: "import", campaignId: campaignId || null, sources: /^https?:\/\//.test(r.v.source) ? [{ url: r.v.source, date: at.slice(0, 10) }] : [], sourceNote: /^https?:\/\//.test(r.v.source) ? "" : r.v.source,
         evidence: r.v.notes, notes: r.v.notes, followUp: r.followUp || null, contact: { name: r.v.contactName, title: "", phone: keep ? r.v.phone : "", email: keep ? r.v.email : "", source: keep && (r.v.phone || r.v.email) ? source : "", sub: "none", verifiedAt: null },
         qualification: {}, createdAt: at, createdBy: me, updatedAt: at, updatedBy: me, history: [{ at, by: me, action: "Imported", reason: origin, detail: `row ${r.row}` }] };
       await DPStore.set(path, lead); added++; if (r.owner) owners.push({ id, uid: r.owner }); });

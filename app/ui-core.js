@@ -123,15 +123,17 @@
   /* ---------------- navigation ---------------- */
   const PROJECT_VIEWS = ["setup", "plan", "quote", "review", "proposal"];
   const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission"];
+  const GROWTH_VIEWS = ["growth", "campaigns", "radar", "partners"];
   const OPS_VIEWS = ["reminders", "facjobs", "facdash", "equipment", "products", "catalog", "holidays"];
   const FIN_VIEWS = ["finance", "transfers", "finaccounts", "salaries", "purchases", "invoices", "taxes", "finreports"];
-  const VIEWS = ["dash", "home", "proposals", "leads", "myleads", "mycomm", "profile", "tracking", "calls", "engorders", "workers", "research", "factory", "messages", "start", "intel"].concat(PROJECT_VIEWS, ADMIN_VIEWS, FIN_VIEWS, OPS_VIEWS);
+  const VIEWS = ["dash", "home", "proposals", "leads", "myleads", "mycomm", "profile", "tracking", "calls", "engorders", "workers", "research", "factory", "messages", "start", "intel"].concat(PROJECT_VIEWS, ADMIN_VIEWS, FIN_VIEWS, OPS_VIEWS, GROWTH_VIEWS);
   /** Which views each access level may open (administrators: all). Enforcement of data is in the database rules. */
   const ROLE_VIEWS = {
-    employee: ["dash", "home", "proposals", "leads", "myleads", "mycomm", "profile", "tracking", "calls", "messages", "start", "intel", "reminders", "catalog"].concat(PROJECT_VIEWS),
+    employee: ["dash", "home", "proposals", "leads", "myleads", "mycomm", "profile", "tracking", "calls", "messages", "start", "intel", "reminders", "catalog", "campaigns", "radar", "partners"].concat(PROJECT_VIEWS),
     engineer: ["dash", "engorders", "factory", "workers", "profile", "messages", "facjobs", "facdash", "equipment", "reminders", "catalog"],
     dataentry: ["dash", "research", "leads", "calls", "profile", "messages", "intel", "reminders"],
     viewer: ["dash", "profile"],
+    marketing: ["dash", "profile", "messages", "reminders", "catalog", "leads", "intel"].concat(GROWTH_VIEWS),
     accountant: ["dash", "profile", "messages", "payverify", "approvecomm", "workers", "reminders", "holidays", "catalog"].concat(FIN_VIEWS),
   };
   const allowedView = (v) => isAdmin() || (ROLE_VIEWS[role()] || ROLE_VIEWS.viewer).includes(v);
@@ -140,7 +142,8 @@
   function go(view, opts = {}) {
     if (!root.DPAuth || !root.DPAuth.A.ready) return;
     if (!VIEWS.includes(view)) view = "dash";
-    if (view === "dash" && role() === "accountant") view = "finance";   // 1.2: the Accountant's home is the Finance dashboard
+    if (view === "dash" && role() === "accountant") view = "finance";
+    if (view === "dash" && role() === "marketing") view = "growth";   // 1.4: Marketing's home is the Growth Command Center   // 1.2: the Accountant's home is the Finance dashboard
     if (PROJECT_VIEWS.includes(view) && !App.open && !(view === "setup" && opts.isNew)) view = "home";
     if (!allowedView(view)) { toast("That page is not available for your role.", { err: true }); view = "dash"; }
     App.view = view; App.newSetup = view === "setup" && !!opts.isNew; App.viewOpts = opts; $("#app").dataset.view = view;

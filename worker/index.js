@@ -118,13 +118,38 @@ async function staffRoleBase(env, uid) {
 }
 async function checkNewLead(env, acc, d) {
   if (!d || typeof d !== "object") return "Lead data missing.";
-  const base = await staffRoleBase(env, acc.uid), kind = base === "employee" ? "sales" : base === "dataentry" ? "dataentry" : null;
+  const base = await staffRoleBase(env, acc.uid), kind = base === "employee" ? "sales" : base === "dataentry" ? "dataentry" : base === "marketing" ? "marketing" : null;
   if (!kind) return "Your role cannot add leads.";
   if (d.createdBy !== acc.uid || d.originKind !== kind) return "A new lead must be recorded as created by you, with your role as its origin.";
   if (!String(d.name || "").trim()) return "Enter the organisation name.";
   if (d.assignedTo || d.assignedBy || d.extensions || d.releases || d.mergedInto) return "A new lead cannot be assigned, extended or merged by its creator.";
   if (!["available", "research"].includes(d.status)) return "A new lead starts as Available or Under Research.";
   return null;
+}
+/* 1.4 — Growth & Marketing Center. Writers: administrators and the Marketing role; a Radar account's or partnership's
+   owner (sales) may update only the follow-up fields; interactions are append-only and stamped with their author. */
+const MKT_OWNER_FIELDS = ["nextAction", "nextDue", "notes", "qualification", "confirmedNeed", "confirmedNeedBy", "priorityOverride", "feedback", "feedbackLog", "history", "updatedAt", "updatedBy", "referrals", "meetings", "followUp"];
+async function mktGuard(env, acc, p, old, next) {
+  if (isAdminAcc(acc)) return null;
+  if (p === "mkt/cfg") return "Only an administrator changes the marketing settings.";
+  const base = await staffRoleBase(env, acc.uid), mkt = base === "marketing";
+  if (/^mkt\/touch\/t\/[^/]+$/.test(p)) { if (old) return "Recorded interactions cannot be changed."; if (next.by !== acc.uid) return "An interaction must be recorded as yours."; if (next.data && MONEY.test(JSON.stringify(next.data))) return "No amounts here."; return null; }
+  if (/^mkt\/camp\/c\/[^/]+$/.test(p)) {
+    if (!mkt) return "Only Marketing and administrators manage campaigns.";
+    // approvals belong to the administrator: Marketing cannot approve a campaign or approve / publish content itself
+    if (["approved", "live"].includes(next.status) && !(old && ["approved", "live", "paused"].includes(old.status))) return "An administrator approves a campaign before it runs.";
+    const was = Object.fromEntries(((old && old.content) || []).map((c) => [c.id, c.status]));
+    for (const c of next.content || []) if (c.status === "approved" && was[c.id] !== "approved" && was[c.id] !== "published") return "An administrator approves content before it is published.";
+    for (const c of next.content || []) if (c.status === "published" && !["approved", "published"].includes(was[c.id])) return "Only approved content can be recorded as published.";
+    if (old && old.approvedBy !== next.approvedBy) return "The approval record cannot be changed.";
+    return null; }
+  if (/^mkt\/camp\/c\/[^/]+\/f\//.test(p)) return mkt ? null : "Only Marketing and administrators add campaign assets.";
+  if (/^mkt\/(radar\/a|part\/p)\/[^/]+$/.test(p)) {
+    if (mkt) return null;
+    if (!old || old.ownerUid !== acc.uid) return "Only Marketing, administrators or the owner can change this record.";
+    for (const k of new Set(Object.keys(old).concat(Object.keys(next)))) if (!MKT_OWNER_FIELDS.includes(k) && JSON.stringify(old[k] ?? null) !== JSON.stringify(next[k] ?? null)) return `As the owner you can update the follow-up and qualification only (not "${k}").`;
+    return null; }
+  return mkt ? null : "Only Marketing and administrators write here.";
 }
 /* 1.3 — notifications are delivered by the server: an event a person posts to their outbox is copied at once into each
    recipient's inbox (same id as the in-app copy, "<author>-<event>", so nothing is ever duplicated). Money never travels this way. */
@@ -206,6 +231,8 @@ const PRE_APPROVED = [["commission", (l) => l.commission && `commissions/${l.com
   ["wdue", (l) => l.wdue && `fin/wdue/d/${l.wdue}`, (d) => ["approved", "partly_paid"].includes(d.status)],
   ["purchase", (l) => l.purchase && `fin/purch/p/${l.purchase}`, (d) => ["approved", "received"].includes(d.status)]];
 const GUARDS = [
+  // 1.4 — Growth & Marketing Center
+  { re: /^mkt\//, del: (old, acc) => (isAdminAcc(acc) ? null : "Only an administrator can delete marketing records — set the status instead."), check: mktGuard },
   // 1.3 — factory records: written by engineers and administrators only; material movements and assignment history are
   // append-only; approved material estimates, technical approval and gate overrides need an administrator.
   { re: /^fac\//, del: (old, acc) => (isAdminAcc(acc) ? null : "Only an administrator can delete factory records."), check: facGuard },
@@ -439,7 +466,7 @@ async function sweep(env) {
 
 /** 1.3 — reminders, factory deadlines, unassigned jobs, maintenance, payment dates near bank closures (see app/jobs13.js). */
 async function alerts13(env) {
-  const rs = (await env.DB.prepare(`SELECT path, data FROM docs WHERE parent IN ('assign','fac/jobs/j','fac/eq/e','fin/purch/p','orders') OR parent GLOB 'rem/*/r' OR path = 'hol/cal'`).all()).results || [];
+  const rs = (await env.DB.prepare(`SELECT path, data FROM docs WHERE parent IN ('assign','fac/jobs/j','fac/eq/e','fin/purch/p','orders','mkt/radar/a','mkt/part/p') OR parent GLOB 'rem/*/r' OR parent GLOB 'submissions/*/s' OR path IN ('hol/cal','mkt/cfg')`).all()).results || [];
   const docs = {}; for (const r of rs) { try { docs[r.path] = JSON.parse(r.data); } catch (e) {} }
   const list = globalThis.DPJobs13.plan(docs, Date.now()); if (!list.length) return { notifications: 0 };
   const lv = (q) => env.DB.prepare(q).all().then((x) => (x.results || []).map((r) => r.uid));

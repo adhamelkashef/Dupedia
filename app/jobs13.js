@@ -37,6 +37,15 @@
       if (m && d.status === "approved" && d.payState !== "paid" && soon(d.dueDate, 14)) { const c = Hd().check(d.dueDate, { scope: "bank", today });
         add(["@finance", "@admins"], { id: `due-sup-${m[1]}-${d.dueDate}`, type: "finance", title: "Supplier payment due", body: `${d.supplierName || "Supplier"} — purchase ${m[1]} due ${d.dueDate}.${c ? " " + c.text : ""}`, link: { view: "purchases" }, priority: c && c.closedOnDue ? "warning" : null });
         continue; }
+      // 6. (1.4) Growth: target-account and partnership follow-ups that fell due; quotations without activity
+      m = p.match(/^mkt\/(radar\/a|part\/p)\/([^/]+)$/);
+      if (m) { const due = d.nextDue || d.followUp; if (d.ownerUid && due && due <= today && !["ended", "dormant"].includes(d.status) && d.qualification !== "disqualified")
+          add(d.ownerUid, { id: `mkt-due-${m[2]}-${due}`, type: "lead", title: m[1] === "radar/a" ? "Target account follow-up due" : "Partnership follow-up due", body: `${d.company || d.name}${d.nextAction ? ": " + d.nextAction : ""} (due ${due}).`, link: { view: m[1] === "radar/a" ? "radar" : "partners", opts: { id: m[2] } } });
+        continue; }
+      m = p.match(/^submissions\/([^/]+)\/s\/([^/]+)$/);
+      if (m) { const at = String(d.updatedAt || d.issuedAt || d.at || "").slice(0, 10), stall = (docs["mkt/cfg"] && docs["mkt/cfg"].stallDays) || 21;
+        if (d.status === "submitted" && !d.oid && at && at <= Hd().add(today, -stall)) add(m[1], { id: `quote-stall-${m[2]}-${at}`, type: "lead", title: "Quotation without activity", body: `${d.name || d.ref || m[2]}${d.client ? " — " + d.client : ""}: no update since ${at}. Follow up with the client.`, link: { view: "proposals" }, ref: d.ref || null });
+        continue; }
       m = p.match(/^orders\/([^/]+)$/);
       if (m && d.status !== "cancelled") for (const ms of (Array.isArray(d.schedule) ? d.schedule : [])) if (soon(ms.due, 7)) { const c = Hd().check(ms.due, { scope: "bank", today });
         if (c) add(["@finance", "@admins"], { id: `due-col-${m[1]}-${ms.id || ms.label}-${ms.due}`, type: "finance", title: "Collection date affected by a closure", body: `${d.name || m[1]} — ${ms.label || "payment"} due ${ms.due}. ${c.text}`, ref: m[1], link: { view: "finance" }, priority: c.closedOnDue ? "warning" : null }); }

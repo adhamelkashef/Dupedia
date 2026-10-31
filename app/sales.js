@@ -148,13 +148,13 @@
   }
 
   /* ---------------- 1.2: manual lead creation, lead origin and attachments ---------------- */
-  const ORIGIN_KINDS = { admin: "Added by an administrator", sales: "Added by sales (stays with its creator)", dataentry: "Added by data entry", research: "Lead research", import: "Imported list", proposal: "Data-entry proposal" };
+  const ORIGIN_KINDS = { admin: "Added by an administrator", sales: "Added by sales (stays with its creator)", dataentry: "Added by data entry", marketing: "Marketing (Project Radar / campaign)", research: "Lead research", import: "Imported list", proposal: "Data-entry proposal" };
   /** Administrators, sales and data entry add a lead by hand. A salesperson's own lead is claimed by them at once and is
    *  never released by the 24-hour rule; only an administrator can reassign it (with a reason). Data-entry leads start
    *  Under Research, unowned. The server checks creator and origin. */
   async function createLead(patch) {
     const u = me(); if (!u || !u.id) throw new Error("Sign in first.");
-    const kind = u.role === "admin" ? "admin" : u.role === "employee" ? "sales" : u.role === "dataentry" ? "dataentry" : null; if (!kind) throw new Error("Your role cannot add leads.");
+    const kind = u.role === "admin" ? "admin" : u.role === "employee" ? "sales" : u.role === "dataentry" ? "dataentry" : u.role === "marketing" ? "marketing" : null; if (!kind) throw new Error("Your role cannot add leads.");
     const nm = String(patch.name || "").trim(); if (!nm) throw new Error("Enter the organisation name.");
     const dup = (await listLeads()).find((l) => String(l.name || "").trim().toLowerCase() === nm.toLowerCase() && !["merged", "archived"].includes(l.status));
     if (dup) throw Object.assign(new Error(`A lead called "${dup.name}" already exists. Open it instead of adding a duplicate.`), { code: "duplicate", leadId: dup.id });

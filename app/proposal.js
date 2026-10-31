@@ -423,7 +423,7 @@
     if (sec.quotation && X.r.lines.length) { D.doc.addPage(); pagesQuotation(D, X, ++n); }
     if (sec.notes) { D.doc.addPage(); pageNotes(D, X, ++n); }
     pageNumbers(D);
-    D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.3" });
+    D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.4" });
     progress && progress("Checking the document");
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("proposal"), pages: D.doc.getNumberOfPages(), warnings: chk.warnings, total: X.r.total, currency: X.r.currency }, 2);
   }
@@ -435,7 +435,7 @@
     // compact title block instead of a cover
     pagesQuotation(D, X, 1, { standalone: true });
     D.doc.setPage(1); rect(D, 160, 20, 0.01, 0.01, C.white);
-    pageNumbers(D, false); D.doc.setProperties({ title: `${X.p.meta.name} — quotation`, creator: "Dupedia X FORCE 1.3" });
+    pageNumbers(D, false); D.doc.setProperties({ title: `${X.p.meta.name} — quotation`, creator: "Dupedia X FORCE 1.4" });
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("quotation"), pages: D.doc.getNumberOfPages() });
   }
   /** A3 technical drawing: design mode with dimensions, labels and zones, title block, standard scale where possible. */
@@ -457,7 +457,7 @@
     scaleBar(D, tx + 6, y + 4, s, tbW - 20); northArrow(D, tx + tbW - 12, y + 24, (X.p.site && X.p.site.north) || 0);
     para(D, M.DISCLAIMER, tx + 6, H - 54, tbW - 12, { size: 6.4, color: C.pebble, lh: 1.35 });
     if (!DPIO.scaleVerified()) txt(D, "SCALE NOT VERIFIED", tx + 6, H - 20, { size: 9, font: "sansBold", color: C.red });
-    D.doc.setProperties({ title: `${X.p.meta.name} — technical drawing`, creator: "Dupedia X FORCE 1.3" });
+    D.doc.setProperties({ title: `${X.p.meta.name} — technical drawing`, creator: "Dupedia X FORCE 1.4" });
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("technical-drawing-A3"), pages: D.doc.getNumberOfPages() });
   }
 

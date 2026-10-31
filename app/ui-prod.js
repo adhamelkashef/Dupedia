@@ -18,7 +18,8 @@
   const ORIGIN = { manufactured: "Manufactured by Dupedia", imported: "Imported" };
   const adm = () => U.isAdmin(), now = () => new Date().toISOString();
   const products = async () => (await DS().tryList("prod/cat/p")).map((x) => Object.assign({ code: x.id }, x.data));
-  const priceOf = (code) => { const it = ((App.config.pricebook || {}).items || {})[code]; return it && it.sell != null ? it.sell : null; };
+  /** The price book stores selling prices in currency units (EGP), as the quotation engine reads them; screens work in piastres. */
+  const priceOf = (code) => { const it = ((App.config.pricebook || {}).items || {})[code]; return it && it.sell != null && it.sell !== "" && isFinite(it.sell) ? Math.round(+it.sell * 100) : null; };
 
   async function saveProduct(p, { price = null, reason = "" } = {}) {
     if (!adm()) throw new Error("Only administrators create and edit products.");
@@ -41,10 +42,10 @@
   async function setPrice(code, sellMinor, reason) {
     if (!adm()) throw new Error("Only administrators change prices."); if (!(Number.isInteger(sellMinor) && sellMinor >= 0)) throw new Error("Enter a valid price.");
     const pb = JSON.parse(JSON.stringify(App.config.pricebook || { currency: "EGP", items: {} })); pb.items = pb.items || {}; pb.log = pb.log || [];
-    const old = pb.items[code] && pb.items[code].sell != null ? pb.items[code].sell : null; if (old === sellMinor) return;
+    const old = priceOf(code), sell = sellMinor / 100; if (old === sellMinor) return;
     if (old != null && !String(reason || "").trim()) throw new Error("Give the reason for the price change.");
-    pb.items[code] = Object.assign({}, pb.items[code] || {}, { sell: sellMinor });
-    pb.log.push({ at: now(), by: U.userInfo().name || "administrator", uid: DPAuth.A.me.id, code, before: old, after: sellMinor, reason: String(reason || "").slice(0, 300), detail: `${code} sell: ${old == null ? "—" : old} → ${sellMinor}${reason ? " — " + reason : ""}` }); pb.log = pb.log.slice(-500); pb.updatedAt = now();
+    pb.items[code] = Object.assign({}, pb.items[code] || {}, { sell });
+    pb.log.push({ at: now(), by: U.userInfo().name || "administrator", uid: DPAuth.A.me.id, code, before: old == null ? null : old / 100, after: sell, reason: String(reason || "").slice(0, 300), detail: `${code} sell: ${old == null ? "—" : old / 100} → ${sell}${reason ? " — " + reason : ""}` }); pb.log = pb.log.slice(-500); pb.updatedAt = now();
     await DS().setConfig("pricebook", pb); App.config.pricebook = pb; await DPPrice.syncCopies();
     await DPAuth.auditLog("Selling price changed", { kind: "finance", target: code, reason, before: { sellMinor: old }, after: { sellMinor } }).catch(() => {});
     await refreshCatalog(); if (U.pricing) try { U.pricing(); } catch (e) {}

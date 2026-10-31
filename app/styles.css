@@ -654,3 +654,7 @@ ul.claims{margin:0;padding-left:16px}
 .pcard:hover{border-color:var(--lime)}.pimg{aspect-ratio:4/3;display:grid;place-items:center;background:var(--sunk)}.pimg img{width:100%;height:100%;object-fit:contain}.pbody{display:flex;flex-direction:column;gap:3px;padding:10px 12px}.pdimg{max-width:100%;max-height:320px;object-fit:contain;display:block;margin:0 auto 10px}
 [dir="rtl"] .pcard{text-align:right}
 .xt.mini{padding:6px 10px}.xt.mini .xt-d,.xt.mini .xt-a,.xt.mini small{display:none}.xt.mini .xt-i{flex-basis:20px;height:20px;font-size:12px}
+
+/* ---------------- 1.4 growth & marketing ---------------- */
+.app[data-view="growth"] #view-growth,.app[data-view="campaigns"] #view-campaigns,.app[data-view="radar"] #view-radar,.app[data-view="partners"] #view-partners{display:block;overflow-y:auto}
+.mt-list .check{display:flex;gap:6px;padding:3px 0;border-bottom:1px solid var(--line)}

@@ -115,6 +115,12 @@
     if (!todo.length) throw Object.assign(new Error(`Already queued or running: ${busy.map(jobLabel).join(", ")}.`), { code: "busy" });
     const id = rid("rq-"), doc = { jobs: todo, by: me().id, at: now(), status: "queued", started: null, via: null };
     await DS().set(`mi/req/r/${id}`, doc);
+    const { fired, why } = await fireTask(id, todo);
+    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: fired ? "page" : null, fireNote: fired ? "" : why }));
+    return { id, jobs: todo, skipped: busy, fired, why };
+  }
+  /** Ask the research task to start (Claude Code Remote connector). Never throws; says why when it could not. */
+  async function fireTask(id, todo) {
     const trig = ((root.DPUI && root.DPUI.App.config.settings.intel) || {}).triggerId || (((await schedule()).tasks || {}).research) || "";
     let fired = false, why = trig ? "" : "No research task is configured (Admin › Settings › Market Intelligence).";
     if (trig) {
@@ -123,8 +129,46 @@
         catch (e) { why = { not_in_manifest: "Starting the task from this page is not allowed for you.", approval_required: "Starting the task needs your approval in claude.ai.", server_not_connected: "The Claude Code Remote connector is not available to you.", needs_reauth: "Reconnect Claude Code Remote in claude.ai Settings." }[e && e.code] || `The task could not be started from here (${(e && e.code) || "error"}).`; } }
       else why = "This view cannot start the task directly.";
     }
-    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: fired ? "page" : null, fireNote: fired ? "" : why }));
-    return { id, jobs: todo, skipped: busy, fired, why };
+    return { fired, why };
+  }
+  const STALL_MS = 90 * 60e3, EXPIRE_MS = 2 * 864e5;
+  /** Administrator recovery for a request the hourly sweep will not start (expired, no valid time, start never picked up)
+   *  or a run that failed: the same request is queued again with a new request time. The request is never lost and its
+   *  earlier times are kept. Refused while the same job is already queued or running. */
+  async function requeue(id) {
+    if (!AU().isAdmin()) throw new Error("Administrators start research runs.");
+    const r = await DS().tryGet(`mi/req/r/${id}`); if (!r) throw new Error("Request not found.");
+    const t = Date.parse(r.at), started = Date.parse(r.startedAt);
+    const stalled = r.status === "running" && !(Date.now() - started < STALL_MS);
+    if (!(r.status === "queued" || r.status === "failed" || stalled)) throw new Error(r.status === "running" ? "This request is running — wait for it to finish." : `A ${r.status} request is not queued again — start a new run instead.`);
+    const todo = (Array.isArray(r.jobs) ? r.jobs : []).filter((j) => JOBS.some(([k, , ty]) => k === j && ty === "research"));
+    if (!todo.length) throw new Error("This request has no valid research job — start a new run instead.");
+    const open = (await requests()).filter((x) => x.id !== id && ["queued", "running"].includes(x.status) && Date.now() - Date.parse(x.at) < 3 * 3600e3);
+    const busy = todo.filter((j) => open.some((x) => (x.jobs || []).includes(j)));
+    if (busy.length) throw Object.assign(new Error(`Already queued or running: ${busy.map(jobLabel).join(", ")}.`), { code: "busy" });
+    const at = now(), doc = Object.assign({}, r, { jobs: todo, status: "queued", at, startedAt: null, finishedAt: null, result: null,
+      previous: (r.previous || []).concat([{ at: r.at || null, status: r.status, startedAt: r.startedAt || null, result: r.result || null }]).slice(-10),
+      requeuedAt: at, requeuedBy: me().id, fireNote: Number.isFinite(t) && Date.now() - t >= EXPIRE_MS ? "Queued again by an administrator (the original request had expired)." : "Queued again by an administrator." });
+    delete doc.id;
+    await DS().set(`mi/req/r/${id}`, doc);
+    const { fired, why } = await fireTask(id, todo);
+    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: fired ? "page" : doc.via || null, fireNote: fired ? doc.fireNote : `${doc.fireNote} ${why}`.trim() }));
+    return { id, jobs: todo, skipped: [], fired, why };
+  }
+  /** A run that started but never reported back (90+ minutes): record it as failed so it can be queued again. Never marks it done. */
+  async function markFailed(id) {
+    if (!AU().isAdmin()) throw new Error("Administrators manage research runs.");
+    const r = await DS().tryGet(`mi/req/r/${id}`); if (!r) throw new Error("Request not found.");
+    if (r.status !== "running" || Date.now() - Date.parse(r.startedAt) < STALL_MS) throw new Error("Only a run with no result 90 minutes after it started can be marked failed.");
+    const doc = Object.assign({}, r, { status: "failed", finishedAt: now(), result: "Marked failed by an administrator: no result 90+ minutes after it started." }); delete doc.id;
+    await DS().set(`mi/req/r/${id}`, doc); return doc;
+  }
+  async function cancelRequest(id) {
+    if (!AU().isAdmin()) throw new Error("Administrators manage research runs.");
+    const r = await DS().tryGet(`mi/req/r/${id}`); if (!r) throw new Error("Request not found.");
+    if (r.status !== "queued") throw new Error("Only a queued request can be cancelled.");
+    const doc = Object.assign({}, r, { status: "cancelled", finishedAt: now(), result: "Cancelled by an administrator." }); delete doc.id;
+    await DS().set(`mi/req/r/${id}`, doc); return doc;
   }
   const jobLabel = (k) => (JOBS.find((j) => j[0] === k) || [k, k])[1];
   /** Schedules of the research jobs (mi/schedule, written when the scheduled tasks are set up): {jobs:{<job>:{label, cron}}, tasks:{…}}. */
@@ -257,6 +301,6 @@
   async function setNewsStatus(id, status) { const d = await DS().tryGet(`mix/news/n/${id}`); if (!d) return; await DS().set(`mix/news/n/${id}`, Object.assign({}, d, { status, statusBy: me().id, statusAt: now() })); }
 
   root.DPIntel = { STATUS, STATUS_LABEL, CLOSED, SALES_STATUSES, EVIDENCE, JOBS, CURRENCIES, PRICE_TYPES, REC, listOpps, shownStatus, getOpp, updateOpp, setStatus, assign, setPriority, addNote, salesUpdate, syncSalesUpdates, addManual,
-    jobsState, requests, runs, requestRun, jobLabel, health, schedule, nextRun, fxSnapshots, fxView, materials, costModel, latestPrice, matView, addPrice, quoteFile, pricingReport, savePricingReport, reports, news, setNewsStatus };
+    jobsState, requests, runs, requestRun, requeue, markFailed, cancelRequest, jobLabel, health, schedule, nextRun, fxSnapshots, fxView, materials, costModel, latestPrice, matView, addPrice, quoteFile, pricingReport, savePricingReport, reports, news, setNewsStatus };
   if (typeof module !== "undefined") module.exports = root.DPIntel;
 })(typeof self !== "undefined" ? self : this);

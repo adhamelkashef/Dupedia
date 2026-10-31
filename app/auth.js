@@ -26,13 +26,15 @@
   /** Access levels ("bases"). Every role maps to one; the base decides screens and which data copies the person receives.
    *  The database distinguishes administrators (Editor) from everyone else (Contributor); sales / engineer / data entry are
    *  separated by giving each person only their own subtrees and only the data copies their base needs (see store.js RULES). */
-  const BASES = { admin: "Administrator access", employee: "Sales access", engineer: "Engineering access", dataentry: "Data entry access", accountant: "Finance access" };
+  const BASES = { admin: "Administrator access", employee: "Sales access", engineer: "Engineering access", dataentry: "Data entry access", accountant: "Finance access", marketing: "Marketing access" };
   const DEFAULT_ROLES = [
     { id: "admin", label: "Administrator", base: "admin", builtIn: true, description: "Full access: prices and costs, users, commissions, orders, all leads and reports." },
     { id: "employee", label: "Sales Employee", base: "employee", builtIn: true, description: "Own projects, proposals, leads, orders and commissions. No cost, margin or other employees' data." },
     { id: "engineer", label: "Engineer", base: "engineer", builtIn: true, description: "Assigned orders from manufacturing to installation: specifications, plans, status, deadlines, teams. No prices, totals, payments or commissions." },
     { id: "dataentry", label: "Data Entry", base: "dataentry", builtIn: true, description: "Lead research: contact details, sources, verification, duplicates, research calls. No prices, orders or commissions." },
     // 1.2 — department Finance. Server level "finance": ledger, payments, payroll, purchases, invoices, taxes; approvals only as the Administrator allows
+    // 1.4 — Marketing: campaigns, content, Project Radar, partnerships, Lead Mine read; no prices, costs, orders or salaries
+    { id: "marketing", label: "Marketing", base: "marketing", builtIn: true, department: "Marketing", description: "Growth & Marketing Center: campaigns and content (publishing after the Administrator's approval), Project Radar research, partnerships, sending qualified accounts to the Lead Mine. No costs, salaries or other people's commission." },
     { id: "accountant", label: "Accountant", base: "accountant", builtIn: true, department: "Finance", description: "Finance: transfers, bank and wallet accounts, payment verification, salaries and worker payments, purchases, invoices, taxes and reports. Approvals only where the Administrator allows. No user management or company settings." },
   ];
   /** 1.2 — the server account level for a role: administrators "admin", accountants "finance", everyone else "interact". */

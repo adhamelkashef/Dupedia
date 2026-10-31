@@ -284,7 +284,8 @@
     { path: "facc", read: "admin", write: "admin" },                       // factory costs: material prices, job cost estimates, equipment cost
     { path: "prod", read: "interact", write: "admin" },                    // Dupedia Products catalogue (selling prices only — never cost)
     { path: "prodx", read: "admin", write: "admin" },                      // product internal costing and supplier terms
-    { path: "hol", read: "interact", write: "admin" },                     // holiday and business-day calendar                // lead attachments (pictures, drawings, CAD, specifications)
+    { path: "hol", read: "interact", write: "admin" },
+    { path: "mkt", read: "interact", write: "interact" },                  // 1.4 Growth & Marketing: campaigns, Radar, partners, interactions (no money; the server limits writers)                     // holiday and business-day calendar                // lead attachments (pictures, drawings, CAD, specifications)
   ];
   /** 1.2 — what the Accountant (account level "finance") may read / write. The most specific matching prefix wins;
    *  anything not listed is evaluated exactly as for staff ("interact"). Enforced by the Cloudflare Worker. */

@@ -254,6 +254,7 @@
       <div class="grid2"><label class="field"><span>Related order (optional)</span><select class="in" id="nt-o"><option value="">—</option>${orders.map((o) => `<option value="${esc(o.oid)}"${o.oid === pre.orderId ? " selected" : ""}>${esc(o.ref || o.oid)} · ${esc(o.name)}</option>`).join("")}</select></label><label class="field"><span>Department</span><select class="in" id="nt-dep">${["", "Finance", "Sales", "Engineering", "Procurement", "Installation", "Management", "Operations"].map((x) => `<option${x === (pre.dept || "") ? " selected" : ""}>${x}</option>`).join("")}</select></label></div>
       <label class="field"><span>Exactly what the money is for *</span><input class="in" id="nt-desc" maxlength="240" value="${esc(pre.description || "")}"></label>
       <div class="grid2"><label class="field"><span>Category</span><input class="in" id="nt-cat" maxlength="60" value="${esc(pre.category || "")}" placeholder="e.g. Rent, Fuel, HDPE sheets"></label><label class="field"><span>Bank / InstaPay reference (if paid already)</span><input class="in" id="nt-br" maxlength="80"></label></div>
+      <label class="field" id="nt-cpw" hidden><span>Marketing campaign this payment is for (counts as actual campaign spend once verified)</span><select class="in" id="nt-cp"><option value="">— not a campaign cost —</option></select></label>
       <label class="field"><span>Notes</span><textarea class="in" id="nt-n" rows="2"></textarea></label>
       <div class="row"><button class="btn ghost xs" id="nt-pick">${U.svg("clip")} Attach supporting document</button><span class="tiny" id="nt-pn"></span></div>
       <p class="small" id="nt-err" style="color:var(--red)"></p><div class="acts"><button class="btn ghost" id="nt-x">Cancel</button><button class="btn lime" id="nt-ok">Create transfer</button></div>`, (mm) => {
@@ -265,6 +266,7 @@
           : T.payee === "tax" ? `<label class="field"><span>Tax authority / period *</span><input class="in" id="nt-pn2" value="Egyptian Tax Authority" maxlength="80"></label><label class="field"><span>Tax period</span><input class="in" id="nt-tp" placeholder="e.g. 2026-10" maxlength="20"></label>`
           : T.payee ? `<label class="field"><span>Payee / payer *</span><input class="in" id="nt-pn2" maxlength="120"></label>` : ""; };
       type.onchange = draw; draw();
+      if (root.DPMkt) DPMkt.campaigns().then((cs) => { if (!cs.length) return; $("#nt-cpw", mm).hidden = false; $("#nt-cp", mm).insertAdjacentHTML("beforeend", cs.map((c) => `<option value="${esc(c.id)}"${(pre.links || {}).campaign === c.id ? " selected" : ""}>${esc(c.name)} · ${esc(c.source)}</option>`).join("")); }).catch(() => {});
       $("#nt-x", mm).onclick = () => U.closeModal();
       $("#nt-pick", mm).onclick = () => U.pickFile(".jpg,.jpeg,.png,.webp,.pdf", async (f) => { try { file = await DPOrders.prepareFile(f); $("#nt-pn", mm).textContent = file.name; } catch (e) { err.textContent = e.message; } });
       $("#nt-ok", mm).onclick = async () => { err.textContent = ""; const T = C().TYPES[type.value], b = $("#nt-ok", mm);
@@ -276,7 +278,7 @@
           const from = T.dir !== "in" ? $("#nt-from", mm).value : null, to = T.dir !== "out" ? $("#nt-to", mm).value : null;
           if (T.dir === "internal" && (!from || !to)) throw new Error("Choose both accounts."); const accCur = (A[from || to] || {}).currency || "EGP";
           b.disabled = true; b.textContent = "Saving…";
-          const t = await Fn().createTx({ ref, type: type.value, date: $("#nt-d", mm).value, amountMinor: toMinor($("#nt-a", mm).value), currency: accCur, fromAcct: from, toAcct: to, method: $("#nt-m", mm).value, bankRef: $("#nt-br", mm).value.trim(), payee, orderId: $("#nt-o", mm).value || null, dept: $("#nt-dep", mm).value, category: $("#nt-cat", mm).value.trim(), description: $("#nt-desc", mm).value, notes: $("#nt-n", mm).value, files: file ? [file] : [], proofKind: "doc", links: pre.links || {} });
+          const t = await Fn().createTx({ ref, type: type.value, date: $("#nt-d", mm).value, amountMinor: toMinor($("#nt-a", mm).value), currency: accCur, fromAcct: from, toAcct: to, method: $("#nt-m", mm).value, bankRef: $("#nt-br", mm).value.trim(), payee, orderId: $("#nt-o", mm).value || null, dept: $("#nt-dep", mm).value, category: $("#nt-cat", mm).value.trim(), description: $("#nt-desc", mm).value, notes: $("#nt-n", mm).value, files: file ? [file] : [], proofKind: "doc", links: Object.assign({}, pre.links || {}, $("#nt-cp", mm).value ? { campaign: $("#nt-cp", mm).value } : {}) });
           U.closeModal(); U.toast(t.status === "pending_approval" ? "Transfer created — waiting for approval." : "Transfer created."); done && done(t);
         } catch (e) { err.textContent = e.message; b.disabled = false; b.textContent = "Create transfer"; } };
     }, { wide: true });

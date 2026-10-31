@@ -6,6 +6,7 @@
 
 const ATTEMPT_ONLY = new Set(["No Answer", "Busy", "Wrong Number"]);
 const ACT_TYPES = new Set(["call", "email", "whatsapp", "meeting", "visit", "research", "custom"]);
+const RESEARCH_JOBS = new Set(["opportunities", "news", "fx", "materials", "weekly"]), RESEARCH_MAX_STARTS = 3;
 const MIN = 60e3, HOUR = 3600e3, DAY = 864e5;
 
 const iso = (t) => new Date(t).toISOString();
@@ -14,6 +15,7 @@ function parse(s) {
   const t = Date.parse(String(s));
   return Number.isFinite(t) ? t : null;
 }
+const pyStr = (x) => (x == null ? "None" : x === true ? "True" : x === false ? "False" : String(x));   // Python "%s" for the values a status can hold
 const isDict = (x) => x && typeof x === "object" && !Array.isArray(x);
 const str = (x) => (x == null || x === false ? "" : String(x));
 const num = (x, d) => { const v = parseFloat(x); return Number.isFinite(v) && v ? v : d; };
@@ -198,12 +200,33 @@ export function computeSweep(docs, nowMs = Date.now()) {
       }
     }
   }
-  // queued research requests
+  // queued research requests — every unfinished request gets a reason (notes + state.research.waiting); see ops/sweep.py
   const reqs = {}; for (const p of under(/^mi\/req\/r\/[^/]+$/)) reqs[p.split("/")[3]] = docs[p];
+  const prevR = isDict(state.research) ? state.research : {}, prevTries = isDict(prevR.tries) ? prevR.tries : {};
   const running = Object.keys(reqs).filter((k) => { const r = reqs[k], s = parse(r.startedAt); return r.status === "running" && s != null && now - s < 90 * MIN; });
-  const queued = Object.keys(reqs).filter((k) => { const r = reqs[k], a = parse(r.at); return r.status === "queued" && a != null && now - a >= 10 * MIN && now - a < 2 * DAY; }).sort();
-  const researchFire = queued.length && !running.length ? { requestIds: queued } : null;
-  if (queued.length && running.length) notes.push("Research requests queued while another run is in progress: not started twice.");
-  const outState = { firstSeen: newSeen, lastRun: iso(now), lastReleases: releases.length, lastReminders: reminders.length, lastOverdue: overdue.length };
+  const queued = [], waiting = [], tries = {};
+  for (const k of Object.keys(reqs).sort()) {
+    const r = reqs[k], st = r.status, a = parse(r.at);
+    const jobs = Array.isArray(r.jobs) ? r.jobs.filter((j) => typeof j === "string" && RESEARCH_JOBS.has(j)) : [];
+    let why = null;
+    if (["done", "failed", "cancelled"].includes(st) || running.includes(k)) continue;
+    if (st === "running") why = ["stalled", `Marked running since ${r.startedAt || "an unknown time"} with no result after 90 minutes — the run may have failed. Not restarted automatically: mark it failed and queue it again in Mission Control.`];
+    else if (st !== "queued") why = ["status", `Status \u201c${pyStr(st)}\u201d — only queued requests are started.`];
+    else if (a == null) why = ["no-time", "No valid request time — not started. Queue it again in Mission Control."];
+    else if (!jobs.length) why = ["no-jobs", "No valid research job listed — not started."];
+    else if (now - a < 10 * MIN) why = ["too-new", `Queued ${Math.max(0, Math.floor((now - a) / MIN))} min ago — left to the page that started it for 10 minutes.`];
+    else if (now - a >= 2 * DAY) why = ["expired", `Queued ${Math.floor((now - a) / DAY)} days ago (${iso(a).slice(0, 10)}). Requests older than 2 days are not started automatically, so an old request cannot run unexpectedly. Queue it again in Mission Control to run it now.`];
+    else {
+      const key = k + "|" + iso(a), p = prevTries[key], n = Number.isInteger(p) && p > 0 ? p : 0; tries[key] = n;
+      if (n >= RESEARCH_MAX_STARTS) why = ["start-failed", `The sweep asked the research task to start it ${n} times and it was not picked up. Check that the X FORCE research scheduled task is enabled, then queue it again in Mission Control.`];
+      else if (running.length) why = ["busy", "Another research run is in progress — started after it finishes."];
+      else { queued.push(k); tries[key] = n + 1; }
+    }
+    if (why) { waiting.push({ id: k, reason: why[0], detail: why[1] }); notes.push(`Research request ${k} not started: ${why[1]}`); }
+  }
+  const researchFire = queued.length ? { requestIds: queued } : null;
+  if (waiting.some((w) => w.reason === "busy")) notes.push("Research requests queued while another run is in progress: not started twice.");
+  const outState = { firstSeen: newSeen, lastRun: iso(now), lastReleases: releases.length, lastReminders: reminders.length, lastOverdue: overdue.length,
+    research: { checkedAt: iso(now), started: queued, waiting, tries } };
   return { now: iso(now), releases, reminders, overdue, researchFire, state: outState, notes, reason };
 }

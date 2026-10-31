@@ -25,7 +25,7 @@
     leads: ["leads", "claims", "leadcontact"], myleads: ["leads", "claims", "crm", "acts"], allleads: ["leads", "claims", "crm"], calls: ["acts", "crm"], research: ["leads", "leadprop"],
     proposals: ["salesorders", "submissions", "assign", "eng", "fac"], register: ["orders", "assign", "eng", "fac"], tracking: ["salesorders", "assign", "eng", "fac"],
     engorders: ["assign", "eng", "engx", "handoff", "fac"], engqueue: ["assign", "eng", "handoff", "fac"], factory: ["assign", "eng", "fac"], workers: ["workers"],
-    facjobs: ["fac", "assign", "eng"], facdash: ["fac", "assign", "eng"], equipment: ["fac"], products: ["prod"], catalog: ["prod"], reminders: ["rem"], holidays: ["hol"],
+    facjobs: ["fac", "assign", "eng"], facdash: ["fac", "assign", "eng"], equipment: ["fac"], products: ["prod"], catalog: ["prod"], reminders: ["rem"], holidays: ["hol"], growth: ["mkt", "leads", "submissions", "orders"], campaigns: ["mkt"], radar: ["mkt"], partners: ["mkt"],
   };
   const busyEditing = () => { const a = document.activeElement, m = document.querySelector("#modal[open], dialog[open]");
     return !!m || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox") || Date.now() - L.typedAt < 4000 || String(root.getSelection ? root.getSelection() : "").length > 0; };
