@@ -71,6 +71,7 @@
     if (res.state === "ok") {
       if (st.mode === "cloud") {
         let ok = false; try { ok = sessionStorage.getItem("dp.sp21.cloudok") === DPAuth.A.me.id; } catch (e) {}
+        if (root.XFServer) ok = true;   // 1.4.3: on the company server the person has just signed in with their password — no second "Continue" step
         if (!ok) {
           const g = gateShell(`<h1>Welcome back${DPAuth.A.me.name ? `, <em>${esc(DPAuth.A.me.name.split(" ")[0])}</em>` : ""}.</h1>
             <p class="muted">You are signed in with your ${root.XFServer ? "X FORCE server" : "claude.ai"} account${DPAuth.A.me.email ? ` (${esc(DPAuth.A.me.email)})` : ""}. Dupedia role: <b>${esc(DPAuth.A.me.roleLabel)}</b>.</p>

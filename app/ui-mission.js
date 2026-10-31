@@ -29,7 +29,7 @@
       <div class="mc-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${M.tab === k}" class="${M.tab === k ? "is-on" : ""}" data-t="${k}">${esc(l)}</button>`).join("")}</div>
       <div id="mc-body"><div class="empty mc-muted"><div class="spinner"></div>Loading…</div></div></div></div>`;
     $$("[data-t]", V).forEach((b) => (b.onclick = () => { M.tab = b.dataset.t; renderMission(); }));
-    $("#mc-intel").onclick = () => U.go("intel"); $("#mc-run").onclick = runDialog;
+    $("#mc-intel").onclick = () => U.go("intel"); $("#mc-run").onclick = () => runDialog();   // not runDialog itself: the click event would arrive as the job list
     const B = $("#mc-body");
     try { await ({ overview, fx: fxTab, materials: matTab, pricing: pricingTab, news: newsTab, weekly: weeklyTab, auto: autoTab }[M.tab] || overview)(B); }
     catch (e) { console.error(e); B.innerHTML = `<div class="note err">This window could not load (${esc(e.message || e.code || "error")}). The other windows still work.</div>`; }
@@ -200,24 +200,40 @@
       ${I.JOBS.map(([k]) => { const h = I.health(k, st, sweep, reqs, sched); return `<tr><td><b>${esc(h.label)}</b></td><td class="small">${esc(h.kind)}</td><td class="small">${esc(h.schedule)}</td><td class="small">${h.lastSuccess ? esc(dt(h.lastSuccess)) + `<div class="tiny mc-muted">${esc(ago(h.lastSuccess))}</div>` : "—"}</td><td class="small">${h.lastAttempt ? esc(dt(h.lastAttempt)) : "—"}</td><td class="small">${h.next ? esc(dt(h.next)) : "on request"}</td>
         <td><span class="pill ${h.status === "ok" ? "ok" : ["failed", "stale"].includes(h.status) ? "err" : ["queued", "running"].includes(h.status) ? "info" : "warn"}">${esc(h.status)}</span>${h.failures ? `<div class="tiny">${h.failures} failure(s) in a row</div>` : ""}</td><td class="r num small">${h.created != null ? h.created : "—"} / ${h.updated != null ? h.updated : "—"}</td><td class="tiny">${esc(h.error || "")}</td></tr>`; }).join("")}</tbody></table></div>
       <p class="tiny mc-muted">Research runs as Claude scheduled tasks on the schedules shown (times in your device's zone), plus “Run now” requests. A request is processed by the X FORCE research task${trig ? "" : " — <b>not configured yet</b>"}; if this page cannot start it, it runs with the next daily research run (the hourly sweep also tries to start it sooner, but that is not guaranteed). A failed run keeps the last good data and is shown here. Two requests for the same job never run at once, and every record is de-duplicated, so a repeated run cannot create duplicate opportunities, reports or notifications.</p>`)}
-      ${box("Run requests", reqs.length ? `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Requested</th><th>By</th><th>Jobs</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>${reqs.slice(0, 20).map((r) => `<tr><td class="small">${esc(dt(r.at))}</td><td class="small">${esc(DPAuth.nameSync(r.by) || "—")}</td><td class="small">${(r.jobs || []).map((j) => esc(I.jobLabel(j))).join(", ")}</td><td><span class="pill ${r.status === "done" ? "ok" : r.status === "failed" ? "err" : "info"}">${esc(r.status)}</span>${r.finishedAt ? `<div class="tiny mc-muted">${esc(dt(r.finishedAt))}</div>` : ""}</td><td class="tiny">${esc(r.result || r.fireNote || "")}${reqWhy(r) ? `<div class="tiny"><b>Hourly sweep:</b> ${esc(reqWhy(r).detail)}</div>` : ""}</td><td>${reqActs(r)}</td></tr>`).join("")}</tbody></table></div>
+      ${box("Run requests", reqs.length ? `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Requested</th><th>By</th><th>Jobs</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>${reqs.slice(0, 20).map((r) => `<tr><td class="small">${esc(dt(r.at))}</td><td class="small">${esc(DPAuth.nameSync(r.by) || "—")}</td><td class="small">${(r.jobs || []).map((j) => esc(I.jobLabel(j))).join(", ")}</td><td><span class="pill ${r.status === "done" ? "ok" : r.status === "failed" ? "err" : "info"}">${esc(r.status)}</span>${r.finishedAt ? `<div class="tiny mc-muted">${esc(dt(r.finishedAt))}</div>` : ""}</td><td class="tiny">${esc(r.result || r.fireNote || "")}${r.progress && !r.result ? `<div class="tiny">${Object.entries(r.progress).map(([j, x]) => `${esc(I.jobLabel(j))}: ${esc(x.status)}${x.status === "done" ? ` (${x.created || 0} new)` : x.error || x.note ? " — " + esc(x.error || x.note) : ""}`).join(" · ")}</div>` : ""}${reqWhy(r) ? `<div class="tiny"><b>Hourly sweep:</b> ${esc(reqWhy(r).detail)}</div>` : ""}</td><td>${reqActs(r)}</td></tr>`).join("")}</tbody></table></div>
       <p class="tiny mc-muted">A request is started automatically between 10 minutes and 2 days after it was made. An older request, one the research task never picked up (3 attempts), or a run that failed waits here until an administrator queues it again — it is never started or marked complete on its own.</p>` : `<p class="small mc-muted">No requests yet.</p>`)}
       ${box("Recent research runs", runsL.length ? `<div class="tl">${runsL.map((r) => `<div><span class="tiny mc-muted">${esc(dt(r.at))}</span><span class="small">${esc(r.label || r.job)} — ${r.ok ? `${r.created || 0} new, ${r.updated || 0} updated` : `<b>failed</b>: ${esc(r.error || "")}`}</span></div>`).join("")}</div>` : `<p class="small mc-muted">No runs yet.</p>`)}`;
     const act = (key, fn, done) => $$(`[data-${key}]`, B).forEach((b) => (b.onclick = async () => { b.disabled = true;
       try { const r = await fn(b.getAttribute(`data-${key}`)); U.toast(done(r), { ms: 8000 }); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); } autoTab(B); }));
-    act("rq-again", I.requeue, (r) => r.fired ? `Research started: ${r.jobs.map(I.jobLabel).join(", ")}.` : `Queued again (${r.jobs.map(I.jobLabel).join(", ")}). ${r.why} The hourly sweep starts it after 10 minutes.`);
+    act("rq-again", async (id) => { const r = await I.requeue(id); if (r.server) { serverRun(r); return Object.assign({}, r, { quiet: true }); } return r; }, (r) => r.quiet ? "Queued again." : r.fired ? `Research started: ${r.jobs.map(I.jobLabel).join(", ")}.` : `Queued again (${r.jobs.map(I.jobLabel).join(", ")}). ${r.why} The hourly sweep starts it after 10 minutes.`);
     act("rq-fail", I.markFailed, () => "Marked failed. You can queue it again.");
     act("rq-cancel", I.cancelRequest, () => "Request cancelled.");
   }
 
   /* ---------------- run dialog ---------------- */
   async function runDialog(pre = null) {
+    if (!Array.isArray(pre)) pre = null;
     const jobs = I.JOBS.filter(([, , t]) => t === "research");
     const f = await U.form("Run research now", jobs.map(([k, l]) => ({ id: k, label: l, type: "check", value: pre ? pre.includes(k) : k !== "weekly" })), { submit: "Start", intro: "Each run uses Claude to search reliable sources (bounded number of searches), then stores only sourced, de-duplicated results. It takes several minutes; this page shows the status in Automation Health." });
     if (!f) return; const sel = jobs.map(([k]) => k).filter((k) => f[k]); if (!sel.length) return;
     try { const r = await I.requestRun(sel);
-      U.toast(r.fired ? `Research started: ${r.jobs.map(I.jobLabel).join(", ")}.${r.skipped.length ? " Already running: " + r.skipped.map(I.jobLabel).join(", ") + "." : ""}` : `Request saved (${r.jobs.map(I.jobLabel).join(", ")}). ${r.why} It will run with the next daily research run (06:17 Cairo), or sooner if the hourly sweep can start it.`, { ms: 9000 });
+      if (r.server) return serverRun(r);
+      U.toast(r.fired ? `Research started: ${r.jobs.map(I.jobLabel).join(", ")}.${r.skipped.length ? " Already running: " + r.skipped.map(I.jobLabel).join(", ") + "." : ""}` : `Request saved (${r.jobs.map(I.jobLabel).join(", ")}). ${r.why} ${/No research task is configured/.test(r.why || "") ? "It stays queued and will not run until a research task is connected — research is not available on this site yet." : "It will run with the next daily research run (06:17 Cairo), or sooner if the hourly sweep can start it."}`, { ms: 12000 });
       if (M.tab === "auto") renderMission(); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); }
+  }
+  /** Cloudflare: the Worker runs each job with Claude (Claude API + web search) while this page waits and shows progress. */
+  async function serverRun(r) {
+    const names = r.jobs.map(I.jobLabel).join(", ");
+    if (!r.fired) { U.toast(`Request saved (${names}). ${r.why}`, { err: true, ms: 14000 }); if (M.tab === "auto") renderMission(); return; }
+    U.toast(`Research started with Claude: ${names}. Each job takes 1–3 minutes — keep this page open (if you close it, the rest runs within the hour).`, { ms: 12000 });
+    M.tab = "auto"; renderMission();
+    const end = await I.runOnServer(r.id, (s) => {
+      if (s.job) U.toast(s.ok ? `${s.label}: ${s.created || 0} new, ${s.updated || 0} updated.` : `${s.label || "Research"}: ${s.error || "failed"}`, { err: !s.ok, ms: 9000 });
+      else if (!s.ok && s.error) U.toast(s.error, { err: true, ms: 12000 });
+      if (M.tab === "auto") renderMission();
+    });
+    if (end && end.finished) U.toast(`Research finished (${names}). Results are in Mission Control and the Opportunities radar.`, { ms: 9000 });
+    if (M.tab === "auto") renderMission();
   }
   /** Build and save the pricing assessment for a month from saved data only (no AI, no web). */
   async function buildPricing(month, { auto = false } = {}) {

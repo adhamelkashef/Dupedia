@@ -46,6 +46,8 @@
     runSweep: () => api("/api/jobs/sweep", { method: "POST", body: "{}" }),
     changes: (since) => api("/api/changes?since=" + encodeURIComponent(since || "")),
     notif: (b) => api("/api/notif", { method: "POST", body: JSON.stringify(b) }),
+    researchStatus: () => api("/api/research/status"),
+    researchRun: (id, job) => api("/api/research/run", { method: "POST", body: JSON.stringify({ id, job: job || null }) }),
     logout: () => api("/api/logout", { method: "POST", body: "{}" }).finally(toLogin),
   };
 })();

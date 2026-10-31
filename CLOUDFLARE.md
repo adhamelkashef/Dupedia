@@ -96,7 +96,7 @@ Secrets go only in the dashboard as **Secret**, never in this file. The only sec
 
 ## Not on Cloudflare yet
 
-- **Market Intelligence research.** Opportunities, news, currency and material prices run as Claude scheduled tasks for the claude.ai version. `/api/ingest` answers "not available".
+- **Market Intelligence research (1.4.2).** Runs inside this Worker with Claude (Claude API + web search) — see "Research with Claude" below. `/api/ingest` answers "not available" (nothing is uploaded from outside).
 - **Private chats.** They are end-to-end encrypted and start empty here.
 - **Email and phone notifications.** Notifications are in-app only.
 
@@ -107,3 +107,28 @@ npm ci
 echo "SETUP_CODE=choose-a-local-code" > .dev.vars
 npx wrangler dev        # http://localhost:8787 — local D1, nothing touches the live database
 ```
+
+
+## Research with Claude (1.4.2)
+
+"Run research now" (Mission Control) asks this Worker to run each job with Claude. Claude searches the web; only items whose
+source page that search actually returned are kept, then the same rules as the claude.ai research (worker/intel.js = ops/intel.py)
+check, de-duplicate and score them. Nothing is invented and nothing is sent to anyone.
+
+**Switch it on (once):**
+1. Go to console.anthropic.com → sign in → **Billing**: add a payment method / credit (the API is billed separately from a Claude subscription).
+2. **API keys** → **Create key** → copy it (it is shown once).
+3. Cloudflare dashboard → **Workers & Pages** → **dupedia** → **Settings** → **Variables and Secrets** → **Add** → type **Secret**,
+   name `ANTHROPIC_API_KEY`, paste the key → **Deploy**.
+4. In X FORCE: Mission Control → **Run research now…** → Start. Each job takes 1–3 minutes; keep the page open. If you close it,
+   the hourly job (at :28) carries on with what is left.
+
+**Optional settings** (same place, type *Text*): `RESEARCH_MODEL` (default `claude-sonnet-5-5`), `RESEARCH_MAX_SEARCHES` (web searches
+per job, default 8), `RESEARCH_DAILY_JOBS` (jobs per day for the whole company, default 10).
+
+**Cost:** web search is $10 per 1,000 searches plus Claude usage; with the defaults a job makes at most 8 searches and the company
+at most 10 jobs a day. Check actual spend in console.anthropic.com → Usage; you can also set a monthly spend limit there.
+
+**Limits:** only administrators can run research (the Worker refuses others). The key never reaches the browser or GitHub.
+On the free Workers plan a job is short on CPU; if a run fails with a Cloudflare "exceeded CPU" error, the Workers Paid plan
+($5/month) removes that limit.

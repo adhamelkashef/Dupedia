@@ -115,12 +115,18 @@
     if (!todo.length) throw Object.assign(new Error(`Already queued or running: ${busy.map(jobLabel).join(", ")}.`), { code: "busy" });
     const id = rid("rq-"), doc = { jobs: todo, by: me().id, at: now(), status: "queued", started: null, via: null };
     await DS().set(`mi/req/r/${id}`, doc);
-    const { fired, why } = await fireTask(id, todo);
-    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: fired ? "page" : null, fireNote: fired ? "" : why }));
-    return { id, jobs: todo, skipped: busy, fired, why };
+    const { fired, why, server } = await fireTask(id, todo);
+    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : null, fireNote: fired ? "" : why }));
+    return { id, jobs: todo, skipped: busy, fired, why, server: !!server };
   }
   /** Ask the research task to start (Claude Code Remote connector). Never throws; says why when it could not. */
   async function fireTask(id, todo) {
+    // 1.4.2 — on Cloudflare the Worker runs the research itself (Claude API + web search); the page drives it job by job
+    if (root.XFServer && root.XFServer.researchStatus) {
+      const st = await root.XFServer.researchStatus().catch((e) => ({ error: e.message }));
+      return st && st.configured ? { fired: true, why: "", server: true }
+        : { fired: false, server: true, why: st && st.error ? `Could not check the research connection (${st.error}).` : "Research is not connected yet: an administrator must add the Claude API key (ANTHROPIC_API_KEY) to the Worker in Cloudflare (see CLOUDFLARE.md). The request stays queued and runs within the hour once the key is added." };
+    }
     const trig = ((root.DPUI && root.DPUI.App.config.settings.intel) || {}).triggerId || (((await schedule()).tasks || {}).research) || "";
     let fired = false, why = trig ? "" : "No research task is configured (Admin › Settings › Market Intelligence).";
     if (trig) {
@@ -130,6 +136,17 @@
       else why = "This view cannot start the task directly.";
     }
     return { fired, why };
+  }
+  /** Cloudflare: run a request's jobs one after another on the Worker (each 1–3 minutes). onStep(result) after each job.
+   *  Stops when all jobs ran, or when the server says to wait (another run, daily limit, not connected). If the page is
+   *  closed, the hourly server job carries on with what is left. */
+  async function runOnServer(id, onStep) {
+    for (let i = 0; i < 8; i++) {
+      let r; try { r = await root.XFServer.researchRun(id); } catch (e) { r = { ok: false, error: e.message, code: e.code || "error", stop: true }; }
+      if (onStep) try { onStep(r); } catch (e) {}
+      if (r.finished || r.stop || ["busy", "limit", "not_configured"].includes(r.code) || !r.job) return r;
+    }
+    return { ok: false, error: "Stopped after 8 steps." };
   }
   const STALL_MS = 90 * 60e3, EXPIRE_MS = 2 * 864e5;
   /** Administrator recovery for a request the hourly sweep will not start (expired, no valid time, start never picked up)
@@ -151,9 +168,9 @@
       requeuedAt: at, requeuedBy: me().id, fireNote: Number.isFinite(t) && Date.now() - t >= EXPIRE_MS ? "Queued again by an administrator (the original request had expired)." : "Queued again by an administrator." });
     delete doc.id;
     await DS().set(`mi/req/r/${id}`, doc);
-    const { fired, why } = await fireTask(id, todo);
-    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: fired ? "page" : doc.via || null, fireNote: fired ? doc.fireNote : `${doc.fireNote} ${why}`.trim() }));
-    return { id, jobs: todo, skipped: [], fired, why };
+    const { fired, why, server } = await fireTask(id, todo);
+    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : doc.via || null, fireNote: fired ? doc.fireNote : `${doc.fireNote} ${why}`.trim() }));
+    return { id, jobs: todo, skipped: [], fired, why, server: !!server };
   }
   /** A run that started but never reported back (90+ minutes): record it as failed so it can be queued again. Never marks it done. */
   async function markFailed(id) {
@@ -301,6 +318,6 @@
   async function setNewsStatus(id, status) { const d = await DS().tryGet(`mix/news/n/${id}`); if (!d) return; await DS().set(`mix/news/n/${id}`, Object.assign({}, d, { status, statusBy: me().id, statusAt: now() })); }
 
   root.DPIntel = { STATUS, STATUS_LABEL, CLOSED, SALES_STATUSES, EVIDENCE, JOBS, CURRENCIES, PRICE_TYPES, REC, listOpps, shownStatus, getOpp, updateOpp, setStatus, assign, setPriority, addNote, salesUpdate, syncSalesUpdates, addManual,
-    jobsState, requests, runs, requestRun, requeue, markFailed, cancelRequest, jobLabel, health, schedule, nextRun, fxSnapshots, fxView, materials, costModel, latestPrice, matView, addPrice, quoteFile, pricingReport, savePricingReport, reports, news, setNewsStatus };
+    jobsState, requests, runs, requestRun, runOnServer, requeue, markFailed, cancelRequest, jobLabel, health, schedule, nextRun, fxSnapshots, fxView, materials, costModel, latestPrice, matView, addPrice, quoteFile, pricingReport, savePricingReport, reports, news, setNewsStatus };
   if (typeof module !== "undefined") module.exports = root.DPIntel;
 })(typeof self !== "undefined" ? self : this);

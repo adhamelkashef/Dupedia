@@ -16,6 +16,7 @@ import "../app/fab.js";
 import "../app/holidays.js";
 import "../app/jobs13.js";
 import { computeSweep } from "./sweep.js";
+import { researchConfig, runRequestJob, researchTick } from "./research.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
 const DOC_MAX = 256 * 1024, BODY_MAX = 4 * 1048576;
@@ -376,19 +377,101 @@ async function dbOp(env, acc, b) {
 }
 
 /* ======================= pages ======================= */
-const PAGE = (title, inner) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
-<link rel="stylesheet" href="/app/fonts.css"><style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1a14;color:#eef3e6;font:16px/1.5 "Instrument Sans",system-ui,sans-serif;padding:16px}
-form{width:min(380px,100%);background:#16241c;border:1px solid #2c4033;border-radius:16px;padding:28px;display:grid;gap:14px}h1{font:600 26px "Fraunces",Georgia,serif;margin:0}img{height:34px}label{display:grid;gap:4px;font-size:13px;color:#b9c7b0}
-input{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid #3a5242;background:#0f1a14;color:inherit}button{font:inherit;font-weight:600;padding:11px;border:0;border-radius:10px;background:#B8D241;color:#0f1a14;cursor:pointer}
-.err{color:#ff8a7a;font-size:14px;min-height:1.2em}.tiny{font-size:12px;color:#8fa287}</style></head><body>${inner}</body></html>`;
-const LOGIN = PAGE("Sign in · X FORCE", `<form id="f"><img src="/brand/logo_compact.png" alt="Dupedia"><h1>X FORCE</h1><label>Username<input name="username" autocomplete="username" required autofocus></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button>Sign in</button><div class="err" id="e" role="alert"></div><p class="tiny">Accounts are created by your administrator. Five failed attempts lock the account for 15 minutes.</p></form>
+/* 1.4.3 — sign-in, setup: a white "blueprint" scene built from the brand's building blocks (square, quarter-circle,
+   half-circle, circle on one grid) beside the form. Same fields, same endpoints, same rules as before. */
+const SCENE = `<svg class="scene" viewBox="0 0 640 520" aria-hidden="true" focusable="false">
+<defs><pattern id="g8" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#E4E2DA" stroke-width=".6"/></pattern>
+<pattern id="g80" width="80" height="80" patternUnits="userSpaceOnUse"><path d="M80 0H0V80" fill="none" stroke="#D6D3C9" stroke-width=".8"/></pattern>
+<linearGradient id="sweep" x1="0" x2="1"><stop offset="0" stop-color="#B8D241" stop-opacity="0"/><stop offset=".5" stop-color="#B8D241" stop-opacity=".22"/><stop offset="1" stop-color="#B8D241" stop-opacity="0"/></linearGradient></defs>
+<rect class="sweep" x="-160" y="0" width="160" height="520" fill="url(#sweep)"/>
+<g class="blk b1"><path d="M160 400V160a240 240 0 0 1 240 240z" fill="#262626"/></g>
+<g class="blk b2"><path d="M400 400h160a80 80 0 0 0-160 0z" fill="#B8D241"/><rect x="400" y="400" width="160" height="80" fill="#EAE8E1"/></g>
+<g class="blk b3"><rect x="400" y="160" width="160" height="160" fill="#FFFFFF" stroke="#262626" stroke-width="1.5"/><circle cx="480" cy="240" r="56" fill="#B8D241"/></g>
+<g class="blk b4"><rect x="80" y="400" width="80" height="80" fill="#B8D241"/><path d="M160 400h80v80a80 80 0 0 1-80-80z" fill="#45453F"/></g>
+<g class="dim" fill="none" stroke="#45453F" stroke-width="1"><path d="M160 136h240M160 130v12M400 130v12"/><path d="M584 160v160M578 160h12M578 320h12"/><path d="M56 400v80M50 400h12M50 480h12"/>
+<path d="M400 400l42-42" stroke-dasharray="3 3"/><circle cx="160" cy="400" r="3" fill="#262626"/><circle cx="480" cy="240" r="2.5" fill="#262626"/></g>
+<g class="lbl" font-family="Instrument Sans,Arial,sans-serif" font-size="11" fill="#45453F"><text x="280" y="126" text-anchor="middle">2400</text><text x="596" y="244" transform="rotate(90 596 244)" text-anchor="middle">1600</text>
+<text x="44" y="444" transform="rotate(-90 44 444)" text-anchor="middle">800</text><text x="446" y="352">R 800</text><text x="80" y="504">Module X-01 · scale 1:10</text></g></svg>`;
+const PAGE = (title, inner, { side = true } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#FBFAF6"><title>${title}</title>
+<link rel="stylesheet" href="/app/fonts.css"><style>
+:root{color-scheme:light;--ink:#262626;--g2:#45453F;--mut:#5E5E58;--line:#DCDAD2;--stone:#EAE8E1;--lime:#B8D241;--lime2:#A9C236;--cream:#FBFAF6;--red:#B3261E;--ease:cubic-bezier(.2,.7,.2,1)}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#fff;color:var(--ink);font:400 15px/1.5 "Instrument Sans",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{min-height:100%;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(380px,1fr)}
+.stage{position:relative;overflow:hidden;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:28px;padding:44px 48px}
+.stage::before{content:"";position:absolute;inset:0;background:linear-gradient(#D6D3C9 .8px,transparent .8px) 0 0/80px 80px,linear-gradient(90deg,#D6D3C9 .8px,transparent .8px) 0 0/80px 80px,linear-gradient(#ECEAE3 .6px,transparent .6px) 0 0/20px 20px,linear-gradient(90deg,#ECEAE3 .6px,transparent .6px) 0 0/20px 20px;
+-webkit-mask-image:radial-gradient(120% 90% at 100% 100%,#000 35%,transparent 78%);mask-image:radial-gradient(120% 90% at 100% 100%,#000 35%,transparent 78%)}
+.stage .logo{width:400px;max-width:100%;height:auto;position:relative;z-index:1}
+.stage .scene{position:absolute;right:-24px;bottom:-24px;width:min(82%,720px);height:auto}
+.stage .line{position:relative;z-index:1;font:600 26px/1.15 Fraunces,Georgia,serif;font-variation-settings:"SOFT" 100;letter-spacing:-.015em;max-width:22ch;margin:0}
+.stage .line small{display:block;font:400 14px/1.5 "Instrument Sans",Arial,sans-serif;color:var(--mut);letter-spacing:0;margin-top:8px;max-width:40ch}
+.panel{display:flex;align-items:center;justify-content:center;padding:40px 24px;background:var(--cream)}
+form{position:relative;width:min(400px,100%);background:#fff;border:1px solid var(--line);border-radius:20px;padding:36px 32px 28px;display:grid;gap:16px;box-shadow:0 30px 60px -40px rgba(38,38,38,.45)}
+form::after{content:"";position:absolute;top:-1px;right:-1px;width:44px;height:44px;background:var(--lime);border-radius:0 20px 0 44px}
+.mlogo{display:none;width:150px;height:auto}
+h1{font:600 30px/1.12 Fraunces,Georgia,serif;font-variation-settings:"SOFT" 100;letter-spacing:-.02em;margin:0;padding-right:24px}
+.sub{margin:-8px 0 4px;color:var(--g2)}
+label{display:grid;gap:6px;font-size:13px;font-weight:600;color:var(--g2)}
+.fld{position:relative}
+input:not([type=checkbox]){width:100%;font:inherit;font-size:15px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+input:not([type=checkbox]):hover{border-color:#C9C7BE}
+input:not([type=checkbox]):focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 4px rgba(184,210,65,.45)}
+form[data-bad] input:not([type=checkbox]){border-color:var(--red)}
+.peek{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--g2);cursor:pointer;padding:6px 8px;border-radius:8px}
+.peek:hover{background:var(--stone)}.peek input{accent-color:var(--ink);margin:0}
+.fld input[type=password],.fld input[data-peek]{padding-right:84px}
+button{position:relative;font:inherit;font-weight:600;font-size:15px;padding:13px;border:0;border-radius:999px;background:var(--lime);color:var(--ink);cursor:pointer;transition:background-color .15s,transform .1s;margin-top:4px}
+button:hover{background:var(--lime2)}button:active{transform:scale(.985)}
+button:focus-visible,.peek:focus-within{outline:3px solid var(--ink);outline-offset:2px}
+button[disabled]{cursor:progress;color:transparent}
+button[disabled]::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:2.5px solid rgba(38,38,38,.25);border-top-color:var(--ink);animation:spin .7s linear infinite}
+.err{display:none;gap:10px;align-items:flex-start;background:#FBEAE8;color:#7A1A14;border-radius:12px;padding:10px 12px;font-size:14px}
+.err.on{display:flex}.err::before{content:"!";flex:0 0 20px;height:20px;border-radius:50%;background:var(--red);color:#fff;font:700 13px/20px Arial;text-align:center}
+.tiny{font-size:12.5px;color:var(--mut);margin:0}.help{border-top:1px solid var(--stone);padding-top:14px;display:grid;gap:6px}
+.code{font-family:inherit;font-weight:600;background:var(--stone);padding:1px 6px;border-radius:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes draw{from{stroke-dashoffset:300}to{stroke-dashoffset:0}}
+@keyframes sweep{0%{transform:translateX(0)}100%{transform:translateX(960px)}}
+.blk{animation:rise .7s var(--ease) both}.b2{animation-delay:.08s}.b3{animation-delay:.16s}.b4{animation-delay:.24s}
+.dim path{stroke-dasharray:300;animation:draw 1.1s .35s var(--ease) both}.dim path[stroke-dasharray="3 3"]{animation:none}
+.lbl{animation:rise .6s .6s both}.sweep{animation:sweep 9s 1.2s linear infinite}
+form{animation:rise .6s .1s var(--ease) both}
+body.leaving form{transition:opacity .3s,transform .3s var(--ease);opacity:0;transform:translateY(-8px) scale(.98)}
+body.leaving .blk{transition:transform .45s var(--ease);transform:translateY(-12px)}
+@media (max-width:900px){.wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr}.stage{min-height:200px;padding:20px;border-right:0;border-bottom:1px solid var(--line)}
+.stage .logo{width:150px}.stage .scene{width:min(62%,380px);right:-30px;bottom:-70px}.stage .line{display:none}.stage::before{-webkit-mask-image:linear-gradient(90deg,transparent 30%,#000 70%);mask-image:linear-gradient(90deg,transparent 30%,#000 70%)}.panel{padding:24px 16px 40px;align-items:flex-start}}
+@media (max-width:480px){.stage{min-height:150px}.stage .logo{width:130px}form{padding:28px 20px 22px;border-radius:18px}h1{font-size:26px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body><main class="wrap">${side ? `<section class="stage"><picture><source media="(max-width:900px)" srcset="/brand/logo_compact.png"><img class="logo" src="/brand/logo_primary.png" alt="Dupedia"></picture>${SCENE}
+<p class="line">Serious about play.<small>Sales, site plans, factory, finance and market intelligence — one system for the whole company.</small></p></section>` : ""}
+<section class="panel">${inner}</section></main></body></html>`;
+const PEEK = `<label class="peek"><input type="checkbox" data-peek-for="pw"> Show</label>`;
+const LOGIN = PAGE("Sign in · X FORCE", `<form id="f" novalidate><h1>Welcome to X&nbsp;FORCE</h1><p class="sub">Your intelligent operating system for everything Dupedia.</p>
+<div class="err" id="e" role="alert"></div>
+<label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+<label>Password<span class="fld"><input id="pw" name="password" type="password" autocomplete="current-password" required>${PEEK}</span></label>
+<button>Sign in</button>
+<div class="help"><p class="tiny">Forgot your password? An administrator can set a new one for you in User Management.</p><p class="tiny">Accounts are created by an administrator. Five failed attempts lock the account for 15 minutes.</p></div></form>
 <script src="/xf-login.js"></script>`);
-const SETUP = PAGE("Set up · X FORCE", `<form id="f" data-setup="1"><img src="/brand/logo_compact.png" alt="Dupedia"><h1>First administrator</h1><p class="tiny">Enter the one-time setup code you saved in Cloudflare as the secret SETUP_CODE, then create the owner account. This page closes for good afterwards.</p>
-<label>Setup code<input name="code" required autocomplete="off"></label><label>Your name<input name="name" required></label><label>Username<input name="username" required autocomplete="username"></label><label>Password (10+ characters, letters and a digit)<input name="password" type="password" required autocomplete="new-password"></label><button>Create owner account</button><div class="err" id="e" role="alert"></div></form><script src="/xf-login.js"></script>`);
-const NOSETUP = PAGE("Not set up · X FORCE", `<form><img src="/brand/logo_compact.png" alt="Dupedia"><h1>Almost there</h1><p>X FORCE has no administrator yet, and no setup code is configured.</p><p class="tiny">In Cloudflare: Workers &amp; Pages → this project → Settings → Variables and Secrets → add a <b>Secret</b> named <b>SETUP_CODE</b> (a long random code only you know), then reload this page.</p></form>`);
-const LOGIN_JS = `document.getElementById("f").onsubmit=async(e)=>{e.preventDefault();const f=e.target,b=f.querySelector("button"),er=document.getElementById("e");er.textContent="";b.disabled=true;
-const d=Object.fromEntries(new FormData(f));const r=await fetch(f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d)}).then(r=>r.json()).catch(()=>({error:"The server cannot be reached."}));
-b.disabled=false;if(r.error){er.textContent=r.message||r.error;return;}location.href="/";};`;
+const SETUP = PAGE("Set up · X FORCE", `<form id="f" data-setup="1" novalidate><h1>Set up X FORCE</h1><p class="sub">Create the owner account. This page closes for good afterwards.</p>
+<div class="err" id="e" role="alert"></div>
+<label>Setup code<input name="code" required autocomplete="off" spellcheck="false"><span class="tiny">The secret <span class="code">SETUP_CODE</span> you saved in Cloudflare.</span></label>
+<label>Your name<input name="name" required autocomplete="name"></label><label>Username<input name="username" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+<label>Password<span class="fld"><input id="pw" name="password" type="password" required autocomplete="new-password">${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label>
+<button>Create owner account</button></form><script src="/xf-login.js"></script>`);
+const NOSETUP = PAGE("Not set up · X FORCE", `<form><h1>Almost there</h1><p class="sub">X FORCE has no administrator yet, and no setup code is configured.</p>
+<p class="tiny">In Cloudflare: Workers &amp; Pages → this project → Settings → Variables and Secrets → add a <b>Secret</b> named <span class="code">SETUP_CODE</span> (a long random code only you know), then reload this page.</p></form>`);
+const LOGIN_JS = `(function(){var f=document.getElementById("f");if(!f)return;var er=document.getElementById("e"),b=f.querySelector("button");
+f.querySelectorAll("[data-peek-for]").forEach(function(c){c.onchange=function(){var i=document.getElementById(c.dataset.peekFor);i.type=c.checked?"text":"password";i.toggleAttribute("data-peek",c.checked);};});
+function bad(m,el){er.textContent=m;er.classList.add("on");f.setAttribute("data-bad","");if(el)el.focus();}
+f.addEventListener("input",function(){if(er.classList.contains("on")){er.classList.remove("on");f.removeAttribute("data-bad");}});
+f.onsubmit=async function(e){e.preventDefault();er.classList.remove("on");f.removeAttribute("data-bad");
+var miss=[].slice.call(f.querySelectorAll("input[required]")).find(function(i){return !i.value.trim();});
+if(miss){return bad("Enter your "+(miss.closest("label").firstChild.textContent||"details").trim().toLowerCase()+".",miss);}
+b.disabled=true;b.setAttribute("aria-busy","true");var d=Object.fromEntries(new FormData(f));
+var r=await fetch(f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d)}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server cannot be reached. Check your connection and try again."};});
+if(r.error){b.disabled=false;b.removeAttribute("aria-busy");var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
+document.body.classList.add("leaving");setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:320);};})();`;
 const setupDone = async (env) => !!(await env.DB.prepare("SELECT v FROM kv WHERE k = 'setup_done'").first()) || !!(await env.DB.prepare("SELECT uid FROM users LIMIT 1").first());
 async function indexHtml(env, req) {
   const r = await env.ASSETS.fetch(new Request(new URL("/index.html", req.url)));
@@ -435,7 +518,12 @@ async function sweep(env) {
   const docs = {}; for (const r of rs) { try { docs[r.path] = JSON.parse(r.data); } catch (e) {} }
   const prevState = docs["sweep/state"] || {};
   let o;
-  try { o = computeSweep(docs, Date.now()); }
+  try { o = computeSweep(docs, Date.now());
+    // 1.4.2: here the Worker itself runs research (researchTick, right after this sweep); no claude.ai task is started
+    if (researchConfig(env).configured && o.state.research) for (const w of o.state.research.waiting) if (w.reason === "start-failed") {
+      const t = "Not finished yet — the hourly research job on this site carries on with it (it may be waiting for today's limit or another run).";
+      o.notes = o.notes.map((n) => (n.includes(w.id) && n.includes(w.detail) ? n.replace(w.detail, t) : n)); w.detail = t; }
+  }
   catch (e) { await setDoc(env, "sweep/state", JSON.stringify(Object.assign({}, prevState, { lastError: String(e.message).slice(0, 300), lastErrorAt: now() }))); return { ok: false, error: e.message }; }
   const st = [], DB = env.DB, t = now();
   const put = (p, d) => st.push(DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO UPDATE SET data = excluded.data, v = docs.v + 1, at = excluded.at").bind(p, parentOf(p), JSON.stringify(d), t));
@@ -518,7 +606,7 @@ async function route(req, env) {
   if (p === "/" || p === "/index.html") { if (!(await setupDone(env))) return redirect("/setup"); if (!acc) return redirect("/login"); return indexHtml(env, req); }
   if (p === "/xf-shim.js") return acc ? env.ASSETS.fetch(req) : respond(401, "", "text/plain");
   if (!p.startsWith("/api/")) return respond(404, "Not found", "text/plain");
-  if (p.startsWith("/api/ingest/")) return json(501, { error: "not_available", message: "Research ingest is not available on the Cloudflare version yet. Market Intelligence research runs on claude.ai." });
+  if (p.startsWith("/api/ingest/")) return json(501, { error: "not_available", message: "Research results are not uploaded from outside on Cloudflare: research runs inside this Worker (Mission Control → Run research now)." });
   if (!acc) return json(401, { error: "unauthenticated", message: "Signed out — sign in again." });
   if (M !== "GET" && !csrfOk(req)) return json(403, { error: "forbidden" });
   const admin = isAdminAcc(acc);
@@ -572,6 +660,12 @@ async function route(req, env) {
     return json(200, Object.assign(s, { jobs: { sweep: { last: ss.lastRun || null, error: ss.lastError || null, enabled: true } } })); }
   if (p === "/api/backup") return respond(200, await backupStream(env), "application/json", { "Content-Disposition": `attachment; filename="xforce-backup-${now().slice(0, 10)}.json"` });
   if (p === "/api/jobs/sweep" && M === "POST") return json(200, await sweep(env));
+  // 1.4.2 — Market Intelligence research run by Claude (Claude API + web search); the key stays in Cloudflare
+  if (p === "/api/research/status" && M === "GET") { const c = researchConfig(env), k = "research:" + now().slice(0, 10), r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(k).first();
+    return json(200, { configured: c.configured, model: c.model, maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0 }); }
+  if (p === "/api/jobs/research" && M === "POST") return json(200, await researchTick(env));
+  if (p === "/api/research/run" && M === "POST") { const b = await body(req); if (!/^[A-Za-z0-9_\-]{1,80}$/.test(String(b.id || ""))) return json(400, { error: "invalid_argument", message: "Request id missing." });
+    return json(200, await runRequestJob(env, String(b.id), b.job ? String(b.job) : null, acc.uid)); }
   return json(404, { error: "not_found" });
 }
 
@@ -581,7 +675,8 @@ export default {
     catch (e) { console.error("error:", e && (e.stack || e)); return json(e.http || 500, { error: "server", message: e.http ? e.message : "Server error." }); }
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(sweep(env).then((r) => console.log("sweep:", JSON.stringify(r))).catch((e) => console.error("sweep failed:", e && (e.stack || e))));
+    ctx.waitUntil(sweep(env).then((r) => console.log("sweep:", JSON.stringify(r))).catch((e) => console.error("sweep failed:", e && (e.stack || e)))
+      .then(() => researchTick(env)).then((r) => console.log("research:", JSON.stringify(r).slice(0, 500))).catch((e) => console.error("research tick failed:", e && (e.stack || e))));
   },
 };
 export { sweep };
