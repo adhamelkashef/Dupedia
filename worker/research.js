@@ -11,6 +11,7 @@
      RESEARCH_DAILY_JOBS    optional, research jobs per day, all users together (default 10)
      ANTHROPIC_BASE_URL     optional, for tests only */
 import { ingest, JOBS } from "./intel.js";
+import { tavilyConfigured } from "./providers.js";
 
 const MIN = 60e3, DAY = 864e5;
 export const RESEARCH_JOBS = ["opportunities", "news", "fx", "materials", "weekly"];
@@ -20,7 +21,10 @@ const parentOf = (p) => { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.sl
 export function researchConfig(env) {
   const n = (v, d, lo, hi) => { const x = parseInt(v, 10); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
   return { configured: !!(env.ANTHROPIC_API_KEY && String(env.ANTHROPIC_API_KEY).length > 20), model: String(env.RESEARCH_MODEL || "claude-sonnet-5-5"),
-    maxSearches: n(env.RESEARCH_MAX_SEARCHES, 8, 1, 20), dailyJobs: n(env.RESEARCH_DAILY_JOBS, 10, 1, 200) };
+    maxSearches: n(env.RESEARCH_MAX_SEARCHES, 8, 1, 20), dailyJobs: n(env.RESEARCH_DAILY_JOBS, 10, 1, 200),
+    // 2.1 — free providers (Tavily + Gemini). "claude" only when an administrator sets it; never chosen automatically.
+    provider: String(env.RESEARCH_PROVIDER || "free").toLowerCase() === "claude" ? "claude" : "free",
+    tavily: tavilyConfigured(env), gemini: !!(env.GEMINI_API_KEY && String(env.GEMINI_API_KEY).length > 10), geminiModel: String(env.GEMINI_MODEL || "gemini-3.8-flash") };
 }
 
 /* ---------------- D1 helpers ---------------- */
@@ -50,7 +54,7 @@ async function lock(env, holder) {
 const unlock = (env, holder) => env.DB.prepare("DELETE FROM leases WHERE path = 'research:run' AND holder = ?").bind(holder).run();
 
 /* ---------------- evidence: a source must be a page this run's web search returned ---------------- */
-function nu(u) {
+export function nu(u) {
   const m = /^(https?):\/\/(?:www\.)?([^/?#]+)([^#]*)/i.exec(String(u || "").trim()); if (!m) return null;
   return m[2].toLowerCase() + (m[3] || "").replace(/\/+$/, "").replace(/\/+(?=\?)/, "");
 }

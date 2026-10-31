@@ -17,6 +17,8 @@ import "../app/holidays.js";
 import "../app/jobs13.js";
 import { computeSweep } from "./sweep.js";
 import { researchConfig, runRequestJob, researchTick } from "./research.js";
+import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
+import { usageSummary } from "./usage.js";
 import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
@@ -888,7 +890,16 @@ async function route(req, env, ctx) {
   if (p === "/api/jobs/sweep" && M === "POST") return json(200, await sweep(env));
   // 1.4.2 — Market Intelligence research run by Claude (Claude API + web search); the key stays in Cloudflare
   if (p === "/api/research/status" && M === "GET") { const c = researchConfig(env), k = "research:" + now().slice(0, 10), r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(k).first();
-    return json(200, { configured: c.configured, model: c.model, maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0 }); }
+    return json(200, { configured: c.configured, model: c.model, maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0,
+      provider: c.provider, tavily: c.tavily, gemini: c.gemini, geminiModel: c.geminiModel, usage: await usageSummary(env, acc.uid),
+      markets: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.label])),
+      depths: Object.fromEntries(Object.entries(DEPTHS).map(([k, d]) => [k, { label: d.label, searches: d.queries, pages: d.extract, maxCredits: creditEstimate(k) }])) }); }
+  // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
+  if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
+    if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);
+    return json(r.ok ? 200 : r.code ? 429 : 400, r); }
+  if (p === "/api/research/topic/step" && M === "POST") { const b = await body(req), r = await stepTopic(env, String(b.id || ""));
+    return json(r.ok ? 200 : r.busy ? 409 : 400, r); }
   if (p === "/api/jobs/research" && M === "POST") return json(200, await researchTick(env));
   if (p === "/api/research/run" && M === "POST") { const b = await body(req); if (!/^[A-Za-z0-9_\-]{1,80}$/.test(String(b.id || ""))) return json(400, { error: "invalid_argument", message: "Request id missing." });
     return json(200, await runRequestJob(env, String(b.id), b.job ? String(b.job) : null, acc.uid)); }
