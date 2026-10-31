@@ -5,7 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 export function fakeD1() {
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE docs (path TEXT PRIMARY KEY, parent TEXT NOT NULL, data TEXT NOT NULL, v INTEGER NOT NULL DEFAULT 1, at TEXT NOT NULL);
-    CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL); CREATE TABLE leases (path TEXT PRIMARY KEY, holder TEXT NOT NULL, exp INTEGER NOT NULL);`);
+    CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL); CREATE TABLE leases (path TEXT PRIMARY KEY, holder TEXT NOT NULL, exp INTEGER NOT NULL);
+    CREATE TABLE users (uid TEXT PRIMARY KEY, owner INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1);`);
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     first: async () => db.prepare(sql).get(...args) ?? null,

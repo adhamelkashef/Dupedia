@@ -96,7 +96,7 @@ Secrets go only in the dashboard as **Secret**, never in this file. The only sec
 
 ## Not on Cloudflare yet
 
-- **Market Intelligence research (1.4.2).** Runs inside this Worker with Claude (Claude API + web search) — see "Research with Claude" below. `/api/ingest` answers "not available" (nothing is uploaded from outside).
+- **Market Intelligence research (2.1).** Runs inside this Worker with Tavily (search) + Gemini (analysis), both free tiers — see "Research with Tavily + Gemini" below. `/api/ingest` answers "not available" (nothing is uploaded from outside).
 - **Private chats.** They are end-to-end encrypted and start empty here.
 - **Email and phone notifications.** Notifications are in-app only.
 
@@ -109,28 +109,44 @@ npx wrangler dev        # http://localhost:8787 — local D1, nothing touches th
 ```
 
 
-## Research with Claude (1.4.2)
+## Research with Tavily + Gemini (2.1, free tiers)
 
-"Run research now" (Mission Control) asks this Worker to run each job with Claude. Claude searches the web; only items whose
-source page that search actually returned are kept, then the same rules as the claude.ai research (worker/intel.js = ops/intel.py)
-check, de-duplicate and score them. Nothing is invented and nothing is sent to anyone.
+"Run research now" (Mission Control) asks this Worker to run each job:
+- **Tavily** searches the web with fixed searches per job. Its free plan gives 1,000 credits a month, and a job uses about 4–6.
+- **Gemini** reads only the pages Tavily returned and answers in the job's format. It's free when the Google project has no billing.
+- Only items whose link is one of those pages are kept. Then worker/intel.js checks, de-duplicates and scores them.
+- Nothing is invented and nothing is sent to anyone. Only public web text and the research brief go to Google; internal records never do.
 
 **Switch it on (once):**
-1. Go to console.anthropic.com → sign in → **Billing**: add a payment method / credit (the API is billed separately from a Claude subscription).
-2. **API keys** → **Create key** → copy it (it is shown once).
-3. Cloudflare dashboard → **Workers & Pages** → **dupedia** → **Settings** → **Variables and Secrets** → **Add** → type **Secret**,
-   name `ANTHROPIC_API_KEY`, paste the key → **Deploy**.
-4. In X FORCE: Mission Control → **Run research now…** → Start. Each job takes 1–3 minutes; keep the page open. If you close it,
-   the hourly job (at :28) carries on with what is left.
+1. **Tavily:** app.tavily.com → sign up (free "Researcher" plan, no card) → **API Keys** → copy the key. Leave **pay-as-you-go OFF**.
+2. **Gemini:** aistudio.google.com → **Get API key** → create the key in a Google project **without a billing account** (then nothing
+   can be charged; over the free quota Google refuses instead of billing). Then open **Rate limit** in AI Studio and note the daily limit.
+3. Cloudflare dashboard → **Workers & Pages** → **dupedia** → **Settings** → **Variables and Secrets** → **Add** → type **Secret**:
+   `TAVILY_API_KEY` = the Tavily key, and `GEMINI_API_KEY` = the Gemini key → **Deploy**.
+4. In X FORCE: Mission Control → **Run research now…** → Start. Each job takes about 1 minute; keep the page open. If you close it, the
+   hourly job (at minute :28, Cron Trigger "28 * * * *" in wrangler.jsonc) carries on, one job per hour.
+   Requests that were already queued start the same way. One queued more than 2 days ago only starts with **Queue again** (Automation Health).
 
-**Optional settings** (same place, type *Text*): `RESEARCH_MODEL` (default `claude-sonnet-5-5`), `RESEARCH_MAX_SEARCHES` (web searches
-per job, default 8), `RESEARCH_DAILY_JOBS` (jobs per day for the whole company, default 10).
+**Check it runs:** Workers & Pages → dupedia → **Settings → Trigger events** must list `28 * * * *`. **Logs** at minute :28 show
+`sweep: …` and `research: …` lines. Mission Control → Automation Health shows each request:
+- Queued / Running (job k of n) / Waiting (and why)
+- Missing configuration (with the secret's name)
+- Completed / Partially completed / Failed
 
-**Cost:** web search is $10 per 1,000 searches plus Claude usage; with the defaults a job makes at most 8 searches and the company
-at most 10 jobs a day. Check actual spend in console.anthropic.com → Usage; you can also set a monthly spend limit there.
+**Optional settings** (same place, type *Text*):
+- `GEMINI_MODEL` (default `gemini-3.8-flash`; `gemini-3.5-flash-lite` uses less quota)
+- `GEMINI_DAILY_CALLS` (default 100; set below the AI Studio daily limit)
+- `TAVILY_MONTHLY_CREDITS` (default 900) and `TAVILY_DAILY_CREDITS` (default 60)
+- `RESEARCH_DAILY_JOBS` (jobs per day for the whole company, default 10)
 
-**Limits:** only administrators can run research (the Worker refuses others). The key never reaches the browser or GitHub.
-On the free Workers plan a job is short on CPU; if a run fails with a Cloudflare "exceeded CPU" error, the Workers Paid plan
+When a limit or a free quota is reached, research **waits** and continues later. Nothing is charged.
+
+**Claude (paid, optional):** only when an administrator sets `RESEARCH_PROVIDER` = `claude` and adds `ANTHROPIC_API_KEY`. Then Claude
+searches and analyses: $10 per 1,000 web searches plus Claude usage, at most 8 searches a job (`RESEARCH_MAX_SEARCHES`), with `RESEARCH_MODEL`.
+A Claude key alone never switches research to Claude.
+
+**Limits:** only administrators can run research (the Worker refuses others). The keys never reach the browser or GitHub.
+On the free Workers plan a job is short on CPU. If a run fails with a Cloudflare "exceeded CPU" error, the Workers Paid plan
 ($5/month) removes that limit.
 
 

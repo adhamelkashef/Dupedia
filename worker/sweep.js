@@ -209,7 +209,7 @@ export function computeSweep(docs, nowMs = Date.now()) {
     const r = reqs[k], st = r.status, a = parse(r.at);
     const jobs = Array.isArray(r.jobs) ? r.jobs.filter((j) => typeof j === "string" && RESEARCH_JOBS.has(j)) : [];
     let why = null;
-    if (["done", "failed", "cancelled"].includes(st) || running.includes(k)) continue;
+    if (["done", "partial", "failed", "cancelled"].includes(st) || running.includes(k)) continue;
     if (st === "running") why = ["stalled", `Marked running since ${r.startedAt || "an unknown time"} with no result after 90 minutes — the run may have failed. Not restarted automatically: mark it failed and queue it again in Mission Control.`];
     else if (st !== "queued") why = ["status", `Status \u201c${pyStr(st)}\u201d — only queued requests are started.`];
     else if (a == null) why = ["no-time", "No valid request time — not started. Queue it again in Mission Control."];

@@ -16,7 +16,7 @@ import "../app/fab.js";
 import "../app/holidays.js";
 import "../app/jobs13.js";
 import { computeSweep } from "./sweep.js";
-import { researchConfig, runRequestJob, researchTick } from "./research.js";
+import { researchConfig, runRequestJob, researchTick, missingMessage } from "./research.js";
 import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
 import { usageSummary } from "./usage.js";
 import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
@@ -611,8 +611,11 @@ async function sweep(env) {
   let o;
   try { o = computeSweep(docs, Date.now());
     // 1.4.2: here the Worker itself runs research (researchTick, right after this sweep); no claude.ai task is started
-    if (researchConfig(env).configured && o.state.research) for (const w of o.state.research.waiting) if (w.reason === "start-failed") {
-      const t = "Not finished yet — the hourly research job on this site carries on with it (it may be waiting for today's limit or another run).";
+    // 2.1: the "start-failed" label of the old claude.ai task never applies here — give the real reason instead
+    const rc = researchConfig(env);
+    if (o.state.research) for (const w of o.state.research.waiting) if (w.reason === "start-failed") {
+      const t = rc.configured ? "Not finished yet — the hourly research job on this site carries on with it (it may be waiting for today's limit or another run)."
+        : "Waiting for configuration — " + missingMessage(rc).text + " It is still queued and starts once the secret is added (requests older than 2 days need “Queue again”).";
       o.notes = o.notes.map((n) => (n.includes(w.id) && n.includes(w.detail) ? n.replace(w.detail, t) : n)); w.detail = t; }
   }
   catch (e) { await setDoc(env, "sweep/state", JSON.stringify(Object.assign({}, prevState, { lastError: String(e.message).slice(0, 300), lastErrorAt: now() }))); return { ok: false, error: e.message }; }
@@ -890,7 +893,7 @@ async function route(req, env, ctx) {
   if (p === "/api/jobs/sweep" && M === "POST") return json(200, await sweep(env));
   // 1.4.2 — Market Intelligence research run by Claude (Claude API + web search); the key stays in Cloudflare
   if (p === "/api/research/status" && M === "GET") { const c = researchConfig(env), k = "research:" + now().slice(0, 10), r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(k).first();
-    return json(200, { configured: c.configured, model: c.model, maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0,
+    return json(200, { configured: c.configured, ready: c.ready, missing: c.missing, missingMessage: missingMessage(c).text, model: c.model, maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0,
       provider: c.provider, tavily: c.tavily, gemini: c.gemini, geminiModel: c.geminiModel, usage: await usageSummary(env, acc.uid),
       markets: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.label])),
       depths: Object.fromEntries(Object.entries(DEPTHS).map(([k, d]) => [k, { label: d.label, searches: d.queries, pages: d.extract, maxCredits: creditEstimate(k) }])) }); }

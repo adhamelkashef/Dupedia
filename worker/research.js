@@ -11,7 +11,8 @@
      RESEARCH_DAILY_JOBS    optional, research jobs per day, all users together (default 10)
      ANTHROPIC_BASE_URL     optional, for tests only */
 import { ingest, JOBS } from "./intel.js";
-import { tavilyConfigured } from "./providers.js";
+import { tavilyConfigured, geminiConfigured, geminiModel } from "./providers.js";
+import { askFree } from "./freejobs.js";
 
 const MIN = 60e3, DAY = 864e5;
 export const RESEARCH_JOBS = ["opportunities", "news", "fx", "materials", "weekly"];
@@ -20,11 +21,22 @@ const parentOf = (p) => { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.sl
 
 export function researchConfig(env) {
   const n = (v, d, lo, hi) => { const x = parseInt(v, 10); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
-  return { configured: !!(env.ANTHROPIC_API_KEY && String(env.ANTHROPIC_API_KEY).length > 20), model: String(env.RESEARCH_MODEL || "claude-sonnet-5-5"),
-    maxSearches: n(env.RESEARCH_MAX_SEARCHES, 8, 1, 20), dailyJobs: n(env.RESEARCH_DAILY_JOBS, 10, 1, 200),
-    // 2.1 — free providers (Tavily + Gemini). "claude" only when an administrator sets it; never chosen automatically.
-    provider: String(env.RESEARCH_PROVIDER || "free").toLowerCase() === "claude" ? "claude" : "free",
-    tavily: tavilyConfigured(env), gemini: !!(env.GEMINI_API_KEY && String(env.GEMINI_API_KEY).length > 10), geminiModel: String(env.GEMINI_MODEL || "gemini-3.8-flash") };
+  // 2.1 — free providers (Tavily searches, Gemini analyses). "claude" (paid) only when an administrator sets RESEARCH_PROVIDER=claude.
+  const provider = String(env.RESEARCH_PROVIDER || "free").toLowerCase() === "claude" ? "claude" : "free";
+  const claudeKey = !!(env.ANTHROPIC_API_KEY && String(env.ANTHROPIC_API_KEY).length > 20), tavily = tavilyConfigured(env), gemini = geminiConfigured(env);
+  const missing = provider === "claude" ? (claudeKey ? [] : ["ANTHROPIC_API_KEY"]) : [].concat(tavily ? [] : ["TAVILY_API_KEY"], gemini ? [] : ["GEMINI_API_KEY"]);
+  // configured = research can run now (kept under this name: the page and the hourly job read it)
+  return { configured: !missing.length, ready: !missing.length, missing, provider, claudeKey, tavily, gemini, geminiModel: geminiModel(env),
+    model: provider === "claude" ? String(env.RESEARCH_MODEL || "claude-sonnet-5-5") : geminiModel(env),
+    maxSearches: n(env.RESEARCH_MAX_SEARCHES, 8, 1, 20), dailyJobs: n(env.RESEARCH_DAILY_JOBS, 10, 1, 200) };
+}
+/** The exact message when a secret is missing: which secret, and where it goes. */
+export function missingMessage(cfg) {
+  if (!cfg.missing.length) return { text: "", names: "" };
+  const names = cfg.missing.map((m) => `<b>${m}</b>`).join(" and "), plain = cfg.missing.join(" and ");
+  const why = cfg.provider === "claude" ? "RESEARCH_PROVIDER is set to claude (paid)" : "research searches with Tavily and Gemini analyses the results, both on free tiers";
+  const two = cfg.missing.length > 1;
+  return { text: `Research cannot run yet: the Worker is missing the secret${two ? "s" : ""} ${plain} (${why}). Add ${two ? "them" : "it"} in Cloudflare → Workers & Pages → dupedia → Settings → Variables and Secrets → Add → type Secret, then Deploy. See CLOUDFLARE.md.`, names };
 }
 
 /* ---------------- D1 helpers ---------------- */
@@ -43,6 +55,7 @@ const insertIfAbsent = (env, p, d) => env.DB.prepare("INSERT INTO docs (path, pa
 
 /* ---------------- daily limit and one-at-a-time lock ---------------- */
 async function usedToday(env) { const r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind("research:" + nowIso().slice(0, 10)).first(); return r ? parseInt(r.v, 10) || 0 : 0; }
+const uncountUse = (env) => env.DB.prepare("UPDATE kv SET v = CAST(MAX(0, CAST(v AS INTEGER) - 1) AS TEXT) WHERE k = ?").bind("research:" + nowIso().slice(0, 10)).run();
 async function countUse(env) { const k = "research:" + nowIso().slice(0, 10);
   await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, '1') ON CONFLICT(k) DO UPDATE SET v = CAST(CAST(kv.v AS INTEGER) + 1 AS TEXT)").bind(k).run(); }
 async function lock(env, holder) {
@@ -125,13 +138,20 @@ Answer: a JSON list of {"materialId" (an id from the list),"price","unit","curre
 Answer: ONE JSON object {"executiveSummary","changes":["…"],"priorities":[{"text","oppId" (an id from the saved opportunities),"owner","deadline"}],"threats":[{"text","sources":[{"url","title"}]}],"facts":[{"text","sources":[{"url","title"}]}] (verified facts only, each with a source),"inferences":[{"text"}],"recommendations":[{"title","reason","benefit","effort","risks","nextStep","owner" (a role),"deadline","sources":[…],"oppIds":[…]}],"unknowns":[{"text"}],"sources":[{"title","url"}],"dataQuality":"…"}.`,
 };
 const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
-function contextFor(job, db) {
+function contextFor(job, db, { publicOnly = false } = {}) {
   const opps = Object.entries(db["mi/opps/o"] || {});
   if (job === "opportunities") return opps.length ? "Already saved (skip anything with the same source URL or the same project):\n" + opps.slice(-150).map(([, o]) => `- ${clip(o.title, 90)} | ${clip(o.organization, 50)} | ${clip(o.sourceUrl, 160)}`).join("\n") : "Nothing saved yet.";
   if (job === "news") { const n = Object.values(db["mix/news/n"] || {}).sort((a, b) => String(b.discoveredAt).localeCompare(String(a.discoveredAt))).slice(0, 60);
     return n.length ? "Already saved (skip these):\n" + n.map((x) => `- ${clip(x.headline, 120)} | ${clip(x.url, 160)}`).join("\n") : "Nothing saved yet."; }
   if (job === "materials") { const m = Object.entries(db["mix/mat/m"] || {}).slice(0, 25);
     return m.length ? "Materials (id | name | unit | grade):\n" + m.map(([id, x]) => `- ${id} | ${clip(x.name, 80)} | ${clip(x.unit, 10)} | ${clip(x.grade || x.spec || "", 80)}`).join("\n") : "NO MATERIALS ARE SAVED — return []."; }
+  if (job === "weekly" && publicOnly) {
+    // free Gemini: only public fields of saved records (title, organisation, source); status/priority/score/notes stay in X FORCE
+    const top = opps.map(([id, o]) => Object.assign({ id }, o)).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 30);
+    const news = Object.values(db["mix/news/n"] || {}).sort((a, b) => String(b.discoveredAt).localeCompare(String(a.discoveredAt))).slice(0, 20);
+    return "Saved opportunities (id | title | organization | source):\n" + (top.map((o) => `- ${o.id} | ${clip(o.title, 90)} | ${clip(o.organization, 50)} | ${clip(o.sourceUrl, 160)}`).join("\n") || "none")
+      + "\n\nRecent public news already saved:\n" + (news.map((x) => `- ${clip(x.headline, 120)} ${clip(x.url, 160)}`).join("\n") || "none");
+  }
   if (job === "weekly") {
     const top = opps.map(([id, o]) => Object.assign({ id }, o)).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 30);
     const news = Object.values(db["mix/news/n"] || {}).sort((a, b) => String(b.discoveredAt).localeCompare(String(a.discoveredAt))).slice(0, 20);
@@ -186,24 +206,37 @@ async function ceoOf(env) {
 export async function runJob(env, jobName, { by = "page" } = {}) {
   const cfg = researchConfig(env);
   if (!RESEARCH_JOBS.includes(jobName)) return { ok: false, error: "Unknown research job." };
-  if (!cfg.configured) return { ok: false, error: "Research is not connected: add the ANTHROPIC_API_KEY secret to this Worker in Cloudflare (see CLOUDFLARE.md).", code: "not_configured" };
+  if (!cfg.configured) return { ok: false, error: missingMessage(cfg).text, code: "not_configured", missing: cfg.missing };
   if ((await usedToday(env)) >= cfg.dailyJobs) return { ok: false, error: `Today's research limit (${cfg.dailyJobs} jobs) is used up. It resets at midnight UTC; an administrator can raise RESEARCH_DAILY_JOBS.`, code: "limit" };
   const holder = jobName + ":" + Math.random().toString(36).slice(2);
   if (!(await lock(env, holder))) return { ok: false, error: "Another research job is running — try again in a few minutes.", code: "busy", retry: true };
   try {
     await countUse(env);
     const { db, ver } = await loadDb(env);
-    let res, extra = [], err = null;
+    let res, extra = [], err = null, code = null;
     try {
-      const a = await askClaude(env, cfg, { name: jobName, db });
-      const parsed = extractJson(a.finalText);
-      if (parsed === undefined) { err = "Claude's answer could not be read as JSON — nothing was saved."; }
+      let parsed, seen, info, more = [];
+      if (cfg.provider === "claude") {
+        const a = await askClaude(env, cfg, { name: jobName, db });
+        parsed = extractJson(a.finalText); seen = seenFrom(a.messages); info = `${a.searches} web search(es) · model ${a.model || cfg.model}`;
+      } else {
+        const shape = jobName === "weekly" ? SHAPES.weekly.replace("plus at most 6 searches about competitor positioning or market activity", "plus the SOURCES below about competitor positioning or market activity") : SHAPES[jobName];
+        const a = await askFree(env, jobName, db, { shape, context: contextFor(jobName, db, { publicOnly: true }), extractJson });
+        parsed = a.parsed; seen = a.seen; more = a.notes;
+        info = `${a.searches} Tavily search(es), ${a.credits} credit(s), ${a.sources} source(s) · ${a.model}${a.tokens ? ` · ${a.tokens} tokens` : ""}`;
+      }
+      if (parsed === undefined) { err = "The AI answer could not be read as JSON — nothing was saved."; }
       else {
-        const f = evidenceFilter(jobName, parsed, seenFrom(a.messages)); extra = f.notes;
-        extra.push(`${a.searches} web search(es) · model ${a.model || cfg.model}`);
+        const f = evidenceFilter(jobName, parsed, seen); extra = f.notes.concat(more);
+        extra.push(info);
         res = ingest(jobName, db, jobName === "weekly" ? f.cands : (f.cands || []), Date.now());
       }
-    } catch (e) { err = String(e.message || e).slice(0, 300); if (e.retry) extra.push("Temporary problem — safe to run again."); }
+    } catch (e) {
+      err = String(e.message || e).slice(0, 300);
+      if (e.limit) { code = "limit"; await uncountUse(env); extra.push("Waiting for a usage limit or free quota — it continues later; nothing is charged."); }
+      else if (e.code === "not_configured") code = "not_configured";
+      else if (e.retry) extra.push("Temporary problem — safe to run again.");
+    }
     if (err) { res = ingest(jobName, db, null, Date.now()); for (const w of res.writes) if (w.data && "error" in w.data) w.data.error = err; res.error = err; }
     // job health + run history get the evidence notes too
     for (const w of res.writes) if (w.collection === "mi/state/jobs" || w.collection === "mi/runs/r") w.data.notes = extra.concat(w.data.notes || []).slice(0, 30);
@@ -220,7 +253,7 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
     }
     if (st.length) { const out = await env.DB.batch(st.map((x) => x[1])); out.forEach((r, i) => { const p = st[i][0]; if (p && !p.startsWith("mi/state/") && !p.startsWith("mi/runs/") && r.meta && r.meta.changes === 0) conflicts.push(p); }); }
     const notes = extra.concat(res.notes || []).concat(conflicts.length ? [`${conflicts.length} record(s) were changed by someone during the run and were left as they are.`] : []);
-    return { ok: res.ok && !err, job: jobName, label: JOBS[jobName], created: res.stats.created, updated: res.stats.updated, notes: notes.slice(0, 30), error: err, by };
+    return { ok: res.ok && !err, job: jobName, label: JOBS[jobName], created: res.stats.created, updated: res.stats.updated, notes: notes.slice(0, 30), error: err, code, by };
   } finally { await unlock(env, holder); }
 }
 
@@ -243,7 +276,8 @@ export async function runRequestJob(env, id, wanted, by) {
   const next = Object.assign({}, after, { progress: pg });
   if (!left.length) {
     const failed = jobs.filter((j) => pg[j].status === "failed");
-    Object.assign(next, { status: failed.length === jobs.length ? "failed" : "done", finishedAt: nowIso(),
+    // 2.1: "partial" when some jobs failed and others saved their results; "done" only when every job saved its results
+    Object.assign(next, { status: failed.length === jobs.length ? "failed" : failed.length ? "partial" : "done", finishedAt: nowIso(),
       result: jobs.map((j) => `${JOBS[j]}: ${pg[j].status === "done" ? `${pg[j].created} new, ${pg[j].updated} updated` : "failed — " + (pg[j].error || "")}`).join(" · ").slice(0, 600) });
   } else if (retryLater) Object.assign(next, { status: "queued", fireNote: out.error });
   await upsert(env, p, next).run();

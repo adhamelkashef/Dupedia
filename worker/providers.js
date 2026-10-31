@@ -112,3 +112,36 @@ export async function tavilyExtract(env, urls, { depth = "basic", maxChars = 600
   const per = depth === "advanced" ? 2 : 1;
   return { results, failed, credits: credits(j, Math.ceil(results.length / 5) * per) };
 }
+
+/* ======================= Gemini (analysis only — it never searches; it reads the sources Tavily returned) =======================
+   Free tier: a Google project WITHOUT a billing account (then nothing can be charged; over quota = 429 RESOURCE_EXHAUSTED).
+   On the free tier Google may use and human-review what is sent, so only public web text and the research brief are sent.
+     GEMINI_API_KEY     secret — aistudio.google.com → Get API key (project without billing)
+     GEMINI_MODEL       optional, default gemini-3.8-flash (gemini-3.5-flash-lite uses less quota)
+     GEMINI_BASE_URL    optional, for tests only
+     GEMINI_TIMEOUT_MS  optional, default 90000 */
+export const geminiConfigured = (env) => !!(env.GEMINI_API_KEY && String(env.GEMINI_API_KEY).length > 10);
+export const geminiModel = (env) => String(env.GEMINI_MODEL || "gemini-3.8-flash").replace(/[^A-Za-z0-9._-]/g, "");
+function geminiDescribe(name, status, j, txt, headers) {
+  const e = (j && j.error) || {}, msg = clip(e.message || txt, 200), reason = JSON.stringify(e.details || "");
+  if (status === 400 && /API_KEY_INVALID|API key not valid/i.test(reason + msg)) return new ProviderError(name, "auth", "Gemini refused the API key — check GEMINI_API_KEY in Cloudflare.", { status });
+  if (status === 400 && /location is not supported|FAILED_PRECONDITION/i.test(msg + e.status)) return new ProviderError(name, "auth", `Gemini is not available for this project or region: ${msg}`, { status });
+  if (status === 403) return new ProviderError(name, "auth", `Gemini refused access (403): ${msg}`, { status });
+  if (status === 429) { const daily = /per.?day|PerDay|quota/i.test(reason + msg);
+    return new ProviderError(name, daily ? "quota" : "rate_limited", daily ? "Gemini's free daily quota is used up. Research waits until it resets (midnight Pacific time, 10 or 11 a.m. in Cairo); nothing is charged." : "Gemini rate limit reached — it will be tried again in a minute.", { status, retryAfterMs: retryAfterMs(headers) }); }
+  return defaultDescribe(name, status, j, txt, headers);
+}
+/** One Gemini call that must answer JSON. Returns {text, tokens, model, finish}. Throws ProviderError. */
+export async function geminiJson(env, { system, prompt, maxOutputTokens = 8192 }) {
+  if (!geminiConfigured(env)) throw new ProviderError("Gemini", "not_configured", "Research analysis is not connected: add the GEMINI_API_KEY secret to this Worker (see CLOUDFLARE.md).");
+  const model = geminiModel(env), base = String(env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
+  const t = parseInt(env.GEMINI_TIMEOUT_MS, 10), timeoutMs = Number.isFinite(t) && t >= 100 ? Math.min(t, 120000) : 90000;
+  const j = await callJson(`${base}/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+    body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens } }) }, { name: "Gemini", timeoutMs, retries: 1, describe: geminiDescribe });
+  if (j.promptFeedback && j.promptFeedback.blockReason) throw new ProviderError("Gemini", "bad_request", `Gemini declined the request (${j.promptFeedback.blockReason}).`);
+  const c = (j.candidates || [])[0] || {}, text = ((c.content && c.content.parts) || []).filter((p) => p && typeof p.text === "string" && !p.thought).map((p) => p.text).join("");
+  const tokens = (j.usageMetadata && Number(j.usageMetadata.totalTokenCount)) || 0;
+  if (!text) throw new ProviderError("Gemini", "server", `Gemini returned no answer (${c.finishReason || "no reason given"}).`, { tokens });
+  return { text, tokens, model: j.modelVersion || model, finish: c.finishReason || null };
+}

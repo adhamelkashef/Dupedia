@@ -115,8 +115,8 @@
     if (!todo.length) throw Object.assign(new Error(`Already queued or running: ${busy.map(jobLabel).join(", ")}.`), { code: "busy" });
     const id = rid("rq-"), doc = { jobs: todo, by: me().id, at: now(), status: "queued", started: null, via: null };
     await DS().set(`mi/req/r/${id}`, doc);
-    const { fired, why, server } = await fireTask(id, todo);
-    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : null, fireNote: fired ? "" : why }));
+    const { fired, why, server, code } = await fireTask(id, todo);
+    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : null, fireNote: fired ? "" : why, fireCode: fired ? null : code || null }));
     return { id, jobs: todo, skipped: busy, fired, why, server: !!server };
   }
   /** Ask the research task to start (Claude Code Remote connector). Never throws; says why when it could not. */
@@ -124,8 +124,11 @@
     // 1.4.2 — on Cloudflare the Worker runs the research itself (Claude API + web search); the page drives it job by job
     if (root.XFServer && root.XFServer.researchStatus) {
       const st = await root.XFServer.researchStatus().catch((e) => ({ error: e.message }));
-      return st && st.configured ? { fired: true, why: "", server: true }
-        : { fired: false, server: true, why: st && st.error ? `Could not check the research connection (${st.error}).` : "Research is not connected yet: an administrator must add the Claude API key (ANTHROPIC_API_KEY) to the Worker in Cloudflare (see CLOUDFLARE.md). The request stays queued and runs within the hour once the key is added." };
+      // 2.1: the Worker says exactly which secret is missing (Tavily + Gemini by default); no promise of a time it cannot keep
+      if (st && st.configured) return { fired: true, why: "", server: true };
+      if (st && st.error) return { fired: false, server: true, code: "status_error", why: `Could not check the research connection (${st.error}). The request is saved and stays queued.` };
+      const miss = (st && st.missingMessage) || "Research cannot run yet: a research secret is missing in Cloudflare (see CLOUDFLARE.md).";
+      return { fired: false, server: true, code: "not_configured", why: `${miss} The request is saved and stays queued. Once the secret is added, the hourly research job (at minute :28) starts it, one job per hour, or press “Queue again” here to run it now. Requests older than 2 days are only started with “Queue again”.` };
     }
     const trig = ((root.DPUI && root.DPUI.App.config.settings.intel) || {}).triggerId || (((await schedule()).tasks || {}).research) || "";
     let fired = false, why = trig ? "" : "No research task is configured (Admin › Settings › Market Intelligence).";
@@ -168,8 +171,8 @@
       requeuedAt: at, requeuedBy: me().id, fireNote: Number.isFinite(t) && Date.now() - t >= EXPIRE_MS ? "Queued again by an administrator (the original request had expired)." : "Queued again by an administrator." });
     delete doc.id;
     await DS().set(`mi/req/r/${id}`, doc);
-    const { fired, why, server } = await fireTask(id, todo);
-    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : doc.via || null, fireNote: fired ? doc.fireNote : `${doc.fireNote} ${why}`.trim() }));
+    const { fired, why, server, code } = await fireTask(id, todo);
+    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : doc.via || null, fireNote: fired ? doc.fireNote : `${doc.fireNote} ${why}`.trim(), fireCode: fired ? null : code || null }));
     return { id, jobs: todo, skipped: [], fired, why, server: !!server };
   }
   /** A run that started but never reported back (90+ minutes): record it as failed so it can be queued again. Never marks it done. */
