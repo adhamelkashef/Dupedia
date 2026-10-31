@@ -56,13 +56,19 @@
    *  (1.1 fix — an interrupted upload used to leave a payment that claimed evidence the administrator could never open). */
   async function putFile(base, f) {
     const parts = []; for (let i = 0; i < f.dataUrl.length; i += 180000) parts.push(f.dataUrl.slice(i, i + 180000));
-    for (let i = 0; i < parts.length; i++) {
-      const doc = { n: i, total: parts.length, part: parts[i], name: f.name, type: f.type, size: f.size, hash: f.hash || null };
-      try { await DS().set(`${base}/c/${String(i).padStart(3, "0")}`, doc); }
-      catch (e) { await new Promise((r) => setTimeout(r, 600)); await DS().set(`${base}/c/${String(i).padStart(3, "0")}`, doc); }   // one retry on a transient failure
-    }
-    const back = await DS().tryList(`${base}/c`);
-    if (back.length < parts.length) { const err = new Error("The file did not upload completely. Check the connection and attach it again."); err.code = "upload_incomplete"; throw err; }
+    // 2.0: upload progress = bytes the server has confirmed storing, out of the file's total (never 100% before the read-back check)
+    const pg = root.XF && root.XF.load && root.XF.load.fileProgress ? root.XF.load.fileProgress(f.name, f.dataUrl.length) : null; let sent = 0;
+    try {
+      for (let i = 0; i < parts.length; i++) {
+        const doc = { n: i, total: parts.length, part: parts[i], name: f.name, type: f.type, size: f.size, hash: f.hash || null };
+        try { await DS().set(`${base}/c/${String(i).padStart(3, "0")}`, doc); }
+        catch (e) { await new Promise((r) => setTimeout(r, 600)); await DS().set(`${base}/c/${String(i).padStart(3, "0")}`, doc); }   // one retry on a transient failure
+        sent += parts[i].length; pg && pg.progress(sent);
+      }
+      const back = await DS().tryList(`${base}/c`);
+      if (back.length < parts.length) { const err = new Error("The file did not upload completely. Check the connection and attach it again."); err.code = "upload_incomplete"; throw err; }
+      pg && pg.done();
+    } catch (e) { pg && pg.fail(e.message); throw e; }
   }
   async function getFile(base) { const l = (await DS().tryList(`${base}/c`)).sort((a, b) => a.data.n - b.data.n); if (!l.length || l.length !== l[0].data.total) return null; return { name: l[0].data.name, type: l[0].data.type, size: l[0].data.size, dataUrl: l.map((x) => x.data.part).join("") }; }
   async function delFile(base) { for (const x of await DS().tryList(`${base}/c`)) await DS().del(`${base}/c/${x.id}`); }

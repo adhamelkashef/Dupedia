@@ -1,0 +1,325 @@
+/* X FORCE 2.0 "Snap" — app shell (Session 4): the charcoal rail with the department switcher, the header, the notification
+   centre and the dashboard hero. Loaded last. Built only from the design-system tokens (xf-tokens.css). The header stays light
+   because the logo sits on white; the rail is the charcoal deck. */
+
+/* ======================= rail: the charcoal deck ======================= */
+.rail{background:var(--x-deck-light);border-right:0;color:var(--x-on-deck);scrollbar-color:rgba(255,255,255,.2) transparent}
+.rail .ri{color:var(--x-on-deck-2);font-weight:500;border-radius:var(--x-r-pill);transition:background-color var(--x-d-sm) var(--x-settle),color var(--x-d-sm)}
+.rail .ri svg{stroke:currentColor}
+.rail .ri:hover{background:rgba(255,255,255,.07);color:var(--x-on-deck)}
+.rail .ri.is-on{background:var(--x-lime);color:#262626;font-weight:600;animation:x-pill var(--x-d-md) var(--x-snap)}
+.rail .ri.is-on svg{stroke:#262626;animation:x-pop var(--x-d-md) var(--x-snap)}
+.rail .ri.is-on::before{display:none}
+.rail .ri em{background:var(--x-coral);color:#262626}
+.rail .ri.is-on em{background:#262626;color:var(--x-lime)}
+.rail .ri:focus-visible{outline:none;box-shadow:0 0 0 3px var(--x-lime)}
+.rail .rh{color:var(--x-on-deck-2)}
+.rail .rh:hover{color:var(--x-on-deck)}
+.rail .rh::before{background:var(--x-on-deck)}
+.rail .rh::after{border-color:var(--x-on-deck-2)}
+.rail .rfoot{border-top-color:var(--x-deck-line)}
+.rail .rtog{color:var(--x-on-deck-2)}
+.app.rail-collapsed .rail .ri:hover::after{background:var(--x-charcoal);color:#F3F1EA;box-shadow:var(--x-e2)}
+
+/* department switcher (administrators): one division mark per department; the chosen one is lit */
+.xrsw{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px;margin:2px 2px 6px;border-radius:14px;background:rgba(255,255,255,.06)}
+.xrsw button{border:0;background:transparent;padding:6px 0;border-radius:10px;cursor:pointer;display:grid;place-items:center;transition:background-color var(--x-d-sm) var(--x-settle)}
+.xrsw button .x-mark{width:26px;height:26px;border-radius:6px;opacity:.5;filter:saturate(.6);transition:opacity var(--x-d-sm),filter var(--x-d-sm),transform var(--x-d-sm) var(--x-snap)}
+.xrsw button:hover .x-mark{opacity:.85;filter:none}
+.xrsw button[aria-pressed="true"]{background:rgba(255,255,255,.12)}
+.xrsw button[aria-pressed="true"] .x-mark{opacity:1;filter:none;transform:scale(1.08)}
+.xrsw button:focus-visible{outline:none;box-shadow:0 0 0 3px var(--x-lime)}
+@media (min-width:641px){
+  .rail[data-xsw="1"] .rh,.rail[data-xsw="1"] .rg{display:none!important}
+  .rail[data-xsw="1"] .rg.is-cur{display:flex!important}
+  .rail[data-xsw="1"][data-g="work"] .rh[data-g="work"],.rail[data-xsw="1"][data-g="sales"] .rh[data-g="sales"],.rail[data-xsw="1"][data-g="finance"] .rh[data-g="finance"],
+  .rail[data-xsw="1"][data-g="factory"] .rh[data-g="factory"],.rail[data-xsw="1"][data-g="admin"] .rh[data-g="admin"]{display:flex!important;cursor:default;padding:10px 12px 6px;font:600 12px/1.2 var(--x-f-text);letter-spacing:var(--x-track-label);text-transform:uppercase}
+  .rail[data-xsw="1"] .rh::after{display:none}
+}
+.app.rail-collapsed .xrsw{grid-template-columns:1fr;margin-inline:0}
+@media (max-width:1100px){.xrsw{grid-template-columns:1fr;margin-inline:0}.rail[data-xsw="1"] .rh{font-size:0!important;padding:8px 0 2px!important;justify-content:center}}
+.app.rail-collapsed .rail[data-xsw="1"] .rh{font-size:0!important;padding:8px 0 2px!important;justify-content:center}
+
+/* phone: the rail is the bottom bar and the menu sheet; the switcher is not needed there (the sheet lists everything) */
+@media (max-width:640px){
+  .rail{border-top:0}
+  .xrsw{display:none}
+  .rail>.rg.xprim>.ri.is-on{background:transparent;color:var(--x-lime);animation:none}
+  .rail>.rg.xprim>.ri.is-on svg{stroke:var(--x-lime)}
+  .app.xsheet .rail{background:var(--x-deck)}
+  .app.xsheet .rail>.rg.xprim>.xmore{background:rgba(255,255,255,.08)}
+  .app.xsheet .rail .ri.is-on{background:var(--x-lime);color:#262626}
+  .app.xsheet .rail .ri.is-on svg{stroke:#262626}
+}
+
+/* page sections never grow wider than the screen: wide tables scroll inside their own box (1.x pages included) */
+.page>*,.page>*>*,.dgrid>*,.stack>*{min-width:0}
+.tablewrap,.pbwrap{max-width:100%;width:100%;contain:inline-size}   /* a wide table scrolls in its own box and never widens the page */
+.fin-per .check,label.check{white-space:normal;min-width:0}
+
+/* ======================= header ======================= */
+.role .av{width:34px;height:34px;box-shadow:0 0 0 2px var(--x-surface),0 0 0 4px var(--x-lime)}
+.bell{border-radius:50%}
+.bell svg{transform-origin:50% 12%}
+.bell.is-ring svg{animation:x-ring .62s var(--x-settle)}
+.bell em{background:var(--x-coral);color:#262626}
+
+/* ======================= notification centre ======================= */
+.nitem{border-radius:var(--x-r-sm);transition:background-color var(--x-d-fast)}
+.nitem .ni{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--x-sunk);color:var(--x-fg);flex:none;font-size:0}
+.nitem .ni .x-ic{width:18px;height:18px}
+.nitem.unread .ni{background:var(--x-lime);color:#262626}
+.nitem.unread{background:color-mix(in srgb,var(--x-lime) 9%,var(--x-surface))}
+
+/* ======================= dashboard hero (CEO Control Center and personal dashboard) ======================= */
+.xdash-hero{margin-bottom:var(--x-s2)}
+.xdash-hero .x-hero__top{display:flex;gap:var(--x-s5);align-items:center;flex-wrap:wrap}
+.xdash-hero .x-hero__top>div{flex:1 1 320px;min-width:0}
+.xdash-hero .x-avatar{--_s:96px;box-shadow:0 0 0 3px var(--x-deck),0 0 0 6px var(--x-lime)}
+.xdash-hero .x-hero__title{max-width:none}
+.xdash-hero .x-hero__lead{max-width:72ch}
+.xdash-hero .xh-ctl{display:flex;gap:var(--x-s2);flex-wrap:wrap;align-items:center;justify-content:flex-end;min-width:0;max-width:100%}
+.xdash-hero .xh-ctl>*{min-width:0}
+.xdash-hero .seg{background:rgba(255,255,255,.08);border-color:transparent}
+.xdash-hero .seg{max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+.xdash-hero .seg::-webkit-scrollbar{display:none}
+.xdash-hero .seg button{color:var(--x-on-deck-2);white-space:nowrap;flex:none}
+.xdash-hero .seg button.is-on{background:var(--x-on-deck);color:#262626}
+.xdash-hero select.in{background-color:rgba(255,255,255,.08);color:var(--x-on-deck);border-color:var(--x-deck-line)}
+.xdash-hero select.in option{color:#262626}
+.xdash-hero .x-metric{background:transparent;border:0;padding:0;text-align:start;color:inherit;font:inherit;cursor:pointer;border-radius:var(--x-r-sm);transition:transform var(--x-d-sm) var(--x-settle)}
+.xdash-hero button.x-metric:hover{transform:translateY(-2px)}
+.xdash-hero button.x-metric:hover .x-metric__label{color:var(--x-on-deck)}
+.xdash-hero button.x-metric:focus-visible{outline:none;box-shadow:0 0 0 3px var(--x-lime)}
+.xdash-hero .x-metric__value{color:var(--x-on-deck)}
+.xdash-hero .xh-lead{display:flex;align-items:center;gap:var(--x-s4)}
+.xdash-hero .x-ring .trk{stroke:rgba(255,255,255,.14)}
+.xdash-hero .x-ring b{color:var(--x-on-deck)}
+.xdash-hero .x-skel{background:rgba(255,255,255,.1);height:44px;width:70%}
+.xdash-hero .x-skel::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent)}
+.xdash-chart{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:var(--x-s4)}
+.xdash-chart .x-card__h p{margin:0;font-size:var(--x-t-xs);color:var(--x-muted)}
+@media (max-width:900px){.xdash-chart{grid-template-columns:1fr}}
+@media (max-width:640px){
+  .xdash-hero{padding:var(--x-s5) var(--x-s4)}
+  .xdash-hero .x-avatar{--_s:64px}
+  .xdash-hero .xh-ctl{justify-content:flex-start;width:100%}
+  .xdash-hero .seg{contain:inline-size;width:100%}
+  .xdash-hero .x-hero__metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .xdash-hero .x-hero__metrics>:first-child{grid-column:1/-1}
+}
+
+/* ======================= people (Session 5): four avatar sizes, profile, ID card dialog ======================= */
+/* sizes: 32 dense · 48 lists, chat, header · 96 cards and panels · 200 arch (profile and ID card) */
+.pic{object-fit:cover}
+.pic.ring2{box-shadow:0 0 0 3px var(--x-surface),0 0 0 6px var(--x-lime)}
+.xc-av img{width:48px;height:48px}.xc-av.sm img{width:48px;height:48px}.xc-av.xs{width:32px}.xc-av.xs img{width:32px;height:32px}
+
+/* My Profile */
+.xprof{gap:var(--x-s6)}
+.xprof-hero{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--x-s7);align-items:center;padding:var(--x-s6);border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm);background:var(--x-surface);border:1px solid var(--x-line);position:relative;overflow:hidden}
+.xprof-hero::after{content:"";position:absolute;top:-1px;inset-inline-end:-1px;width:72px;height:72px;background:var(--x-dept);border-end-start-radius:100%;border-start-end-radius:var(--x-r-corner)}
+.xprof-card .x-idcard{box-shadow:var(--x-e2);border-radius:var(--x-r-sm) 36px var(--x-r-sm) var(--x-r-sm)}
+.xprof-id{display:flex;flex-direction:column;gap:var(--x-s3);min-width:0}
+.xprof-id .x-hero__eyebrow{color:var(--x-dept-ink)}
+.xprof-id h1{overflow-wrap:anywhere}
+.xprof-sub{margin:0;color:var(--x-fg2);font-size:var(--x-t-lg)}
+.xprof-tags,.xprof-acts{display:flex;flex-wrap:wrap;gap:var(--x-s2)}
+.xprof-acts{margin-top:var(--x-s2)}
+.xprof-note{font-size:var(--x-t-xs);margin:0}
+.xprof-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:var(--x-s4);align-items:start}
+.xprof-kv{display:grid;grid-template-columns:minmax(110px,auto) minmax(0,1fr);gap:10px var(--x-s4);margin:0;font-size:var(--x-t-md)}
+.xprof-kv dt{color:var(--x-muted)}
+.xprof-kv dd{margin:0;font-weight:500;overflow-wrap:anywhere}
+@media (max-width:820px){.xprof-hero{grid-template-columns:1fr;justify-items:center;text-align:center;padding:var(--x-s5) var(--x-s4)}.xprof-id{align-items:center}.xprof-tags,.xprof-acts{justify-content:center}}
+@media (max-width:400px){.xprof-card .x-idcard{--_w:calc(100vw - 72px)!important}}
+
+/* ID card dialog (directory, Work Force, user management) */
+.xid-dlg{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--x-s6);align-items:center}
+.xid-side{display:flex;flex-direction:column;gap:var(--x-s2);min-width:0}
+.xid-side p{margin:0}
+.xid-warn{background:var(--x-warn-bg);color:var(--x-warn);border-radius:var(--x-r-sm);padding:10px 12px;font-size:var(--x-t-sm);font-weight:600}
+.xid-acts{display:flex;flex-wrap:wrap;gap:var(--x-s2);margin-top:var(--x-s3)}
+.xid-tip{font-size:var(--x-t-xs)}
+@media (max-width:700px){.xid-dlg{grid-template-columns:1fr;justify-items:center;text-align:center}.xid-acts{justify-content:center}#xid-host .x-idcard{--_w:min(300px,calc(100vw - 80px))!important}}
+
+/* ======================= sales & growth (Session 6) ======================= */
+/* page header: the charcoal deck band with the department corner on every page (Sales 6, Finance 7, Factory 8, all others 10).
+   Mission Control keeps its own dark command-centre design. */
+.app .view:not(#view-mission)>.page>.phead{background:var(--x-deck-light);color:var(--x-on-deck);border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm);padding:var(--x-s6) var(--x-s6) var(--x-s5);position:relative;overflow:hidden;isolation:isolate;align-items:flex-end}
+.app .view:not(#view-mission)>.page>.phead::after{content:"";position:absolute;top:0;inset-inline-end:0;width:84px;height:84px;background:var(--dept,var(--x-coral));border-end-start-radius:100%;z-index:-1;animation:x-corner var(--x-d-lg) var(--x-snap)}
+.app .view:not(#view-mission)>.page>.phead h1{color:var(--x-on-deck)}
+.app .view:not(#view-mission)>.page>.phead .lead,.app .view:not(#view-mission)>.page>.phead .muted,.app .view:not(#view-mission)>.page>.phead .small{color:var(--x-on-deck-2)}
+.app .view:not(#view-mission)>.page>.phead .eyebrow{color:#F79A7C}
+.app[data-dept="finance"] .view>.page>.phead .eyebrow{color:#6CC9D6}
+.app[data-dept="ops"] .view>.page>.phead .eyebrow{color:#F5C460}
+.app[data-dept="strategic"] .view>.page>.phead .eyebrow{color:#A79CF5}
+.app:is([data-dept="neutral"],[data-dept="studio"]) .view>.page>.phead .eyebrow{color:#C9DE6A}
+.app:is([data-dept="neutral"],[data-dept="studio"]) .view>.page>.phead::after{background:var(--x-lime)}
+.app .view:not(#view-mission)>.page>.phead .btn.ghost{background:transparent;color:var(--x-on-deck);box-shadow:inset 0 0 0 1px var(--x-deck-line)}
+.app .view:not(#view-mission)>.page>.phead .btn.ghost:hover{background:rgba(255,255,255,.08)}
+.app .view:not(#view-mission)>.page>.phead select.in,.app .view:not(#view-mission)>.page>.phead input.in{background:rgba(255,255,255,.08);color:var(--x-on-deck);border-color:var(--x-deck-line)}
+.app .view:not(#view-mission)>.page>.phead select.in option{color:#262626}
+.app .view:not(#view-mission)>.page>.phead .seg{background:rgba(255,255,255,.08);border-color:transparent}
+.app .view:not(#view-mission)>.page>.phead .seg button{color:var(--x-on-deck-2)}.app .view:not(#view-mission)>.page>.phead .seg button.is-on{background:var(--x-on-deck);color:#262626}
+.app .view:not(#view-mission)>.page>.phead .pill{background:rgba(255,255,255,.1);color:var(--x-on-deck)}
+@media (max-width:640px){.app .view:not(#view-mission)>.page>.phead{padding:var(--x-s5) var(--x-s4)}}
+
+/* summary tiles (all pages): number in Fraunces, quarter corner on the strip, lift only where a tile opens something */
+.kcards{border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm);box-shadow:none;border-color:var(--x-line)}
+.kcard b{font:600 26px/1.05 var(--x-f-display);font-variation-settings:"SOFT" 100;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+button.kcard:hover{background:color-mix(in srgb,var(--x-dept) 9%,var(--x-surface))}
+button.kcard:focus-visible{outline:none;box-shadow:inset 0 0 0 3px var(--x-lime)}
+.kcard.bad b{color:var(--x-err)}
+
+/* Lead Mine cards */
+.lgrid{gap:var(--x-s4);grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.lcard{border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm);padding:var(--x-s5);gap:10px;transition:transform var(--x-d-sm) var(--x-settle),box-shadow var(--x-d-sm) var(--x-settle),border-color var(--x-d-sm)}
+.lcard:hover{transform:translateY(-2px);box-shadow:var(--x-e1);border-color:var(--x-line-strong)}
+.lcard h3{font:600 19px/1.15 var(--x-f-display);font-variation-settings:"SOFT" 100;letter-spacing:-.01em}
+.lcard.mine{border-color:var(--x-lime);box-shadow:0 0 0 2px var(--x-lime)}
+.lcard .acts .btn.lime{animation:none}
+.pri{display:inline-flex;align-items:center;gap:6px;letter-spacing:.08em}
+.pri::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pri.High{background:var(--x-lime);color:#262626}
+
+/* My Leads: list / board */
+.xml-tabs{display:flex;gap:6px}
+.xml-tabs .x-btn[aria-pressed="true"]{--_bg:var(--x-charcoal);--_fg:#F3F1EA}
+.xml-board{contain:inline-size;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,1fr);gap:var(--x-s3);overflow-x:auto;padding-bottom:var(--x-s2);scroll-snap-type:x proximity}
+.xml-col{background:var(--x-sunk);border-radius:var(--x-r-sm);padding:var(--x-s3);display:flex;flex-direction:column;gap:var(--x-s2);min-height:160px;scroll-snap-align:start}
+.xml-col:last-child{border-start-end-radius:var(--x-r-corner)}
+.xml-col header{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--x-t-sm);padding:2px 4px 6px}
+.xml-col .x-count{background:var(--x-charcoal);color:#F3F1EA}.xml-col .x-count.is-zero{background:var(--x-stone);color:var(--x-muted)}
+.xml-col[data-stage="won"] .x-count:not(.is-zero){background:var(--x-lime);color:#262626}
+.xml-card{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:start;border:1px solid var(--x-line);background:var(--x-surface);color:var(--x-fg);border-radius:var(--x-r-sm);padding:12px;cursor:pointer;font:inherit;transition:transform var(--x-d-sm) var(--x-settle),box-shadow var(--x-d-sm)}
+.xml-card:hover{transform:translateY(-2px);box-shadow:var(--x-e1)}
+.xml-card:focus-visible{outline:none;box-shadow:var(--x-focus)}
+.xml-card b{font-size:var(--x-t-md);line-height:1.3}
+.xml-card .x-muted{font-size:var(--x-t-xs)}
+.xml-pri{display:inline-flex;align-items:center;gap:6px;font:600 11px/1 var(--x-f-text);letter-spacing:.08em;text-transform:uppercase;color:var(--x-muted)}
+.xml-empty{margin:0;font-size:var(--x-t-xs);color:var(--x-muted);padding:4px}
+
+/* order detail: stage timeline card */
+.xod-flow{margin:2px 0}
+
+/* ======================= finance & payroll (Session 7) ======================= */
+/* tables everywhere: quieter header band, tabular figures, clear row hover — numbers stay exactly as computed */
+.mtable{font-variant-numeric:tabular-nums}
+.mtable thead th{background:var(--x-sunk);position:sticky;top:0;z-index:1}
+.mtable tbody tr:hover td{background:color-mix(in srgb,var(--x-dept) 7%,var(--x-surface))}
+.mtable td.r,.mtable th.r{text-align:end}
+.mtable td.r b{font-weight:700}
+.tablewrap{border-radius:var(--x-r-sm)}
+.app[data-dept="finance"] .card:has(>.tablewrap:only-child){padding:0;overflow:hidden}
+/* tabs and money tiles on finance pages */
+.app[data-dept="finance"] .kc b,.kcards .kc b{font:600 24px/1.1 var(--x-f-display);font-variation-settings:"SOFT" 100;font-variant-numeric:tabular-nums}
+.fin-h{display:flex;align-items:center;gap:8px;font:600 18px/1.2 var(--x-f-display);font-variation-settings:"SOFT" 100;margin-top:var(--x-s3)}
+.fin-h::before{content:"";width:12px;height:12px;border-start-end-radius:12px;background:var(--x-lagoon)}
+.xfin-chart .x-card__h p{margin:0;font-size:var(--x-t-xs);color:var(--x-muted)}
+.xfin-chart .x-card__h{flex-wrap:wrap;row-gap:2px}
+/* the latest payslip */
+.xslip{border:1px solid var(--x-line);border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm);padding:var(--x-s5);display:grid;gap:var(--x-s4);background:var(--x-surface);position:relative;overflow:hidden}
+.xslip::after{content:"";position:absolute;top:0;inset-inline-end:0;width:48px;height:48px;background:var(--x-lagoon);border-end-start-radius:100%}
+.xslip-h{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--x-s3);padding-inline-end:48px}
+.xslip-net{display:flex;align-items:baseline;justify-content:space-between;gap:var(--x-s3);padding:var(--x-s4);border-radius:var(--x-r-sm);background:var(--x-deck-light);color:var(--x-on-deck)}
+.xslip-net span{color:var(--x-on-deck-2);font-weight:600;font-size:var(--x-t-sm)}
+.xslip-net b{font:600 32px/1 var(--x-f-display);font-variation-settings:"SOFT" 100}
+.xslip-kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px var(--x-s4);margin:0;font-size:var(--x-t-md)}
+.xslip-kv dt{color:var(--x-muted)}.xslip-kv dd{margin:0;text-align:end;font-weight:600}
+
+/* ======================= factory & engineering (Session 8) ======================= */
+.xfac-steps{margin-top:6px;max-width:150px;gap:3px}
+.xfac-steps li{height:5px}
+.x-steps li.is-late{background:var(--x-coral)}
+.xfac-flow{margin-top:var(--x-s2)}
+.xfac-flow li b{font-size:var(--x-t-sm);line-height:1.25}
+@media (max-width:900px) and (min-width:641px){.xfac-flow{grid-auto-flow:row;grid-template-columns:repeat(4,minmax(0,1fr));row-gap:var(--x-s4)}.xfac-flow li::after{display:none}}
+/* phones: any segmented tab row scrolls sideways inside itself instead of widening the page */
+@media (max-width:640px){.page .seg{contain:inline-size;width:100%;max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.page .seg::-webkit-scrollbar{display:none}.page .seg>button{flex:none;white-space:nowrap}}
+
+/* ======================= chat and communication (Session 9) — builds on the 1.4.6 chat; behaviour unchanged ======================= */
+/* bubbles: flat (no resting shadow), square corner at the speaker's side, the brand's soft corners elsewhere */
+.xc-b{box-shadow:none;border-radius:6px 20px 20px 20px;padding:9px 13px 6px}
+.xc-m.cont .xc-b{border-top-left-radius:6px}
+.xc-m.mine .xc-b{border-radius:20px 6px 20px 20px}
+.xc-m.mine.cont .xc-b{border-top-right-radius:6px}
+.xc-m:not(.mine) .xc-b{background:var(--x-surface);border-color:var(--x-line)}
+.xc-hl .xc-b{box-shadow:0 0 0 3px var(--x-lime)}
+/* names and times: a little calmer */
+.xc-who{font-weight:600;color:var(--x-fg2)}
+.xc-meta{font-variant-numeric:tabular-nums}
+/* presence: the brand's lime ball instead of a system green */
+.xc-on{background:var(--x-lime);width:13px;height:13px;border-color:var(--x-surface)}
+/* conversation list: lime pill for the open one, coral unread counter */
+.xc-it{border-radius:14px}
+.xc-it.is-on{background:color-mix(in srgb,var(--x-lime) 18%,var(--x-surface));box-shadow:none}
+.xc-it.unread .xc-l2 em{background:var(--x-coral);color:#262626}
+.xc-l2 em{animation:x-pop var(--x-d-md) var(--x-snap)}
+.xc-l1 b{font-weight:600}
+.xc-it.unread .xc-l1 b{font-weight:700}
+.xc-lh{letter-spacing:var(--x-track-label);color:var(--x-muted)}
+/* header of an open conversation */
+.xc-mh{background:color-mix(in srgb,var(--x-surface) 94%,transparent)}
+.xc-mt b{font:600 17px/1.2 var(--x-f-display);font-variation-settings:"SOFT" 100;letter-spacing:-.01em}
+/* composer: the design-system focus (lime underline), pill shape kept */
+.xc-row{border-width:1px;border-color:var(--x-line-strong);border-radius:var(--x-r-pill)}
+.xc-row:focus-within{border-color:var(--x-fg);box-shadow:inset 0 -3px 0 var(--x-lime)}
+.xc-send{width:42px;height:42px}
+.xc-send:not(.busy):active{animation:x-pop var(--x-d-md) var(--x-snap)}
+/* reactions and tools */
+.xc-rx button{box-shadow:none;border-color:var(--x-line)}
+.xc-rx button.mine{border-color:var(--x-lime);background:color-mix(in srgb,var(--x-lime) 20%,var(--x-surface))}
+.xc-tools{box-shadow:var(--x-e2)}
+/* day separators and system lines */
+.xc-day span{font-variant-numeric:tabular-nums;background:var(--x-surface)}
+.xc-sys{border-radius:var(--x-r-pill)}
+/* the chat window itself: the brand corner and flat edge */
+.xc-host{border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm);box-shadow:none;border-color:var(--x-line)}
+.xc-skel{background:var(--x-stone);animation:none;position:relative;overflow:hidden}
+.xc-skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--x-surface) 60%,transparent),transparent);transform:translateX(-100%);animation:x-sweep 1.4s var(--x-settle) infinite}
+@media (prefers-reduced-motion:reduce){.xc-skel::after{display:none}.xc-l2 em,.xc-send:active{animation:none}}
+
+/* ======================= admin and remaining screens (Session 10) ======================= */
+/* 1.x toasts (DPUI.toast) in the design-system style: charcoal, a status ball, bottom centre as before */
+.toast{background:var(--x-charcoal);color:#F3F1EA;border-radius:var(--x-r-sm);padding:12px 14px 12px 12px;font-size:var(--x-t-md);box-shadow:var(--x-e2);animation:x-toast-in var(--x-d-md) var(--x-snap)}
+.toast::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--x-lime);flex:none}
+.toast.err{background:var(--x-charcoal)}.toast.err::before{background:var(--x-coral)}
+.toast button{background:rgba(255,255,255,.1);color:#F3F1EA}
+.toast button:hover{background:rgba(255,255,255,.18)}
+/* 1.x empty states: the block glyph, calmer text, brand corner on the card */
+.empty b,.card.empty b{font-family:var(--x-f-display)}
+.card.empty{border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm)}
+/* cards across the 1.x pages: flat, quarter corner on the marked ones */
+.card{border-color:var(--x-line)}
+.card.corner{border-start-end-radius:var(--x-r-corner)}
+/* notes and alerts: square structure, coloured ball instead of a bar */
+.note{border-radius:var(--x-r-sm)}
+/* page header inner elements on the deck (1.x pages with a picture greeting: engineer, data entry dashboards) */
+.view>.page>.phead .hello .pic{box-shadow:0 0 0 3px var(--x-deck),0 0 0 6px var(--x-lime)}
+.view>.page>.phead .note{background:rgba(255,255,255,.08);color:var(--x-on-deck);border-color:transparent}
+.view>.page>.phead a{color:var(--x-on-deck)}
+
+/* ======================= motion and interaction polish (Session 11) =======================
+   Motion only answers something: a page arriving, a press, a dialog opening. All of it is transform/opacity (cheap on
+   low-powered devices) and all of it switches off with the system's reduced-motion setting. */
+.view .page{animation:none}
+.view .page>*{animation:x-reveal var(--x-d-md) var(--x-settle) both}
+.view .page>*:nth-child(2){animation-delay:30ms}.view .page>*:nth-child(3){animation-delay:60ms}.view .page>*:nth-child(4){animation-delay:90ms}.view .page>*:nth-child(n+5){animation-delay:120ms}
+.btn{transition:background-color var(--x-d-fast),box-shadow var(--x-d-fast),transform var(--x-d-fast) var(--x-settle)}
+.btn:active:not([disabled]){transform:scale(.97)}
+.modal[open]{animation:x-dialog-in var(--x-d-md) var(--x-snap)}
+.rail .ri svg{transition:transform var(--x-d-sm) var(--x-snap)}
+.rail .ri:hover:not(.is-on) svg{transform:translateX(2px)}
+[dir="rtl"] .rail .ri:hover:not(.is-on) svg{transform:translateX(-2px)}
+.mtable tr.click{cursor:pointer}
+.mtable tr.click td{transition:background-color var(--x-d-fast)}
+.chips button,.seg button{transition:background-color var(--x-d-sm) var(--x-settle),color var(--x-d-sm)}
+.seg button.is-on{animation:x-pill var(--x-d-md) var(--x-snap)}
+details>summary{transition:color var(--x-d-fast)}
+details[open]>summary~*{animation:x-reveal var(--x-d-md) var(--x-settle)}
+@media (prefers-reduced-motion:reduce){
+  .view .page>*,.modal[open],.toast,.seg button.is-on,details[open]>summary~*,.rail .ri.is-on,.rail .ri.is-on svg,.lcard,.xml-card{animation:none!important}
+  .btn,.rail .ri svg,.lcard,.xml-card,button.kcard{transition:none!important}
+  .btn:active,.rail .ri:hover svg,.lcard:hover,.xml-card:hover{transform:none!important}
+}

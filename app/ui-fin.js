@@ -108,6 +108,7 @@
     if (root.DPHolUI) for (const w of DPHolUI.finWarnings(D)) alerts.push([w.c.closedOnDue ? "warn" : "", `${w.what}: ${w.c.text}${w.c.provisional ? " (provisional date)" : ""}`, { view: "holidays" }]);
     if (!Object.keys(D.accounts).length) alerts.push(["err", "No financial accounts yet. Add your bank, InstaPay and wallet accounts with their opening balances first.", { view: "finaccounts" }]);
     box.innerHTML = `${alerts.length ? `<div class="stack fin-alerts">${alerts.map(([c, t, g]) => `<button type="button" class="note ${c} small" data-go='${esc(JSON.stringify(g))}'>${esc(t)}</button>`).join("")}</div>` : ""}
+      ${root.XF ? `<div class="x-card x-card--corner xfin-chart" data-x-dept="finance"><div class="x-card__h"><h3>Money in and out</h3><p>EGP, recorded transactions by month · transfers between your own accounts left out</p></div><div id="fin-ch"></div></div>` : ""}
       <h3 class="fin-h">Cash</h3><div class="kcards">
         ${tile("Book balance — all EGP accounts", m(F.cash), `${Object.keys(D.accounts).length} account(s) · as recorded`, { view: "finaccounts" })}
         ${tile("Inflows (external)", m(F.inMinor), `${esc(P.from)} → ${esc(P.to)}`, { view: "transfers", opts: { dir: "in", from: P.from, to: P.to, status: "verified" } }, "", delta(F.inMinor, F0.inMinor))}
@@ -137,6 +138,11 @@
       <h3 class="fin-h">Recent transactions</h3>${txTable(D.txs.slice(0, 12), D.accounts)}
       <p class="tiny muted">Cash flow ≠ profit. Order profitability (revenue minus recorded costs) is in Reports and on each order.</p>`;
     bindGo(box); bindTxRows(box, D, () => renderFinance());
+    if (root.XF) { // 2.0: six months of the same cash-flow figure the Cash tiles use (DPFinCalc.cashflow, unchanged)
+      const months = [5, 4, 3, 2, 1, 0].map((o) => { const a = new Date(new Date().getFullYear(), new Date().getMonth() - o, 1), b = new Date(a.getFullYear(), a.getMonth() + 1, 0); return { label: a.toLocaleDateString([], { month: "short" }), from: a.toISOString().slice(0, 10), to: b.toISOString().slice(0, 10) }; });
+      const rows = months.map((x) => { const e = (C().cashflow(D.txs, { from: x.from, to: x.to }) || {}).EGP || {}; return { label: x.label, a: (e.inMinor || 0) / 100, b: (e.outMinor || 0) / 100 }; });
+      XF.chart.pairs($("#fin-ch"), rows, { la: "Money in", lb: "Money out", label: "Money in and out by month", empty: "No transactions recorded in the last six months.", fmt: (v) => (v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(Math.round(v))) });
+    }
   }
   function ceoOverview(box, D) {
     const F = figures(D, P.from, P.to), bal = Object.values(F.bal), mon = C().monthly(D.txs, "EGP").slice(-12), max = Math.max(1, ...mon.map((x) => Math.max(x.inMinor, x.outMinor)));

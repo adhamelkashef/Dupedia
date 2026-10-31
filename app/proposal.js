@@ -409,22 +409,26 @@
     const progress = opts.progress || null, chk = precheck("proposal");
     if (chk.errors.length) throw Object.assign(new Error(chk.errors.join(" ")), { code: "precheck", list: chk.errors });
     await ensureLib(progress); const X = context(), D = newDoc("a4"); let n = 1;
-    progress && progress("Building the cover");
-    await pageCover(D, X);
     const sec = Object.assign({ overview: true, plan: true, schedule: true, technical: true, quotation: true, notes: true }, opts.sections || {});
-    if (sec.overview) { // 1.3: featured equipment on the overview page (photographs, never stretched)
+    // 2.0: real step progress — one step per part actually built, reported as progress(label, i, total)
+    const has = { overview: sec.overview, plan: sec.plan && DPIO.extent(X.p), schedule: sec.schedule && Object.keys(X.counts).length, technical: sec.technical && (X.p.site || Object.keys(X.counts).length), quotation: sec.quotation && X.r.lines.length, notes: sec.notes };
+    const steps = ["cover"].concat(["overview", "plan", "schedule", "technical", "quotation", "notes"].filter((k) => has[k]), ["check"]);
+    const LBL = { cover: "Building the cover", overview: "Building the overview", plan: "Drawing the site plan", schedule: "Adding product photographs", technical: "Drawing the technical page", quotation: "Writing the quotation", notes: "Adding the notes", check: "Checking the document" };
+    const stepTo = (k) => progress && progress(LBL[k], steps.indexOf(k), steps.length);
+    stepTo("cover");
+    await pageCover(D, X);
+    if (has.overview) { stepTo("overview"); // 1.3: featured equipment on the overview page (photographs, never stretched)
       X.featured = Object.keys(X.counts).sort((a, b) => X.counts[b] - X.counts[a]).slice(0, 4); X.fimgs = {};
       await Promise.all(X.featured.map(async (c) => { const pp = DPCat.BY[c]; if (pp) X.fimgs[c] = await productPhoto(c, pp.thumb).catch(() => null); }));
       D.doc.addPage(); pageOverview(D, X, ++n); }
-    if (sec.plan && DPIO.extent(X.p)) { D.doc.addPage(); pagePlan(D, X, ++n); }
-    progress && progress("Drawing the plan and overview");
-    if (sec.schedule && Object.keys(X.counts).length) { progress && progress("Adding product photographs"); D.doc.addPage(); await pagesSchedule(D, X, ++n); }
-    if (sec.technical && (X.p.site || Object.keys(X.counts).length)) { D.doc.addPage(); pageTechnical(D, X, ++n); }
-    if (sec.quotation && X.r.lines.length) { D.doc.addPage(); pagesQuotation(D, X, ++n); }
-    if (sec.notes) { D.doc.addPage(); pageNotes(D, X, ++n); }
+    if (has.plan) { stepTo("plan"); D.doc.addPage(); pagePlan(D, X, ++n); }
+    if (has.schedule) { stepTo("schedule"); D.doc.addPage(); await pagesSchedule(D, X, ++n); }
+    if (has.technical) { stepTo("technical"); D.doc.addPage(); pageTechnical(D, X, ++n); }
+    if (has.quotation) { stepTo("quotation"); D.doc.addPage(); pagesQuotation(D, X, ++n); }
+    if (has.notes) { stepTo("notes"); D.doc.addPage(); pageNotes(D, X, ++n); }
     pageNumbers(D);
     D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.4" });
-    progress && progress("Checking the document");
+    stepTo("check");
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("proposal"), pages: D.doc.getNumberOfPages(), warnings: chk.warnings, total: X.r.total, currency: X.r.currency }, 2);
   }
   function pageNumbers(D, skipFirst = true) { const N = D.doc.getNumberOfPages(); for (let i = skipFirst ? 2 : 1; i <= N; i++) { D.doc.setPage(i); txt(D, `${i} / ${N}`, D.W - 14, D.H - 7, { size: 7.5, color: C.pebble, align: "right" }); } }

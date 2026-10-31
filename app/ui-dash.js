@@ -18,13 +18,18 @@
     if (role === "viewer") { $("#view-dash").innerHTML = `<div class="page"><div class="note">View-only access.</div></div>`; return; }
     if (U.isAdmin() && DPUI.renderCeo && !(App.viewOpts || {}).mine) return DPUI.renderCeo();
     const V = $("#view-dash"); D.per = D.per || H.curPer();
-    const me = U.me(), pic = await H.picHtml(me.id, 72, "ring2");
-    V.innerHTML = `<div class="page"><div class="phead"><div class="hello">${pic}<div><span class="eyebrow">${esc([me.title || me.roleLabel, me.department].filter(Boolean).join(" · "))} · ${esc(new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" }))}</span><h1>Hello, <em>${esc(me.firstName || "there")}</em>.</h1><p class="lead small" id="d-sum">Here is what needs you today.</p></div></div>
-      <div class="row">${H.perSelect("d-per", D.per)}<button class="btn lime" id="d-new">${U.svg("plus")} New site plan</button><button class="btn ghost" id="d-log">${U.svg("phone")} Log a call</button></div></div>
+    const me = U.me(), pSrc = await DPAuth.avatarUrl(me.id).catch(() => "");
+    // 2.0: charcoal hero band — greeting, quick actions and the four figures of the day (filled once the data has loaded)
+    V.innerHTML = `<div class="page"><section class="x-hero xdash-hero x-on-deck is-in" data-x-dept="sales" aria-label="Summary">
+      <div class="x-hero__top"><span class="x-avatar">${pSrc ? `<img alt="" src="${esc(pSrc)}">` : ""}</span><div><div class="x-hero__eyebrow">${root.XF ? XF.mark("sales", { size: "sm", label: "" }) : ""}${esc([me.title || me.roleLabel, me.department].filter(Boolean).join(" · "))} · ${esc(new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" }))}</div><h1 class="x-hero__title">Hello, <em>${esc(me.firstName || "there")}.</em></h1><p class="x-hero__lead" id="d-sum">Here is what needs you today.</p></div>
+      <div class="xh-ctl">${H.perSelect("d-per", D.per)}</div></div>
+      <div class="x-hero__metrics" id="d-hm"><div class="x-metric x-metric--lead"><span class="x-skel"></span></div><div class="x-metric"><span class="x-skel"></span></div><div class="x-metric"><span class="x-skel"></span></div><div class="x-metric"><span class="x-skel"></span></div></div>
+      <div class="x-hero__acts"><button class="x-btn x-btn--primary" id="d-new">${U.svg("plus")} New site plan</button><button class="x-btn x-btn--ghost" id="d-log">${U.svg("phone")} Log a call</button><button class="x-btn x-btn--ghost" id="d-leads">${U.svg("mine")} Lead Mine</button></div></section>
       <div id="d-body"><div class="empty"><div class="spinner"></div>Loading your day…</div></div></div>`;
     $("#d-per").onchange = (e) => { D.per = e.target.value; renderDash(); };
     $("#d-new").onclick = () => U.go("setup", { isNew: true });
     $("#d-log").onclick = () => DPUI.logDialog({ onDone: renderDash });
+    $("#d-leads").onclick = () => U.go("leads");
     let comms = [], rows = [], crms = [], staff = { targets: {} }, leads = [];
     try {
       [comms, rows, crms, staff, leads] = await Promise.all([DPSales.myCommissions(), DPUI.loadOrderRows(), DPLeads.listCrm(DPStore.st.userId), DPSales.staffDoc(DPStore.st.userId), DPLeads.listLeads(), DPLeadOps.loadActs()]);
@@ -50,11 +55,19 @@
       .sort((a, b) => b.rank - a.rank || a.age - b.age || (b.r.total || 0) - (a.r.total || 0)).slice(0, 5);
     const unread = DPNotify.N.items.filter((n) => !n.read);
     $("#d-sum").textContent = `${fOver.length + fToday.length} follow-up${fOver.length + fToday.length === 1 ? "" : "s"} today${fOver.length ? ` (${fOver.length} overdue)` : ""} · ${awaiting.length} quotation${awaiting.length === 1 ? "" : "s"} awaiting a decision · ${Math.round(frac * 100)}% of this month's target.`;
+    { // 2.0 hero figures (same values as the cards below; nothing estimated)
+      const hm = $("#d-hm"), pct = Math.round(frac * 100), m = (k, label, val, note) => `<button type="button" class="x-metric" data-hk="${k}"><span class="x-metric__label">${esc(label)}</span><span class="x-metric__value x-num">${esc(val)}</span><span class="x-metric__note">${note}</span></button>`;
+      if (hm) { hm.innerHTML = `<div class="x-metric x-metric--lead"><span class="x-metric__label">Monthly target · ${esc(H.perLabel(D.per))}</span><div class="xh-lead"><div class="x-ring" style="--_s:72px;--_p:${Math.min(100, pct)}"><svg viewBox="0 0 36 36" aria-hidden="true"><circle class="trk" cx="18" cy="18" r="15.9155"/><circle class="val" cx="18" cy="18" r="15.9155" pathLength="100"/></svg><b>${pct}%</b></div><div><span class="x-metric__value x-num">${esc(H.money(achieved, cur))}</span><span class="x-metric__note">${tMinor ? `of ${esc(H.money(tMinor, cur))} · ${closedPer.length} deal${closedPer.length === 1 ? "" : "s"}` : "no target set"}</span></div></div></div>`
+        + m("fu-today", "Follow-ups today", String(fToday.length + fOver.length), fOver.length ? `<span class="x-delta x-delta--down">${fOver.length} overdue</span>` : fToday.length ? "on schedule" : "nothing scheduled")
+        + m("issued", "Awaiting client decision", String(awaiting.length), esc(H.money(awaiting.reduce((a, r) => a + (r.total || 0), 0), cur)) + " quoted")
+        + m("accepted", "Closed this period", String(closedPer.length), esc(H.money(closedPer.reduce((a, r) => a + (r.total || 0), 0), cur)) + " order value");
+        const hgo = { "fu-today": () => U.go("calls", { fu: fOver.length ? "overdue" : "today" }), issued: () => U.go("proposals", { st: "issued" }), accepted: () => U.go("proposals", { st: "accepted" }) };
+        $$("[data-hk]", hm).forEach((b) => (b.onclick = () => hgo[b.dataset.hk] && hgo[b.dataset.hk]()));
+        if (root.XF) XF.motion.stagger(hm); }
+    }
     const card = (k, label, val, sub, cls = "") => `<button type="button" class="kcard ${cls}" data-k="${k}"><span class="eyebrow">${esc(label)}</span><b class="num">${val}</b><span class="tiny">${sub}</span></button>`;
     $("#d-body").innerHTML = `<div class="stack">
-      <div class="kcards">${card("fu-today", "Follow-ups today", fToday.length, fToday[0] ? esc(fToday[0].contact || (leadsById[fToday[0].leadId] || {}).name || "") : "nothing scheduled")}${card("fu-over", "Overdue follow-ups", fOver.length, fOver.length ? "needs you now" : "all caught up", fOver.length ? "bad" : "")}
-        ${card("issued", "Awaiting client decision", awaiting.length, esc(H.money(awaiting.reduce((a, r) => a + (r.total || 0), 0), cur)) + " quoted")}${card("accepted", "Closed this month", closedPer.length, esc(H.money(closedPer.reduce((a, r) => a + (r.total || 0), 0), cur)) + " order value")}
-        ${card("action", "Orders needing action", action.length, action.length ? "payment due or not yet recorded" : "none", action.length ? "warn" : "")}${card("notif", "Unread notifications", unread.length, unread[0] ? esc(unread[0].title) : "you're up to date")}</div>
+      <div class="kcards">${card("action", "Orders needing action", action.length, action.length ? "payment due or not yet recorded" : "none", action.length ? "warn" : "")}${card("notif", "Unread notifications", unread.length, unread[0] ? esc(unread[0].title) : "you're up to date")}</div>
       <div class="dgrid"><div class="card stack corner"><div class="row between"><h3>Monthly target</h3><span class="tiny muted">${esc(H.perLabel(D.per))} · target ${esc(H.money(tMinor, cur))}</span></div>
         <div class="tgt">${H.ring(frac, "Target progress")}<div class="stack" style="gap:6px"><div class="kv"><span>Closed (commission value)</span><b class="num">${esc(H.money(achieved, cur))}</b><span>Remaining</span><b class="num">${esc(H.money(Math.max(0, tMinor - achieved), cur))}</b><span>Deals closed</span><b class="num">${closedPer.length}</b><span>Active leads</span><b class="num">${crms.filter((c) => !["won", "lost", "released", "reassigned"].includes(c.stage)).length}</b></div>
           <p class="tiny muted">Counted at the client's acceptance date, on the value after discount excluding ${esc(App.config.settings.taxLabel || "VAT")}, delivery and pass-through charges.</p></div></div></div>

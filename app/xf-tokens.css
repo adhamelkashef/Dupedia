@@ -1,0 +1,97 @@
+/* X FORCE 2.0 "Snap" — design tokens (Session 2). Loaded after xf-ui.css.
+   Brand source of truth: Dupedia "Playful Classic" brand book v1 (23 Oct 2026) and Web/dupedia-brand-tokens.css.
+   • Every new token is prefixed --x- so nothing on the existing screens changes until a later session moves a screen over.
+   • Approved light rule (31 Oct 2026): tonal light, not gradients — one hue in two close tones on large surfaces only,
+     a department wash at 12% or less, shadows only on layers that float (menus, toasts, dialogs, a dragged card).
+     Never a gradient, outline or shadow on the building blocks or the logo.
+   • Colour and spacing values match X FORCE Mobile (xforce-mobile/src/theme/tokens.ts). */
+
+/* Readex Pro — the brand's Arabic face. unicode-range keeps the download to pages that actually show Arabic text;
+   size-adjust sets Arabic 10% larger than the Latin beside it, as the brand book asks. SIL OFL. */
+@font-face{font-family:"Readex Pro";src:url("../fonts/ReadexPro.ttf") format("truetype");font-weight:160 700;font-style:normal;font-display:swap;size-adjust:110%;
+  unicode-range:U+0600-06FF,U+0750-077F,U+0870-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F,U+2066-2069}
+
+:root{
+  /* ---- brand core ---- */
+  --x-cream:#FBFAF6; --x-white:#FFFFFF; --x-stone:#EAE8E1; --x-charcoal:#262626; --x-graphite:#45453F; --x-pebble:#5E5E58;
+  --x-lime:#B8D241; --x-lime-hover:#A9C236; --x-lime-ink:#5B6B12; --x-lime-soft:#EEF4D2;
+  /* division colours: at most ONE per surface; text on them is charcoal (white on Iris) */
+  --x-coral:#F2643D; --x-sun:#F7B32B; --x-lagoon:#1E9FB0; --x-iris:#6C5CE7;
+  --x-coral-ink:#B83E1A; --x-sun-ink:#8A5A00; --x-lagoon-ink:#11707D; --x-iris-ink:#5242CF;
+
+  /* ---- surfaces and text (semantic) ---- */
+  --x-bg:var(--x-cream); --x-surface:var(--x-white); --x-sunk:#F3F2EC; --x-line:#DCDAD2; --x-line-strong:#C9C7BE;
+  --x-fg:var(--x-charcoal); --x-fg2:var(--x-graphite); --x-muted:var(--x-pebble);
+  --x-solid:var(--x-charcoal);   /* "done" fills (steps, timeline, loader band): charcoal on light, light stone on dark */
+  /* the deck: charcoal frame (rail, hero band, ID card). Tonal light = two close charcoal tones. */
+  --x-deck:#262626; --x-deck-2:#2E2E2B; --x-deck-line:rgba(255,255,255,.12); --x-on-deck:#F3F1EA; --x-on-deck-2:#BDBBB2;
+  --x-deck-light:linear-gradient(180deg,var(--x-deck),var(--x-deck-2));
+  --x-plate:#FFFFFF;   /* the logo's plate: always white, in every theme */
+
+  /* ---- state (semantic colour is separate from the department colour) ---- */
+  --x-ok:#3E6B12; --x-ok-bg:#EAF3D9; --x-warn:#8A5A00; --x-warn-bg:#FFF4D6; --x-err:#B3261E; --x-err-bg:#FBEAE8; --x-info:#1F5FA8; --x-info-bg:#E8F0FA;
+
+  /* ---- department (set per page with data-x-dept) ---- */
+  --x-dept:var(--x-lime); --x-dept-ink:var(--x-lime-ink); --x-dept-on:#262626;
+  --x-dept-wash:color-mix(in srgb,var(--x-dept) 12%,transparent);
+
+  /* ---- type ---- */
+  --x-f-display:"Fraunces", Georgia, "Times New Roman", serif;
+  --x-f-text:"Instrument Sans", "Readex Pro", Arial, "Helvetica Neue", sans-serif;
+  --x-f-arabic:"Readex Pro", Tahoma, sans-serif;
+  --x-t-d1:56px; --x-t-d2:40px; --x-t-d3:32px; --x-t-d4:24px;      /* Fraunces SemiBold, SOFT 100 */
+  --x-t-lg:16px; --x-t-md:14px; --x-t-sm:13px; --x-t-xs:12px;       /* Instrument Sans */
+  --x-lh-tight:1.04; --x-lh-head:1.12; --x-lh-body:1.5;
+  --x-track-code:.06em; --x-track-label:.12em;
+
+  /* ---- space (4-point scale, same as mobile) ---- */
+  --x-s1:4px; --x-s2:8px; --x-s3:12px; --x-s4:16px; --x-s5:24px; --x-s6:32px; --x-s7:48px; --x-s8:64px;
+
+  /* ---- radius: square for structure, the quarter corner once per card, pills for buttons ---- */
+  --x-r-xs:4px; --x-r-sm:8px; --x-r-corner:28px; --x-r-pill:999px;
+
+  /* ---- elevation: resting things are flat; only floating layers cast a shadow ---- */
+  --x-e0:none;
+  --x-e1:0 1px 2px rgba(38,38,38,.06),0 8px 20px -14px rgba(38,38,38,.35);
+  --x-e2:0 18px 40px -20px rgba(38,38,38,.45),0 2px 6px -2px rgba(38,38,38,.1);
+  --x-e3:0 40px 80px -30px rgba(20,20,18,.55),0 0 0 1px var(--x-line);
+
+  /* ---- motion: snap = a part clicking home (small overshoot); settle = calm arrival; exit = quick leave ---- */
+  --x-d-fast:120ms; --x-d-sm:200ms; --x-d-md:320ms; --x-d-lg:520ms;
+  --x-snap:cubic-bezier(.3,1.3,.5,1); --x-settle:cubic-bezier(.2,.7,.2,1); --x-exit:cubic-bezier(.4,0,1,1);
+
+  /* ---- sizes ---- */
+  --x-ic-sm:16px; --x-ic-md:20px; --x-ic-lg:24px; --x-ic-xl:32px;
+  --x-av-xs:32px; --x-av-sm:48px; --x-av-md:96px; --x-av-lg:200px;
+  --x-touch:44px; --x-focus:0 0 0 3px var(--x-bg),0 0 0 6px var(--x-lime);
+}
+
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --x-bg:#1B1B19; --x-surface:#232321; --x-sunk:#1F1F1D; --x-line:#3A3A36; --x-line-strong:#4A4A45;
+  --x-fg:#F3F1EA; --x-fg2:#D7D5CC; --x-muted:#A9A79E; --x-stone:#2E2E2B; --x-solid:#D7D5CC;
+  --x-deck:#121211; --x-deck-2:#1A1A18; --x-on-deck:#F3F1EA; --x-on-deck-2:#BDBBB2;
+  --x-lime-ink:#C9DE6A; --x-lime-soft:#2F3519; --x-coral-ink:#F79A7C; --x-sun-ink:#F5C460; --x-lagoon-ink:#6CC9D6; --x-iris-ink:#A79CF5;
+  --x-ok:#B6D77A; --x-ok-bg:#24301A; --x-warn:#E7B54A; --x-warn-bg:#3A2F17; --x-err:#F08A80; --x-err-bg:#3A1F1C; --x-info:#8DB6EA; --x-info-bg:#1C2A3B;
+  --x-e1:0 1px 2px rgba(0,0,0,.4),0 8px 20px -14px rgba(0,0,0,.8); --x-e2:0 18px 40px -20px rgba(0,0,0,.8); --x-e3:0 40px 80px -30px rgba(0,0,0,.9),0 0 0 1px var(--x-line);
+}}
+:root[data-theme="dark"]{
+  --x-bg:#1B1B19; --x-surface:#232321; --x-sunk:#1F1F1D; --x-line:#3A3A36; --x-line-strong:#4A4A45;
+  --x-fg:#F3F1EA; --x-fg2:#D7D5CC; --x-muted:#A9A79E; --x-stone:#2E2E2B; --x-solid:#D7D5CC;
+  --x-deck:#121211; --x-deck-2:#1A1A18; --x-on-deck:#F3F1EA; --x-on-deck-2:#BDBBB2;
+  --x-lime-ink:#C9DE6A; --x-lime-soft:#2F3519; --x-coral-ink:#F79A7C; --x-sun-ink:#F5C460; --x-lagoon-ink:#6CC9D6; --x-iris-ink:#A79CF5;
+  --x-ok:#B6D77A; --x-ok-bg:#24301A; --x-warn:#E7B54A; --x-warn-bg:#3A2F17; --x-err:#F08A80; --x-err-bg:#3A1F1C; --x-info:#8DB6EA; --x-info-bg:#1C2A3B;
+  --x-e1:0 1px 2px rgba(0,0,0,.4),0 8px 20px -14px rgba(0,0,0,.8); --x-e2:0 18px 40px -20px rgba(0,0,0,.8); --x-e3:0 40px 80px -30px rgba(0,0,0,.9),0 0 0 1px var(--x-line);
+}
+
+/* Department scope: put data-x-dept on any container (the page, a hero, a card). One division colour per surface. */
+[data-x-dept="strategic"]{--x-dept:var(--x-iris);--x-dept-ink:var(--x-iris-ink);--x-dept-on:#FFFFFF}
+[data-x-dept="sales"]{--x-dept:var(--x-coral);--x-dept-ink:var(--x-coral-ink);--x-dept-on:#262626}
+[data-x-dept="finance"]{--x-dept:var(--x-lagoon);--x-dept-ink:var(--x-lagoon-ink);--x-dept-on:#262626}
+[data-x-dept="factory"]{--x-dept:var(--x-sun);--x-dept-ink:var(--x-sun-ink);--x-dept-on:#262626}
+[data-x-dept="planner"]{--x-dept:var(--x-lime);--x-dept-ink:var(--x-lime-ink);--x-dept-on:#262626}
+[data-x-dept="neutral"]{--x-dept:var(--x-charcoal);--x-dept-ink:var(--x-fg);--x-dept-on:#FFFFFF}
+
+/* Arabic: the brand face for Arabic text everywhere (approved 31 Oct 2026). Latin keeps Instrument Sans; Arabic glyphs
+   fall through to Readex Pro. This replaces the 1.x system-font fallback in right-to-left mode. */
+:root{--f-text:"Instrument Sans", "Readex Pro", Arial, "Helvetica Neue", sans-serif}
+[dir="rtl"] body{font-family:var(--x-f-text)}

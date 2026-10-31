@@ -75,10 +75,11 @@
         const list = res.filter((r, i) => r.status === "ok" || (r.status === "possible" && take.has(i)));
         if (list.some((r) => r.v.phone || r.v.email) && !src) { $(".fin-err", m).textContent = "Say where the contact details come from — otherwise phones and e-mails cannot be kept."; return; }
         const btn = $("#li-ok", m); btn.disabled = true; btn.textContent = "Importing…";
-        try { const r = await importRows(list, { file: file.name, source: src, status, campaignId }); U.closeModal(); summary(r, res, head, body); done && done(r); } catch (e) { $(".fin-err", m).textContent = e.message; btn.disabled = false; btn.textContent = "Import"; } };
+        let job = null; if (root.XF && XF.load) { const host = document.createElement("div"); $(".fin-err", m).before(host); job = XF.load.start({ target: host, text: `Importing ${list.length} lead(s)` }); job.progress(0, list.length); }
+        try { const r = await importRows(list, { file: file.name, source: src, status, campaignId, onProgress: (d, t) => job && job.progress(d, t, `Importing leads · ${d} of ${t} rows`) }); if (job) await job.done(`Imported ${r.added} lead(s).`, { holdMs: 300 }); U.closeModal(); summary(r, res, head, body); done && done(r); } catch (e) { if (job) job.close(); $(".fin-err", m).textContent = e.message; btn.disabled = false; btn.textContent = "Import"; } };
     }, { wide: true });
   }
-  async function importRows(list, { file, source, status, campaignId = null }) {
+  async function importRows(list, { file, source, status, campaignId = null, onProgress = null }) {
     if (!U.isAdmin()) throw new Error("Administrators only."); const at = new Date().toISOString(), me = DPAuth.A.me.id, origin = `File import: ${file}`;
     let added = 0, skipped = 0; const owners = [];
     const work = list.map((r) => async () => { const id = idFor(r.v.name), path = `leads/${id}`; if (await DPStore.tryGet(path)) { skipped++; return; }
@@ -87,7 +88,7 @@
         evidence: r.v.notes, notes: r.v.notes, followUp: r.followUp || null, contact: { name: r.v.contactName, title: "", phone: keep ? r.v.phone : "", email: keep ? r.v.email : "", source: keep && (r.v.phone || r.v.email) ? source : "", sub: "none", verifiedAt: null },
         qualification: {}, createdAt: at, createdBy: me, updatedAt: at, updatedBy: me, history: [{ at, by: me, action: "Imported", reason: origin, detail: `row ${r.row}` }] };
       await DPStore.set(path, lead); added++; if (r.owner) owners.push({ id, uid: r.owner }); });
-    for (let i = 0; i < work.length; i += 8) await Promise.all(work.slice(i, i + 8).map((f) => f()));
+    for (let i = 0; i < work.length; i += 8) { await Promise.all(work.slice(i, i + 8).map((f) => f())); onProgress && onProgress(Math.min(i + 8, work.length), work.length); }   // 2.0: real rows done / rows to import
     for (const o of owners) await L().reassign(o.id, o.uid, "Owner given in the imported file", { timer: true }).catch(() => {});
     await DPAuth.adminLog("Leads imported", { target: file, detail: `${added} added, ${skipped} already existed${owners.length ? `, ${owners.length} assigned` : ""}` }).catch(() => {});
     if (added && status === "available") { const sales = DPAuth.A.directory.filter((r) => r.uid && r.active !== false && DPAuth.baseOf(r.role) === "employee").map((r) => r.uid);

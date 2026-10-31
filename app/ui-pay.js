@@ -110,6 +110,7 @@
         try { const note = $("#rv-n", m).value.trim();
           const account = (accSel && accSel.value) || null;
           if (x.kind === "report") await O.decidePaymentReport(x.rep, true, { verified: true, note, account }); else await O.setPaymentStatus(x.oid, x.pay.id, "verified", note, { account });
+          if (root.XF) await XF.motion.confirm($("#modal-in"), { title: "Payment verified", body: `${H.money2(x.amountMinor, x.currency)} · ${x.ref || x.oid}` });   // 2.0: a short confirmation moment
           U.closeModal(); U.toast(`Payment verified: ${H.money2(x.amountMinor, x.currency)} on ${x.ref || x.oid}. The salesperson has been notified.`, { ms: 6000 }); renderVerify(); }
         catch (e) { err.textContent = e.message || "Not saved."; ok.disabled = false; ok.textContent = "Verify payment"; } };
       $("#rv-no", m).onclick = async () => { const note = $("#rv-n", m).value.trim(); if (note.length < 3) { err.textContent = "Give the reason for the rejection so the salesperson can correct it."; $("#rv-n", m).focus(); return; }

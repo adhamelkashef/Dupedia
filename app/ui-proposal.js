@@ -32,7 +32,7 @@
     $("#pp-dl").onclick = download;
     $("#pp-send").onclick = async () => {   // 1.3: review, then hand the PDF to WhatsApp or e-mail (nothing is sent automatically)
       if (U.canWrite() && !App.sample && M.S.dirty && !(await U.save())) return U.toast("Save the project first.", { err: true });
-      const b = U.busy("Building the proposal…"); try { const out = await build((s) => b.set(s + "…")); b.done(); const meta = M.S.project.meta || {};
+      const b = U.busy("Building the proposal…"); try { const out = await build((s, i, n) => (n ? b.step(i, n, s) : b.set(s + "…"))); b.done(); const meta = M.S.project.meta || {};
         const lc = meta.leadId ? await DPStore.tryGet(`leadcontact/${meta.leadId}`).catch(() => null) : null, ct = (lc && lc.contact) || {};
         root.DPShare.dialog(out, { customer: meta.client || "", ref: meta.ref || "", project: meta.name || "", total: DPPricing.fmtMoney(out.total, out.currency), phone: ct.phone || "", email: ct.email || "" }); }
       catch (e) { b.done(); U.toast("The proposal could not be built: " + (e.message || e), { err: true, ms: 9000 }); } };

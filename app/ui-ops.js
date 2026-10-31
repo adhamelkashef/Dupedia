@@ -151,7 +151,7 @@
 
   /* ---------------- Data Entry: dashboard ---------------- */
   async function renderDeDash() {
-    const V = $("#view-dash"), me = U.me(), per = H.curPer(), pic = await H.picHtml(me.id, 72, "ring2");
+    const V = $("#view-dash"), me = U.me(), per = H.curPer(), pic = await H.picHtml(me.id, 96, "ring2");
     V.innerHTML = `<div class="page"><div class="phead"><div class="hello">${pic}<div><span class="eyebrow">${esc([me.title || me.roleLabel, me.department].filter(Boolean).join(" · "))} · ${esc(H.perLabel(per))}</span><h1>Hello, <em>${esc(me.firstName || "there")}</em>.</h1><p class="lead small" id="de-sum">Your research target and lead quality at a glance.</p></div></div>
       <div class="row"><button class="btn lime" id="de-go">${U.svg("leads")} Open Lead Research</button></div></div><div id="de-body"><div class="empty"><div class="spinner"></div></div></div></div>`;
     $("#de-go").onclick = () => U.go("research");

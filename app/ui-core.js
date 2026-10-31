@@ -87,7 +87,20 @@
             closeModal(out); }; }, { onClose: (v) => res(v || null), wide });
     });
   }
-  function busy(label) { openModal(`<div class="row"><div class="spinner"></div><b id="busy-l">${esc(label)}</b></div>`); return { set: (t) => { const e = $("#busy-l"); if (e) e.textContent = t; }, done: () => closeModal() }; }
+  /** 2.0: the shared "please wait" dialog, drawn as the design-system loader. set() changes the status line; step(i, n) shows
+      known steps ("page 3 of 7"); progress(loaded, total) shows a percentage only from a measured total and never 100% before done(). */
+  function busy(label) {
+    openModal(`<div class="x-loader x-loader--inline x-busy" role="status" aria-live="polite"><div class="x-band x-band--wait" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="x-busy__txt"><b id="busy-l">${esc(label)}</b><span class="x-loader__sub" id="busy-s"></span></div><div class="x-bar" id="busy-bar" hidden><b></b></div></div>`);
+    const band = $(".x-busy .x-band"), fill = (n) => { if (!band) return; band.classList.remove("x-band--wait"); [...band.children].forEach((b, i) => b.classList.toggle("is-on", i < n)); };
+    let slow = 0; const arm = () => { clearTimeout(slow); const s = $("#busy-s"); if (s) s.textContent = ""; slow = setTimeout(() => { const x = $("#busy-s"); if (x) x.textContent = "Still working. This is taking longer than usual."; }, 20000); };
+    let base = label; arm();
+    return {
+      set: (t) => { base = t; const e = $("#busy-l"); if (e) e.textContent = t; arm(); },
+      step: (i, n, t) => { if (t) base = t; const e = $("#busy-l"); if (e) e.textContent = `${base} · ${Math.min(n, i + 1)} of ${n}`; fill(Math.round((Math.max(0, i) / Math.max(1, n)) * 4)); arm(); },
+      progress: (loaded, total, t) => { if (t) { base = t; const e = $("#busy-l"); if (e) e.textContent = t; } const bar = $("#busy-bar"); if (!(total > 0) || !bar) return arm(); const p = Math.min(99, Math.floor((loaded / total) * 100)); arm(); bar.hidden = false; bar.style.setProperty("--_p", p + "%"); const s = $("#busy-s"); if (s) s.textContent = p + "%"; fill(Math.floor(p / 25)); },
+      done: () => { clearTimeout(slow); closeModal(); },
+    };
+  }
 
   /* ---------------- configuration ---------------- */
   async function loadConfig() {
@@ -122,7 +135,7 @@
 
   /* ---------------- navigation ---------------- */
   const PROJECT_VIEWS = ["setup", "plan", "quote", "review", "proposal"];
-  const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission"];
+  const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission", "xfkit"];   // 2.0: xfkit = internal design-system specimen
   const GROWTH_VIEWS = ["growth", "campaigns", "radar", "partners"];
   const OPS_VIEWS = ["reminders", "facjobs", "facdash", "equipment", "products", "catalog", "holidays"];
   const FIN_VIEWS = ["finance", "transfers", "finaccounts", "salaries", "purchases", "invoices", "taxes", "finreports"];

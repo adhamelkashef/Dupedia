@@ -3,16 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>X FORCE 1.4.6</title>
-<meta name="description" content="X FORCE 1.4.6 — Dupedia's company operating system: site planning and quotations, orders and payments, engineering and factory, leads and follow-ups, commission, company messaging and the CEO control center.">
+<title>X FORCE 2.0</title>
+<meta name="description" content="X FORCE 2.0 — Dupedia's company operating system: site planning and quotations, orders and payments, engineering and factory, leads and follow-ups, commission, company messaging and the CEO control center.">
 <link rel="stylesheet" href="app/fonts.css">
 <link rel="stylesheet" href="app/styles.css">
 <link rel="stylesheet" href="app/xf-ui.css">
+<link rel="stylesheet" href="app/xf-tokens.css">
+<link rel="stylesheet" href="app/xf-components.css">
+<link rel="stylesheet" href="app/xf-shell.css">
 </head>
 <body>
-<div class="xsplash" id="xsplash" hidden role="status" aria-live="polite"><div class="in"><div class="lg"><img src="brand/logo_primary.png" alt="Dupedia" width="300" height="106"><span class="bk" aria-hidden="true"></span></div><p class="st">Opening your dashboard…</p><div class="bar" aria-hidden="true"><i></i></div><p class="tag">serious about play</p></div></div>
-<script>/* 1.4.6: continue the sign-in animation until the dashboard is ready (only right after signing in; never longer than 12 s) */
-try{if(sessionStorage.getItem("xf.splash")){sessionStorage.removeItem("xf.splash");var xs=document.getElementById("xsplash");xs.hidden=false;setTimeout(function(){xs.hidden=true;},12000);}}catch(e){}</script>
+<div class="x-loader x-loader--screen" id="xsplash" hidden role="status" aria-live="polite"><span class="x-loader__plate"><img src="brand/logo_compact.png" alt="Dupedia" width="240" height="124"></span><div class="x-band x-band--wait" id="xs-band" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="x-loader__text" id="xs-t">Initializing X FORCE</p><p class="x-loader__sub" id="xs-s"></p><div class="x-loader__acts" id="xs-a" hidden></div></div>
+<script>/* 2.0 (Session 3): start-up loader. Shows the four real start-up steps (never a percentage: their length is unknown),
+   says "still working" after 20 s without a new step, offers Reload / Continue after 60 s, and leaves as soon as the first page
+   has rendered (DPShell calls XFSplash.done) or the sign-in gate appears. */
+(function(){var el=document.getElementById("xsplash");if(!el)return;var band=document.getElementById("xs-band"),bl=band.children,t=document.getElementById("xs-t"),s=document.getElementById("xs-s"),a=document.getElementById("xs-a"),slowT=0,outT=0,over=false,N=4;
+function arm(){clearTimeout(slowT);clearTimeout(outT);s.textContent="";a.hidden=true;slowT=setTimeout(function(){if(!over)s.textContent="Still working. This is taking longer than usual.";},20000);outT=setTimeout(stuck,60000);}
+function stuck(){if(over)return;el.classList.add("is-error");t.textContent="X FORCE has not finished loading after 60 seconds.";s.textContent="Your data is safe. Reload to try again, or continue to see what has loaded.";a.hidden=false;
+a.innerHTML='<button type="button" class="x-btn x-btn--primary" id="xs-r">Reload</button><button type="button" class="x-btn x-btn--ghost" id="xs-c">Continue</button>';document.getElementById("xs-r").onclick=function(){location.reload();};document.getElementById("xs-c").onclick=function(){done(true);};document.getElementById("xs-r").focus();}
+function step(i,label){if(over)return;band.classList.remove("x-band--wait");for(var k=0;k<bl.length;k++)bl[k].classList.toggle("is-on",k<i);t.textContent=label+" · "+(i+1)+" of "+N;arm();}
+function done(now){if(over)return;over=true;clearTimeout(slowT);clearTimeout(outT);band.classList.remove("x-band--wait");for(var k=0;k<bl.length;k++)bl[k].classList.add("is-on");s.textContent="";a.hidden=true;el.classList.remove("is-error");
+var rm=matchMedia("(prefers-reduced-motion: reduce)").matches||now;setTimeout(function(){el.classList.add("is-leaving");setTimeout(function(){el.hidden=true;el.classList.remove("is-leaving");},rm?0:320);},rm?0:260);}
+window.XFSplash={step:step,done:done,hide:function(){over=true;clearTimeout(slowT);clearTimeout(outT);el.hidden=true;}};
+try{sessionStorage.removeItem("xf.splash");}catch(e){}el.hidden=false;arm();})();</script>
 <div class="gate" id="gate" hidden></div>
 <div class="app" id="app" data-view="dash" data-zone="app" hidden>
   <header class="top" id="top">
@@ -22,7 +35,7 @@ try{if(sessionStorage.getItem("xf.splash")){sessionStorage.removeItem("xf.splash
       <input id="pname" class="pname" aria-label="Project name" maxlength="90">
       <span class="psub" id="psub"></span>
     </div>
-    <div class="htitle" id="htitle"><span class="t1">X FORCE <b class="xv">1.4.6</b></span><span class="t2">Dupedia operating system</span></div>
+    <div class="htitle" id="htitle"><span class="t1">X FORCE <b class="xv">2.0</b></span><span class="t2">Dupedia operating system</span></div>
     <nav class="flow" id="flow" aria-label="Workflow" hidden>
       <button type="button" data-view="setup"><b>1</b>Project</button>
       <button type="button" data-view="plan"><b>2</b>Site &amp; design</button>
@@ -117,6 +130,7 @@ try{if(sessionStorage.getItem("xf.splash")){sessionStorage.removeItem("xf.splash
     <section class="view" id="view-review" aria-label="Review"></section>
     <section class="view" id="view-proposal" aria-label="Proposal"></section>
     <section class="view" id="view-admin" aria-label="Administration"></section>
+    <section class="view" id="view-xfkit" aria-label="Design kit"></section>
   </main>
   </div>
 </div>
@@ -163,6 +177,11 @@ try{if(sessionStorage.getItem("xf.splash")){sessionStorage.removeItem("xf.splash
 <script src="app/proposal.js"></script>
 <script src="app/ui-core.js"></script>
 <script src="app/ui-x.js"></script>
+<script src="app/xf-icons.js"></script>
+<script src="app/xf-motion.js"></script>
+<script src="app/xf-chart.js"></script>
+<script src="app/xf-load.js"></script>
+<script src="app/xf-people.js"></script>
 <script src="app/ui-home.js"></script>
 <script src="app/ui-plan.js"></script>
 <script src="app/ui-quote.js"></script>
@@ -194,6 +213,7 @@ try{if(sessionStorage.getItem("xf.splash")){sessionStorage.removeItem("xf.splash
 <script src="app/ui-hol.js"></script>
 <script src="app/leadimport.js"></script>
 <script src="app/share.js"></script>
+<script src="app/xf-kit.js"></script>
 <script src="app/boot.js"></script>
 </body>
 </html>

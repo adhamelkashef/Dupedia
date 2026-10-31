@@ -146,9 +146,13 @@
 
   /* ---------------- CEO Control Center ---------------- */
   async function renderCeo() {
-    const V = $("#view-dash"), me = U.me(), pic = await H.picHtml(me.id, 64, "ring2");
-    V.innerHTML = `<div class="page" style="max-width:1500px"><div class="phead"><div class="hello">${pic}<div><span class="eyebrow">CEO Control Center · ${esc(new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" }))}</span><h1>Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, <em>${esc(me.firstName || "")}</em>.</h1><p class="lead small" id="ceo-sum">Loading the company…</p></div></div>
-      <div class="row"><div class="seg" role="group" aria-label="Period">${Object.entries(PERIODS).map(([k, l]) => `<button type="button" data-per="${k}" class="${D.per === k ? "is-on" : ""}">${l}</button>`).join("")}</div><button class="btn ghost sm" id="ceo-mine">My sales view</button></div></div>
+    const V = $("#view-dash"), me = U.me();
+    // 2.0: the charcoal hero band — greeting, period, and the four figures that matter most, filled from the same data below
+    const pSrc = await DPAuth.avatarUrl(me.id).catch(() => ""), hr = new Date().getHours(), XFk = !!root.XF;
+    V.innerHTML = `<div class="page" style="max-width:1500px"><section class="x-hero xdash-hero x-on-deck is-in" data-x-dept="strategic" aria-label="Summary">
+      <div class="x-hero__top"><span class="x-avatar">${pSrc ? `<img alt="" src="${esc(pSrc)}">` : ""}</span><div><div class="x-hero__eyebrow">${XFk ? XF.mark("strategic", { size: "sm", label: "" }) : ""}CEO Control Center · ${esc(new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" }))}</div><h1 class="x-hero__title">Good ${hr < 12 ? "morning" : hr < 18 ? "afternoon" : "evening"}, <em>${esc(me.firstName || "")}.</em></h1><p class="x-hero__lead" id="ceo-sum">Loading the company…</p></div>
+      <div class="xh-ctl"><div class="seg" role="group" aria-label="Period">${Object.entries(PERIODS).map(([k, l]) => `<button type="button" data-per="${k}" class="${D.per === k ? "is-on" : ""}">${l}</button>`).join("")}</div><button class="x-btn x-btn--ghost x-btn--sm" id="ceo-mine">My sales view</button></div></div>
+      <div class="x-hero__metrics" id="ceo-hm"><div class="x-metric x-metric--lead"><span class="x-skel"></span></div><div class="x-metric"><span class="x-skel"></span></div><div class="x-metric"><span class="x-skel"></span></div><div class="x-metric"><span class="x-skel"></span></div></div></section>
       <div id="ceo-body"><div class="empty"><div class="spinner"></div>Loading…</div></div></div>`;
     $$("[data-per]", V).forEach((b) => (b.onclick = () => { D.per = b.dataset.per; renderCeo(); }));
     $("#ceo-mine").onclick = () => U.go("dash", { mine: true });
@@ -177,9 +181,21 @@
     const wAct = d.workers.filter((w) => w.active !== false), wAlloc = wAct.filter((w) => (w.assignments || []).some((s) => !s.removedAt));
     $("#ceo-sum").textContent = `${al.filter((a) => a.sev >= 3).length} urgent and ${al.filter((a) => a.sev === 2).length} important item${al.length === 1 ? "" : "s"} · ${PERIODS[D.per].toLowerCase()}: ${accIn.length} order${accIn.length === 1 ? "" : "s"} signed, ${H.money(sum(accIn, (x) => x.total), cur)}.`;
     const card = (go, label, val, sub, cls = "") => `<button type="button" class="kcard ${cls}" data-go='${esc(JSON.stringify(go))}'><span class="eyebrow">${esc(label)}</span><b class="num">${val}</b><span class="tiny">${sub}</span></button>`;
+    { // 2.0 hero figures (all from the data above; nothing estimated)
+      const urgent = al.filter((a) => a.sev >= 3).length, important = al.filter((a) => a.sev === 2).length, pipe = sum(awaiting, (x) => x.total), signedP = sum(accIn, (x) => x.total);
+      const hm = $("#ceo-hm"), m = (go, lead, label, val, note) => `<button type="button" class="x-metric${lead ? " x-metric--lead" : ""}" data-hgo="${esc(JSON.stringify(go))}"><span class="x-metric__label">${esc(label)}</span><span class="x-metric__value x-num">${esc(val)}</span><span class="x-metric__note">${note}</span></button>`;
+      if (hm) { hm.innerHTML = m({ view: "register", opts: { filter: "accepted" } }, true, `Signed · ${PERIODS[D.per].toLowerCase()}`, H.money(signedP, cur), `${accIn.length} order${accIn.length === 1 ? "" : "s"} · ${issuedIn.length} quotation${issuedIn.length === 1 ? "" : "s"} issued`)
+        + m({ att: 1 }, false, "Needs your attention", String(urgent + important), urgent ? `<span class="x-delta x-delta--down">${urgent} urgent</span>` : important ? `${important} important` : "all clear")
+        + m({ view: "register", opts: { filter: "issued" } }, false, "Pipeline value", H.money(pipe, cur), `${awaiting.length} awaiting the client`)
+        + m({ view: "finance" }, false, "Collected", H.money(collected, cur), signed ? `${Math.round((collected / signed) * 100)}% of signed · open orders` : "open orders");
+        $$("[data-hgo]", hm).forEach((b) => (b.onclick = () => { const g = JSON.parse(b.dataset.hgo); if (g.att) { const t = $("#ceo-body > .stack > *"); if (t) t.scrollIntoView({ behavior: root.XF && XF.motion.reduced() ? "auto" : "smooth", block: "start" }); return; } U.go(g.view, g.opts || {}); }));
+        if (root.XF) XF.motion.stagger(hm); }
+    }
     const cats = [...new Set(al.map((a) => a.cat))];
     $("#ceo-body").innerHTML = `<div class="stack">
       ${attention(al)}
+      ${root.XF ? `<div class="xdash-chart" data-x-dept="strategic"><div class="x-card x-card--corner"><div class="x-card__h"><h3>Signed orders by month</h3><p>Contract value at the client's acceptance date · last 6 months</p></div><div id="ceo-ch1"></div></div>
+        <div class="x-card"><div class="x-card__h"><h3>Order pipeline</h3><p>All open orders, by stage</p></div><div id="ceo-ch2"></div></div></div>` : ""}
       <h3 class="sect-h">Sales &amp; revenue · ${esc(PERIODS[D.per])}</h3>
       <div class="kcards">${card({ view: "register", opts: { filter: "accepted" } }, "Signed orders", accIn.length, esc(H.money(sum(accIn, (x) => x.total), cur)) + " contract value")}${card({ view: "register", opts: { filter: "issued" } }, "Quotations issued", issuedIn.length, `${accIn.length} accepted · ${rejectedIn.length} rejected · ${awaiting.length} awaiting`)}
         ${card({ view: "register", opts: { filter: "issued" } }, "Pipeline value", esc(H.money(sum(awaiting, (x) => x.total), cur)), `${awaiting.length} quotations awaiting the client`)}${card({ view: "reports" }, "Conversion", conv == null ? "—" : Math.round(conv * 100) + "%", "accepted ÷ issued in the period")}
@@ -204,6 +220,12 @@
         ${card({ view: "factory" }, "Workers on projects", wAlloc.length, `${wAct.length - wAlloc.length} of ${wAct.length} available`)}${card({ view: "engqueue" }, "Delayed or blocked", d.jobs.filter((j) => j.status !== "cancelled" && (["delayed"].includes(j.ds.key) || (j.e && ["blocked", "hold", "delayed"].includes(j.e.status)))).length, "orders", "")}</div>
       <div class="dgrid"><div class="card stack"><h3>Engineering workload</h3>${eng.length ? `<div class="tl">${eng.map((x) => `<div><span class="small"><b>${esc(DPAuth.fullName(x.e))}</b></span><span>${x.open} open order${x.open === 1 ? "" : "s"}${x.late ? ` · <span class="pill err">${x.late} at risk / delayed</span>` : ""}</span></div>`).join("")}</div>` : `<p class="small muted">No engineers yet.</p>`}</div>
         <div class="card stack"><div class="row between"><h3>Recent system activity</h3><button class="btn ghost xs" data-go='${esc(JSON.stringify({ view: "audit" }))}'>Audit Log</button></div>${d.log.length ? `<div class="tl">${d.log.slice(0, 8).map((e) => `<div><span class="tiny muted">${esc(new Date(e.at).toLocaleString([], { dateStyle: "short", timeStyle: "short" }))}</span><span><b>${esc(e.action)}</b> — ${esc(DPAuth.nameSync(e.by) || "system")}${e.detail ? " · " + esc(String(e.detail).slice(0, 90)) : ""}</span></div>`).join("")}</div>` : `<p class="small muted">Nothing yet.</p>`}</div></div></div></details></div>`;
+    if (root.XF) { // 2.0 charts — only values computed above
+      const mk = (o) => new Date(new Date().getFullYear(), new Date().getMonth() - o, 1), months = [5, 4, 3, 2, 1, 0].map((o) => { const d0 = mk(o); return { k: d0.toISOString().slice(0, 7), d0 }; });
+      const accAt = (x) => String((x.sub && x.sub.acceptedAt) || (x.order && x.order.approvedAt) || "").slice(0, 7);
+      XF.chart.bars($("#ceo-ch1"), months.map(({ k, d0 }) => ({ label: d0.toLocaleDateString([], { month: "short" }), value: sum(live.filter((x) => accAt(x) === k), (x) => x.total) / 100, key: k === months[5].k })), { label: "Signed orders by month", empty: "No orders were signed in the last six months.", fmt: (v) => (v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(Math.round(v))) });
+      XF.chart.flow($("#ceo-ch2"), [{ label: "Awaiting engineering", value: stage("accepted").length + stage("review").length }, { label: "In production", value: stage("production").length, key: true }, { label: "Ready", value: stage("ready").length }, { label: "Installing", value: stage("installing").length }, { label: "Completed", value: stage("completed").length }], { label: "Order pipeline by stage" });
+    }
     loadAck().then(drawAtt);
     const B = $("#ceo-body"), vis = al.filter((a) => !D.ac || a.cat === D.ac);
     $$("[data-ac]", B).forEach((b) => (b.onclick = () => { D.ac = b.dataset.ac; renderCeo(); }));

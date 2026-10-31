@@ -26,9 +26,19 @@
     const item = ([k, l, ic]) => `<button type="button" class="ri${on(k) ? " is-on" : ""}" data-nav="${k}" title="${esc(l)}">${U.svg(ic)}<span>${esc(l)}</span>${badge(k) ? `<em>${badge(k)}</em>` : ""}</button>`;
     const mine = adm ? [["dash", "CEO Control Center", "dash"]].concat(NAV_EMP.filter((x) => x[0] !== "dash")) : (NAV[U.role()] || NAV.viewer);
     const adm2 = NAV_ADM.filter(([k]) => k !== "askceo" || (root.DPAskCeo && DPAskCeo.canReadInbox()));
-    r.innerHTML = `<div class="rtop"><button type="button" class="ri rtog" id="rail-tog" aria-label="Collapse or expand the menu"></button></div><div class="rg">${mine.map(item).join("")}</div>${adm ? `<div class="rh">Factory &amp; products</div><div class="rg">${NAV_OPS.filter(([k]) => !mine.some((x) => x[0] === k)).map(item).join("")}</div><div class="rh">Growth &amp; marketing</div><div class="rg">${NAV_GROWTH.filter(([k]) => !mine.some((x) => x[0] === k)).map(item).join("")}</div><div class="rh">Finance</div><div class="rg">${NAV_FIN.map(item).join("")}</div><div class="rh">Administration</div><div class="rg">${adm2.map(item).join("")}</div>` : ""}
+    // 2.0: administrators switch between departments instead of scrolling one long list. Every item stays in the page
+    // (search and the phone menu read them); only the chosen department's group is shown.
+    const groups = adm ? [["work", "My work", mine], ["sales", "Growth & marketing", NAV_GROWTH.filter(([k]) => !mine.some((x) => x[0] === k))], ["finance", "Finance", NAV_FIN], ["factory", "Factory & products", NAV_OPS.filter(([k]) => !mine.some((x) => x[0] === k))], ["admin", "Administration", adm2]] : [["work", "", mine]];
+    const curG = (groups.find(([, , l]) => l.some(([k]) => on(k))) || groups.find(([g]) => g === App.railGroup) || groups[0])[0]; App.railGroup = curG;
+    const SW = { work: ["planner", "My work"], sales: ["sales", "Sales & growth"], finance: ["finance", "Finance"], factory: ["factory", "Factory"], admin: ["strategic", "Administration"] };
+    const sw = adm && root.XF ? `<div class="xrsw" role="group" aria-label="Departments">${groups.map(([g]) => `<button type="button" data-g="${g}" aria-pressed="${g === curG}" title="${esc(SW[g][1])}" aria-label="${esc(SW[g][1])}">${XF.mark(SW[g][0], { label: "" })}</button>`).join("")}</div>` : "";
+    r.dataset.xsw = sw ? "1" : ""; r.dataset.g = curG;
+    r.innerHTML = `<div class="rtop"><button type="button" class="ri rtog" id="rail-tog" aria-label="Collapse or expand the menu"></button></div>${sw}${groups.map(([g, label, list], i) => `${i ? `<div class="rh" data-g="${g}">${esc(label)}</div>` : sw ? `<div class="rh xrh0" data-g="${g}">${esc(label)}</div>` : ""}<div class="rg${g === curG ? " is-cur" : ""}" data-g="${g}">${list.map(item).join("")}</div>`).join("")}
       <div class="rfoot">${root.DPI18n ? DPI18n.toggleHtml() : ""}<button type="button" class="ri" id="r-out" title="Sign out">${U.svg("out")}<span>Sign out</span></button></div>`;
     $$("[data-nav]", r).forEach((b) => (b.onclick = () => nav(b.dataset.nav)));
+    $$(".xrsw [data-g]", r).forEach((b) => (b.onclick = () => { const g = b.dataset.g; App.railGroup = g; r.dataset.g = g;
+      $$(".xrsw [data-g]", r).forEach((x) => x.setAttribute("aria-pressed", x === b)); $$(".rg[data-g]", r).forEach((x) => x.classList.toggle("is-cur", x.dataset.g === g));
+      if (root.XF && XF.motion && !XF.motion.reduced()) $$(`.rg[data-g="${g}"] .ri`, r).forEach((x, i) => x.animate([{ opacity: 0, transform: "translateX(-6px)" }, { opacity: 1, transform: "none" }], { duration: 220, delay: i * 18, easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" })); }));
     $("#r-out").onclick = signOut;
     const lg = $("#r-lang"); if (lg) lg.onclick = () => DPI18n.setLang(DPI18n.lang === "ar" ? "en" : "ar");
     if (root.DPI18n && !rail.lp) { rail.lp = 1; DPI18n.loadPref(); }
@@ -59,7 +69,7 @@
   /* ---------------- sign-in gate ---------------- */
   const brandBlock = `<div class="gbrand"><img src="brand/logo_primary.png" alt="Dupedia" width="240"><div class="blocks" aria-hidden="true"><i class="sq"></i><i class="qc"></i><i class="hf"></i><i class="ci"></i></div></div>`;
   function gateShell(inner) {
-    $("#app").hidden = true; const g = $("#gate"); g.hidden = false; const sp = document.getElementById("xsplash"); if (sp) sp.hidden = true;
+    $("#app").hidden = true; const g = $("#gate"); g.hidden = false; if (root.XFSplash) XFSplash.hide();
     g.innerHTML = `<div class="gwrap"><section class="gcard corner">${brandBlock}<span class="eyebrow">X FORCE 1.1 · Dupedia internal</span>${inner}</section>
       <aside class="gside"><h2>One system to <em>sell</em>, build and run Dupedia.</h2><ul><li>Site plans, quotations and orders from first call to handover</li><li>Engineering, factory and installation with live progress</li><li>Leads, follow-ups, payments, commission and company messaging</li></ul>
       <p class="tiny">For Dupedia employees. Access is granted by an administrator; there is no public registration.</p></aside></div>`;
@@ -136,6 +146,7 @@
   }
   async function enter() {
     $("#gate").hidden = true; $("#app").hidden = false;
+    if (root.XFSplash) XFSplash.step(2, "Loading your workspace");
     $("#view-dash").innerHTML = `<div class="page"><div class="empty"><div class="spinner"></div>Loading…</div></div>`;
     try { await U.loadConfig(); } catch (e) { console.error(e); U.toast("Settings could not be loaded; defaults are used.", { err: true }); }
     if (U.isAdmin()) { try { App.commissionCfg = await DPSales.commissionConfig(); } catch (e) { App.commissionCfg = null; } DPPrice.syncCopies().catch((e) => console.warn("price copies", e)); }
@@ -157,12 +168,13 @@
     if (v && U.VIEWS.includes(v) && !U.PROJECT_VIEWS.includes(v)) U.go(v, h[1] ? { tab: h[1] } : {}); else U.go("dash");
     splashDone();
   }
-  /** 1.4.6: fade the sign-in animation out once the first page has really rendered (or after 12 s at the latest). */
+  /** 2.0: hand over from the start-up loader once the first page has really rendered (its spinner gone) or the sign-in gate
+      shows. The loader itself handles slow starts (20 s message, 60 s Reload / Continue), so nothing here hides it on a timer. */
   function splashDone() {
-    const sp = document.getElementById("xsplash"); if (!sp || sp.hidden) return; const t0 = Date.now();
+    const sp = document.getElementById("xsplash"); if (!sp || sp.hidden || !root.XFSplash) return;
+    XFSplash.step(3, "Preparing your dashboard");
     const tick = () => { const v = App.view, pg = v && document.querySelector(`#view-${v} .page`);
-      if ((pg && !pg.querySelector(".spinner")) || Date.now() - t0 > 12000 || !$("#gate").hidden) { sp.classList.add("out"); setTimeout(() => { sp.hidden = true; sp.classList.remove("out"); }, 320); }
-      else setTimeout(tick, 120); };
+      if (!$("#gate").hidden) XFSplash.hide(); else if (pg && !pg.querySelector(".spinner")) XFSplash.done(); else setTimeout(tick, 120); };
     tick();
   }
   /** Background work while the app is open: follow-up reminders for everyone; automatic order booking for administrators. */
@@ -194,8 +206,11 @@
   }
 
   /* ---------------- notifications ---------------- */
-  function bellUpdate() { const n = DPNotify.unread(), b = $("#bell-n"); if (!b) return; b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n); }
-  const NICON = { deal: "★", order: "◆", quote: "◆", payment: "¤", commission: "%", engineering: "⚙", lead: "◎", followup: "⏰", message: "✉", chat: "✉", access: "⚿", info: "•" };
+  /** 2.0: the bell rings once when the unread count goes up (a real new alert), never on a timer. */
+  function bellUpdate() { const n = DPNotify.unread(), b = $("#bell-n"); if (!b) return; b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n);
+    if (bellUpdate.last != null && n > bellUpdate.last && root.XF && XF.motion) { XF.motion.play($("#btn-bell"), "is-ring", 700); XF.motion.play(b, "is-new", 400); } bellUpdate.last = n; }
+  const NICON_K = { deal: "star", order: "doc", quote: "doc", payment: "card", commission: "coins", engineering: "gear", lead: "target", followup: "clock", message: "chat", chat: "chat", access: "key", info: "info" };
+  const NICON = new Proxy({}, { get: (_, t) => (root.XF ? XF.icon(NICON_K[t] || "info") : "•") });   // 2.0: real icons instead of text symbols
   let NF = { cat: "all", unread: false, history: false };
   /** Open the record a notification points to (Notification Center and pop-ups). */
   async function openNotif(n) {

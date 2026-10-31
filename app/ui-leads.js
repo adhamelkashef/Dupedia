@@ -120,12 +120,26 @@
     if (opts && opts.lead) F.sel = opts.lead;
     const V = $("#view-myleads");
     V.innerHTML = `<div class="page"><div class="phead"><div><span class="eyebrow">My Leads</span><h1>Your <em>pipeline</em>.</h1><p class="lead small">Leads you own. Record each contact, keep a next action, and start the project when it is ready to quote. Only you and administrators can see these notes.</p></div>
-      <div class="row">${canAdd() ? `<button class="btn lime sm" id="ml-add">${U.svg("plus")} Add my own lead</button>` : ""}<button class="btn ghost sm" id="ml-mine">Lead Mine</button></div></div><div class="split"><div class="stack"><div class="filters"><select class="in sm" id="ml-st"><option value="">All stages</option>${L.STAGES.filter(([k]) => !["available", "research", "archived"].includes(k)).map(([k, l]) => `<option value="${k}"${F.mst === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div><div class="llist" id="ml-list"><div class="empty"><div class="spinner"></div></div></div></div><div id="ml-detail"></div></div></div>`;
+      <div class="row">${canAdd() ? `<button class="btn lime sm" id="ml-add">${U.svg("plus")} Add my own lead</button>` : ""}<button class="btn ghost sm" id="ml-mine">Lead Mine</button></div></div><div class="xml-tabs" role="group" aria-label="View"><button type="button" class="x-btn x-btn--sm" data-mlv="list" aria-pressed="${F.mlv !== "board"}">List</button><button type="button" class="x-btn x-btn--sm" data-mlv="board" aria-pressed="${F.mlv === "board"}">Board</button></div><div class="xml-board" id="ml-board" hidden></div><div class="split" id="ml-split"><div class="stack"><div class="filters"><select class="in sm" id="ml-st"><option value="">All stages</option>${L.STAGES.filter(([k]) => !["available", "research", "archived"].includes(k)).map(([k, l]) => `<option value="${k}"${F.mst === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div><div class="llist" id="ml-list"><div class="empty"><div class="spinner"></div></div></div></div><div id="ml-detail"></div></div></div>`;
     $("#ml-mine").onclick = () => U.go("leads"); const mla = $("#ml-add"); if (mla) mla.onclick = () => addLeadDialog((id) => { F.sel = id; renderMy(); });
     $("#ml-st").onchange = (e) => { F.mst = e.target.value; listMy(); };
+    $$("[data-mlv]", V).forEach((b) => (b.onclick = () => { F.mlv = b.dataset.mlv; $$("[data-mlv]", V).forEach((x) => x.setAttribute("aria-pressed", x === b)); viewMy(); }));
     await load(true);
     const crms = await L.listCrm(DPStore.st.userId); cache.crm = Object.fromEntries(crms.map((c) => [c.leadId, c]));
-    listMy();
+    listMy(); viewMy();
+  }
+  /** 2.0: My Leads as a board — one column per pipeline stage, from the same CRM records as the list. Read-only: stages are
+      still changed inside a lead, exactly as before. */
+  function viewMy() {
+    const board = $("#ml-board"), split = $("#ml-split"); if (!board || !split) return; const on = F.mlv === "board";
+    board.hidden = !on; split.hidden = on; if (!on) return;
+    const today = new Date().toISOString().slice(0, 10), mine = myList(), cols = L.STAGES.filter(([k]) => L.OWNER_STAGES.includes(k) || k === "won");
+    if (!mine.length) { board.innerHTML = `<div class="x-state x-state--compact"><h3>No leads yet</h3><p>Claim leads in the Lead Mine to start your pipeline.</p></div>`; return; }
+    board.innerHTML = cols.map(([k, label]) => { const ls = mine.filter((l) => ((cache.crm[l.id] || {}).stage || "claimed") === k);
+      return `<section class="xml-col" data-stage="${esc(k)}"><header><b>${esc(label)}</b><span class="x-count${ls.length ? "" : " is-zero"}">${ls.length}</span></header>${ls.map((l) => { const na = (cache.crm[l.id] || {}).nextAction, late = na && na.due && na.due < today;
+        return `<button type="button" class="xml-card" data-bsel="${esc(l.id)}"><span class="xml-pri"><span class="x-ball ${pri(l) === "High" ? "x-ball--ok" : pri(l) === "Medium" ? "x-ball--info" : ""}"></span>${esc(pri(l))}</span><b>${esc(l.name)}</b>${l.location ? `<span class="x-muted">${esc(String(l.location).slice(0, 40))}</span>` : ""}${na && na.due ? `<span class="x-pill ${late ? "x-pill--err" : ""}">Next: ${esc(na.due)}</span>` : ""}</button>`; }).join("") || `<p class="xml-empty">None</p>`}</section>`; }).join("");
+    $$("[data-bsel]", board).forEach((b) => (b.onclick = () => { F.sel = b.dataset.bsel; F.mlv = "list"; $$("[data-mlv]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.mlv === "list")); listMy(); viewMy(); }));
+    if (root.XF) XF.motion.stagger(board, { sel: ".xml-card", step: 25, max: 20 });
   }
   function myList() { const me = DPStore.st.userId; return sortLeads(cache.leads.filter((l) => own(l).owner === me)); }
   function listMy() {

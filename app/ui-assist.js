@@ -59,7 +59,7 @@
   async function askTab(body) {
     const uid = DPStore.st.userId, ceo = DPAskCeo.ceoUid();
     if (!ceo) { body.innerHTML = `<div class="note warn small">No CEO account is set up yet. An administrator chooses it in Admin › Settings › Ask CEO.</div>`; return; }
-    body.innerHTML = `<div class="row as-who"><img class="pic" alt="" width="34" height="34" src="${esc(await pic(ceo))}"><div><b>${esc(DPAskCeo.ceoName())}</b><div class="tiny muted">Private: only you and the CEO's office can read this. Never posted to the wall.</div></div></div>
+    body.innerHTML = `<div class="row as-who"><img class="pic" alt="" width="48" height="48" src="${esc(await pic(ceo))}"><div><b>${esc(DPAskCeo.ceoName())}</b><div class="tiny muted">Private: only you and the CEO's office can read this. Never posted to the wall.</div></div></div>
       <div class="msgs" id="as-msgs"><div class="empty small"><div class="spinner"></div></div></div>${composer("as")}`;
     await fill($("#as-msgs", body), uid);
     bindComposer(body, "as", (text, file) => DPAskCeo.send(uid, text, file), () => fill($("#as-msgs", body), uid, true));
@@ -71,7 +71,7 @@
     else {
       const frag = document.createDocumentFragment();
       for (const m of list) { const mine = m.from === me, el = document.createElement("div"); el.className = "msg" + (mine ? " mine" : "");
-        el.innerHTML = `<img class="pic" alt="" width="30" height="30" src="${esc(await pic(m.from))}"><div class="bub"><div class="mh"><b></b><small>${esc(fmt(m.at))}</small></div><div class="mt"></div>${m.file ? `<button class="att">${U.svg("clip")} <span></span></button>` : ""}</div>`;
+        el.innerHTML = `<img class="pic" alt="" width="32" height="32" src="${esc(await pic(m.from))}"><div class="bub"><div class="mh"><b></b><small>${esc(fmt(m.at))}</small></div><div class="mt"></div>${m.file ? `<button class="att">${U.svg("clip")} <span></span></button>` : ""}</div>`;
         el.querySelector(".mh b").textContent = mine ? "You" : DPAuth.nameSync(m.from) || "—"; el.querySelector(".mt").innerHTML = linkify(m.text || "");
         if (m.file) { el.querySelector(".att span").textContent = `${m.file.name} · ${Math.round((m.file.size || 0) / 1024)} kB`; el.querySelector(".att").onclick = async (e) => { const b = e.currentTarget; b.disabled = true; try { DPUI.showFile(await DPAskCeo.file(uid, m), "Attachment"); } finally { b.disabled = false; } }; }
         frag.appendChild(el); }
@@ -109,13 +109,13 @@
     App.badges = Object.assign(App.badges || {}, { askceo: DPAskCeo.inboxUnread() }); root.DPShell && DPShell.rail();
     if (!th.length) { box.innerHTML = `<div class="empty small">No questions yet.</div>`; return; }
     box.innerHTML = ""; for (const t of th) { const b = document.createElement("button"); b.type = "button"; b.className = "pperson" + (A.inbox.sel === t.uid ? " is-on" : "");
-      b.innerHTML = `<img class="pic" alt="" width="34" height="34" src="${esc(await pic(t.uid))}"><span><b></b><small></small></span>${t.unread ? `<em>${t.unread}</em>` : ""}`;
+      b.innerHTML = `<img class="pic" alt="" width="48" height="48" src="${esc(await pic(t.uid))}"><span><b></b><small></small></span>${t.unread ? `<em>${t.unread}</em>` : ""}`;
       b.querySelector("b").textContent = t.name; b.querySelector("small").textContent = `${fmt(t.last.at)} · ${(t.last.text || (t.last.file ? "Attachment" : "")).slice(0, 60)}`;
       b.onclick = () => { A.inbox.sel = t.uid; $$(".pperson", box).forEach((x) => x.classList.remove("is-on")); b.classList.add("is-on"); conv(t.uid); }; box.appendChild(b); }
   }
   async function conv(uid) {
     const box = $("#ib-conv"); if (!box) return;
-    box.innerHTML = `<div class="row between" style="padding:4px 0 8px"><div class="row" style="gap:8px"><img class="pic" alt="" width="30" height="30" src="${esc(await pic(uid))}"><b>${esc(DPAuth.nameSync(uid) || "Employee")}</b></div><span class="tiny muted">Private conversation</span></div>
+    box.innerHTML = `<div class="row between" style="padding:4px 0 8px"><div class="row" style="gap:8px"><img class="pic" alt="" width="32" height="32" src="${esc(await pic(uid))}"><b>${esc(DPAuth.nameSync(uid) || "Employee")}</b></div><span class="tiny muted">Private conversation</span></div>
       <div class="msgs" id="ib-msgs"><div class="empty small"><div class="spinner"></div></div></div>${composer("ib")}`;
     await fill($("#ib-msgs", box), uid, true); list();
     bindComposer(box, "ib", (text, file) => DPAskCeo.send(uid, text, file), () => fill($("#ib-msgs", box), uid, true));

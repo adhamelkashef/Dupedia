@@ -163,10 +163,17 @@
     for (const l of (e && e.log) || []) tl.push({ at: l.at, t: `Engineering: ${l.what}${l.note ? " — " + l.note : ""}` });
     tl.sort((a, b) => String(b.at).localeCompare(String(a.at)));
     const mine = r.ownerId === DPStore.st.userId, can = mine || admin;
+    // 2.0: the deal as a stage timeline (from the same order record and engineering status as the pills above it)
+    const flow = (() => { if (r.cancelled || ["lost", "rejected"].includes(r.custKey) || !r.p.issuedAt) return "";
+      const K = ["issued", "client", "review", "production", "ready", "installing", "completed"], LBL = ["Quotation issued", "Client accepted", "Engineering", "Production", "Ready", "Installation", "Completed"];
+      const sk = sg ? sg[2] : null, now = !r.accepted ? 1 : sk === "completed" ? 7 : sk === "installing" ? 5 : sk === "ready" ? 4 : sk === "production" || sk === "issue" ? 3 : 2;
+      const sub = { 0: H.dateS(r.p.issuedAt), 1: r.sub && r.sub.acceptedAt ? H.dateS(r.sub.acceptedAt) : "Awaiting the client" };
+      return `<ol class="x-timeline xod-flow" aria-label="Order progress">${K.map((k, i) => `<li class="${i < now ? "is-done" : i === now ? (sk === "issue" ? "is-late" : "is-now") : ""}"><b>${esc(LBL[i])}</b>${sub[i] ? esc(sub[i]) : i === now && sg ? esc(sg[0]) : ""}</li>`).join("")}</ol>`; })();
     V.innerHTML = `<div class="page"><div class="crumbs small"><button class="linkbtn" id="od-b">${back === "register" ? "Order Register" : "My Orders &amp; Proposals"}</button> › ${esc(r.p.ref || r.p.name)}</div>
       <div class="phead"><div><span class="eyebrow">${esc([r.p.ref, r.oid].filter(Boolean).join(" · "))}</span><h1>${esc(r.p.name || "Untitled")}</h1><p class="lead small">${esc([r.p.client, r.p.location, r.p.type].filter(Boolean).join(" · "))}${admin ? " · sales: " + esc(DPAuth.nameSync(r.ownerId) || "—") : ""}</p>
         <div class="row" style="margin-top:6px"><span class="pill ${c[1]}">Client: ${esc(c[0])}</span>${sg ? `<span class="pill ${sg[1]}">${esc(sg[0])}</span>` : ""}${r.job ? `<span class="dl ${r.job.ds.key}">${esc(r.job.ds.label)}</span>` : ""}${r.overdue ? `<span class="pill err">Payment overdue</span>` : ""}</div></div>
         <div class="row">${can && r.custKey === "issued" ? `<button class="btn lime" id="od-acc">${U.svg("check")} Client accepted…</button><button class="btn ghost" id="od-rej">Client rejected…</button>` : ""}${can && r.accepted && !r.cancelled ? `<button class="btn lime" id="od-pay">${U.svg("plus")} Record payment…</button>` : ""}<button class="btn ghost" id="od-more" aria-haspopup="menu">More ▾</button></div></div>
+      ${flow ? `<div class="x-card">${flow}</div>` : ""}
       <div class="dgrid"><div class="stack">
         <div class="card stack"><h3>Summary</h3><div class="kv"><span>Quotation reference</span><b>${esc(r.p.ref || "—")}</b><span>Order reference</span><b>${esc(r.oid || "Created when the client accepts")}</b>
           <span>Date submitted (issued)</span><span>${esc(H.dateS(r.p.issuedAt))}${r.p.rev ? ` · revision ${r.p.rev}` : ""}</span>${r.sub && r.sub.acceptedAt ? `<span>Client accepted on</span><span>${esc(H.dateS(r.sub.acceptedAt))}${r.sub.evidence ? ` · <button class="linkbtn" id="od-ev">view evidence</button>` : ""}</span>` : ""}

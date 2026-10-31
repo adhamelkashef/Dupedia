@@ -374,7 +374,11 @@
   /* ================= the employee's own payslips (profile) ================= */
   async function myPayslipsHtml() {
     const l = (await Fn().myPayslips().catch(() => [])).sort((a, b) => b.period.localeCompare(a.period)); if (!l.length) return "";
-    return `<div class="card stack"><h3>My payslips</h3><div class="tablewrap"><table class="mtable"><thead><tr><th>Month</th><th class="r">Base salary</th><th class="r">Commission</th><th class="r">Gross</th><th class="r">Deductions</th><th class="r">Net</th><th>Status</th></tr></thead><tbody>
+    const p0 = l[0], ded0 = C().sum(p0.deductions, (x) => x.amountMinor) + C().sum(p0.recoveries, (x) => x.amountMinor);   // 2.0: the latest payslip as a card (same fields as the table)
+    const slip = `<div class="xslip" data-x-dept="finance"><div class="xslip-h"><div><span class="x-label">Latest payslip</span><h3 class="x-display x-d4">${esc(p0.period)}</h3></div>${FU().pill(p0.status)}</div>
+      <div class="xslip-net"><span>Net pay</span><b class="x-num">${m(p0.netMinor, p0.currency)}</b></div>
+      <dl class="xslip-kv"><dt>Base salary</dt><dd class="x-num">${m(p0.baseMinor || 0, p0.currency)}</dd><dt>Commission</dt><dd class="x-num">${p0.commissionsMinor ? m(p0.commissionsMinor, p0.currency) : "—"}</dd><dt>Gross</dt><dd class="x-num">${m(p0.grossMinor, p0.currency)}</dd><dt>Deductions &amp; recoveries</dt><dd class="x-num">${ded0 ? "− " + m(ded0, p0.currency) : "—"}</dd></dl></div>`;
+    return `<div class="card stack"><h3>My payslips</h3>${slip}<div class="tablewrap"><table class="mtable"><thead><tr><th>Month</th><th class="r">Base salary</th><th class="r">Commission</th><th class="r">Gross</th><th class="r">Deductions</th><th class="r">Net</th><th>Status</th></tr></thead><tbody>
       ${l.map((p) => `<tr><td>${esc(p.period)}</td><td class="r num">${m(p.baseMinor || 0, p.currency)}</td><td class="r num">${p.commissionsMinor ? m(p.commissionsMinor, p.currency) + `<div class="tiny muted">${(p.commissions || []).map((c) => esc(c.ref || c.name)).join(", ")}</div>` : "—"}</td><td class="r num">${m(p.grossMinor, p.currency)}</td><td class="r num">${m(C().sum(p.deductions, (x) => x.amountMinor) + C().sum(p.recoveries, (x) => x.amountMinor), p.currency)}</td><td class="r num"><b>${m(p.netMinor, p.currency)}</b></td><td>${FU().pill(p.status)}</td></tr>`).join("")}</tbody></table></div>
       <p class="tiny muted">Deductions are listed with their reasons in the detail kept by Finance. Ask Finance if anything looks wrong.</p></div>`;
   }

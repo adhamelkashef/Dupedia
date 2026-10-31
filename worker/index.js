@@ -401,105 +401,111 @@ async function dbOp(env, acc, b) {
 }
 
 /* ======================= pages ======================= */
-/* 1.4.3 — sign-in, setup: a white "blueprint" scene built from the brand's building blocks (square, quarter-circle,
-   half-circle, circle on one grid) beside the form. Same fields, same endpoints, same rules as before. */
-const SCENE = `<svg class="scene" viewBox="0 0 640 520" aria-hidden="true" focusable="false">
-<defs><pattern id="g8" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#E4E2DA" stroke-width=".6"/></pattern>
-<pattern id="g80" width="80" height="80" patternUnits="userSpaceOnUse"><path d="M80 0H0V80" fill="none" stroke="#D6D3C9" stroke-width=".8"/></pattern>
-<linearGradient id="sweep" x1="0" x2="1"><stop offset="0" stop-color="#B8D241" stop-opacity="0"/><stop offset=".5" stop-color="#B8D241" stop-opacity=".22"/><stop offset="1" stop-color="#B8D241" stop-opacity="0"/></linearGradient></defs>
-<rect class="sweep" x="-160" y="0" width="160" height="520" fill="url(#sweep)"/>
-<g class="blk b1"><path d="M160 400V160a240 240 0 0 1 240 240z" fill="#262626"/></g>
-<g class="blk b2"><path d="M400 400h160a80 80 0 0 0-160 0z" fill="#B8D241"/><rect x="400" y="400" width="160" height="80" fill="#EAE8E1"/></g>
-<g class="blk b3"><rect x="400" y="160" width="160" height="160" fill="#FFFFFF" stroke="#262626" stroke-width="1.5"/><circle cx="480" cy="240" r="56" fill="#B8D241"/></g>
-<g class="blk b4"><rect x="80" y="400" width="80" height="80" fill="#B8D241"/><path d="M160 400h80v80a80 80 0 0 1-80-80z" fill="#45453F"/></g>
-<g class="dim" fill="none" stroke="#45453F" stroke-width="1"><path d="M160 136h240M160 130v12M400 130v12"/><path d="M584 160v160M578 160h12M578 320h12"/><path d="M56 400v80M50 400h12M50 480h12"/>
-<path d="M400 400l42-42" stroke-dasharray="3 3"/><circle cx="160" cy="400" r="3" fill="#262626"/><circle cx="480" cy="240" r="2.5" fill="#262626"/></g>
-<g class="lbl" font-family="Instrument Sans,Arial,sans-serif" font-size="11" fill="#45453F"><text x="280" y="126" text-anchor="middle">2400</text><text x="596" y="244" transform="rotate(90 596 244)" text-anchor="middle">1600</text>
-<text x="44" y="444" transform="rotate(-90 44 444)" text-anchor="middle">800</text><text x="446" y="352">R 800</text><text x="80" y="504">Module X-01 · scale 1:10</text></g></svg>`;
-const PAGE = (title, inner, { side = true } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#FBFAF6"><title>${title}</title>
-<link rel="stylesheet" href="/app/fonts.css"><style>
-:root{color-scheme:light;--ink:#262626;--g2:#45453F;--mut:#5E5E58;--line:#DCDAD2;--stone:#EAE8E1;--lime:#B8D241;--lime2:#A9C236;--cream:#FBFAF6;--red:#B3261E;--ease:cubic-bezier(.2,.7,.2,1)}
-*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#fff;color:var(--ink);font:400 15px/1.5 "Instrument Sans",Arial,sans-serif;-webkit-font-smoothing:antialiased}
-.wrap{min-height:100%;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(380px,1fr)}
-.stage{position:relative;overflow:hidden;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:28px;padding:44px 48px}
-.stage::before{content:"";position:absolute;inset:0;background:linear-gradient(#D6D3C9 .8px,transparent .8px) 0 0/80px 80px,linear-gradient(90deg,#D6D3C9 .8px,transparent .8px) 0 0/80px 80px,linear-gradient(#ECEAE3 .6px,transparent .6px) 0 0/20px 20px,linear-gradient(90deg,#ECEAE3 .6px,transparent .6px) 0 0/20px 20px;
--webkit-mask-image:radial-gradient(120% 90% at 100% 100%,#000 35%,transparent 78%);mask-image:radial-gradient(120% 90% at 100% 100%,#000 35%,transparent 78%)}
-.stage .logo{width:400px;max-width:100%;height:auto;position:relative;z-index:1}
-.stage .scene{position:absolute;right:-24px;bottom:-24px;width:min(82%,720px);height:auto}
-.stage .line{position:relative;z-index:1;font:600 26px/1.15 Fraunces,Georgia,serif;font-variation-settings:"SOFT" 100;letter-spacing:-.015em;max-width:22ch;margin:0}
-.stage .line small{display:block;font:400 14px/1.5 "Instrument Sans",Arial,sans-serif;color:var(--mut);letter-spacing:0;margin-top:8px;max-width:40ch}
-.panel{display:flex;align-items:center;justify-content:center;padding:40px 24px;background:var(--cream)}
-form{position:relative;width:min(400px,100%);background:#fff;border:1px solid var(--line);border-radius:20px;padding:36px 32px 28px;display:grid;gap:16px;box-shadow:0 30px 60px -40px rgba(38,38,38,.45)}
-form::after{content:"";position:absolute;top:-1px;right:-1px;width:44px;height:44px;background:var(--lime);border-radius:0 20px 0 44px}
-.mlogo{display:none;width:150px;height:auto}
-h1{font:600 30px/1.12 Fraunces,Georgia,serif;font-variation-settings:"SOFT" 100;letter-spacing:-.02em;margin:0;padding-right:24px}
-.sub{margin:-8px 0 4px;color:var(--g2)}
-label{display:grid;gap:6px;font-size:13px;font-weight:600;color:var(--g2)}
-.fld{position:relative}
-input:not([type=checkbox]){width:100%;font:inherit;font-size:15px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s}
-input:not([type=checkbox]):hover{border-color:#C9C7BE}
-input:not([type=checkbox]):focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 4px rgba(184,210,65,.45)}
-form[data-bad] input:not([type=checkbox]){border-color:var(--red)}
-.peek{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--g2);cursor:pointer;padding:6px 8px;border-radius:8px}
-.peek:hover{background:var(--stone)}.peek input{accent-color:var(--ink);margin:0}
-.fld input[type=password],.fld input[data-peek]{padding-right:84px}
-button{position:relative;font:inherit;font-weight:600;font-size:15px;padding:13px;border:0;border-radius:999px;background:var(--lime);color:var(--ink);cursor:pointer;transition:background-color .15s,transform .1s;margin-top:4px}
-button:hover{background:var(--lime2)}button:active{transform:scale(.985)}
-button:focus-visible,.peek:focus-within{outline:3px solid var(--ink);outline-offset:2px}
-button[disabled]{cursor:progress;color:transparent}
-button[disabled]::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:2.5px solid rgba(38,38,38,.25);border-top-color:var(--ink);animation:spin .7s linear infinite}
-.err{display:none;gap:10px;align-items:flex-start;background:#FBEAE8;color:#7A1A14;border-radius:12px;padding:10px 12px;font-size:14px}
-.err.on{display:flex}.err::before{content:"!";flex:0 0 20px;height:20px;border-radius:50%;background:var(--red);color:#fff;font:700 13px/20px Arial;text-align:center}
-.tiny{font-size:12.5px;color:var(--mut);margin:0}.help{border-top:1px solid var(--stone);padding-top:14px;display:grid;gap:6px}
-.code{font-family:inherit;font-weight:600;background:var(--stone);padding:1px 6px;border-radius:6px}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
-@keyframes draw{from{stroke-dashoffset:300}to{stroke-dashoffset:0}}
-@keyframes sweep{0%{transform:translateX(0)}100%{transform:translateX(960px)}}
-.blk{animation:rise .7s var(--ease) both}.b2{animation-delay:.08s}.b3{animation-delay:.16s}.b4{animation-delay:.24s}
-.dim path{stroke-dasharray:300;animation:draw 1.1s .35s var(--ease) both}.dim path[stroke-dasharray="3 3"]{animation:none}
-.lbl{animation:rise .6s .6s both}.sweep{animation:sweep 9s 1.2s linear infinite}
-form{animation:rise .6s .1s var(--ease) both}
-body.leaving form{transition:opacity .3s,transform .3s var(--ease);opacity:0;transform:translateY(-8px) scale(.98)}
-body.leaving .blk{transition:transform .45s var(--ease);transform:translateY(-12px)}
-@media (max-width:900px){.wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr}.stage{min-height:200px;padding:20px;border-right:0;border-bottom:1px solid var(--line)}
-.stage .logo{width:150px}.stage .scene{width:min(62%,380px);right:-30px;bottom:-70px}.stage .line{display:none}.stage::before{-webkit-mask-image:linear-gradient(90deg,transparent 30%,#000 70%);mask-image:linear-gradient(90deg,transparent 30%,#000 70%)}.panel{padding:24px 16px 40px;align-items:flex-start}}
-@media (max-width:480px){.stage{min-height:150px}.stage .logo{width:130px}form{padding:28px 20px 22px;border-radius:18px}h1{font-size:26px}}
-.fgt{justify-self:center;font-size:13.5px;font-weight:600;color:var(--g2);text-decoration:underline;text-underline-offset:3px;padding:2px 6px;border-radius:6px}.fgt:hover{color:var(--ink)}.fgt:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
-.done{display:grid;gap:12px}.done .ic{width:44px;height:44px;border-radius:0 44px 0 0;background:var(--lime)}.done a.btn{display:block;text-align:center;font-weight:600;padding:13px;border-radius:999px;background:var(--lime);color:var(--ink);text-decoration:none}
-/* 1.4.6 — "Signing in…": the official logo, revealed while the server checks the password (never before it answers) */
-.sx{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:var(--cream);opacity:0;transition:opacity .25s var(--ease)}
+/* 2.0 "Snap" (Session 3) — sign-in, setup, password pages. A charcoal deck (tonal light) with the logo on its white plate and a
+   block band that snaps into place; the form on cream. Same fields, same endpoints, same rules as before. The logo is never
+   animated or given effects; only the blocks move. Shares the app's design system (app/xf-tokens.css, app/xf-components.css). */
+const BAND = `<svg class="band" viewBox="0 0 480 240" aria-hidden="true" focusable="false">
+<g class="bk" style="--d:0ms"><rect x="0" y="120" width="120" height="120" fill="#F3F1EA"/></g>
+<g class="bk" style="--d:70ms"><path d="M120 240V120a120 120 0 0 1 120 120z" fill="#B8D241"/></g>
+<g class="bk" style="--d:140ms"><path d="M240 120h120v60a60 60 0 0 1-120 0z" fill="#F3F1EA"/></g>
+<g class="bk" style="--d:210ms"><circle cx="300" cy="60" r="56" fill="#B8D241"/></g>
+<g class="bk" style="--d:280ms"><rect x="360" y="120" width="120" height="120" fill="#B8D241"/></g>
+<g class="bk" style="--d:350ms"><path d="M360 120V0a120 120 0 0 1 120 120z" fill="#F3F1EA"/></g>
+<g class="bk" style="--d:420ms"><path d="M240 240v-60h120v60z" fill="#45453F"/></g></svg>`;
+const PAGE = (title, inner, { side = true } = {}) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#262626"><title>${title}</title>
+<link rel="stylesheet" href="/app/fonts.css"><link rel="stylesheet" href="/app/xf-tokens.css"><link rel="stylesheet" href="/app/xf-components.css"><style>
+:root{color-scheme:light;--x-bg:#FBFAF6;--x-surface:#FFFFFF;--x-fg:#262626;--x-fg2:#45453F;--x-muted:#5E5E58;--x-line:#DCDAD2;--x-line-strong:#C9C7BE;--x-sunk:#F3F2EC;--x-stone:#EAE8E1}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--x-bg);color:var(--x-fg);font:400 15px/1.5 var(--x-f-text);-webkit-font-smoothing:antialiased}
+.wrap{min-height:100%;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(400px,1fr)}
+/* the deck */
+.deck{position:relative;overflow:hidden;background:var(--x-deck-light);color:var(--x-on-deck);display:flex;flex-direction:column;gap:32px;padding:max(40px,env(safe-area-inset-top,0px)) 48px 0 max(48px,env(safe-area-inset-left,0px))}
+.deck .plate{align-self:flex-start;background:#fff;border-radius:var(--x-r-sm);padding:14px 18px;line-height:0}
+.deck .plate img{width:240px;height:auto;display:block}
+.deck h2{font:600 clamp(40px,5vw,64px)/1 var(--x-f-display);font-variation-settings:"SOFT" 100;letter-spacing:-.025em;margin:0;max-width:12ch;color:var(--x-on-deck)}
+.deck h2 em{font-style:italic;font-weight:500}
+.deck p{margin:-12px 0 0;color:var(--x-on-deck-2);max-width:42ch}
+.deck .ver{display:inline-flex;align-items:center;gap:8px;font:600 12.5px/1 var(--x-f-text);color:var(--x-on-deck);background:rgba(255,255,255,.08);border-radius:999px;padding:6px 12px;align-self:flex-start}
+.deck .ver i{width:8px;height:8px;border-radius:50%;background:var(--x-lime)}
+.deck .band{margin-top:auto;width:min(100%,480px);height:auto;display:block}
+.band .bk{transform-box:fill-box;transform-origin:50% 100%;animation:x-blockin var(--x-d-lg) var(--x-snap) both;animation-delay:calc(var(--d) + 150ms)}
+/* the form */
+.panel{display:flex;align-items:center;justify-content:center;padding:40px max(24px,env(safe-area-inset-right,0px)) 40px 24px}
+form{position:relative;width:min(420px,100%);background:var(--x-surface);border:1px solid var(--x-line);border-radius:var(--x-r-sm) var(--x-r-corner) var(--x-r-sm) var(--x-r-sm);padding:36px 32px 28px;display:grid;gap:18px;animation:x-dialog-in var(--x-d-md) var(--x-settle) both}
+form::after{content:"";position:absolute;top:-1px;right:-1px;width:56px;height:56px;background:var(--x-lime);border-radius:0 var(--x-r-corner) 0 100%}
+.mlogo{display:none}
+h1{font:600 32px/1.08 var(--x-f-display);font-variation-settings:"SOFT" 100;letter-spacing:-.02em;margin:0;padding-right:44px;text-wrap:balance}
+h1 em{font-style:italic;font-weight:500}
+.sub{margin:-8px 0 2px;color:var(--x-fg2)}
+label{display:grid;gap:6px;font:600 13px/1.3 var(--x-f-text);color:var(--x-fg2)}
+label .tiny{font-weight:400}
+input:not([type=checkbox]){width:100%;min-height:48px;font:400 16px/1.3 var(--x-f-text);padding:12px 14px;border-radius:var(--x-r-xs);border:1px solid var(--x-line-strong);background:#fff;color:var(--x-fg);transition:border-color var(--x-d-fast),box-shadow var(--x-d-sm) var(--x-settle)}
+input:not([type=checkbox]):hover{border-color:var(--x-fg2)}
+input:not([type=checkbox]):focus{outline:none;border-color:var(--x-fg);box-shadow:inset 0 -3px 0 var(--x-lime)}
+form[data-bad] input:not([type=checkbox]){border-color:var(--x-err);box-shadow:inset 0 -3px 0 var(--x-err)}
+form[data-bad] .err.on{animation:x-shake .32s var(--x-settle)}
+.fld{position:relative;display:block}
+.fld input{padding-right:92px}
+.peek{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--x-fg2);font:600 13px/1 var(--x-f-text);padding:9px 10px;border-radius:var(--x-r-sm);cursor:pointer;min-height:36px}
+.peek:hover{background:var(--x-sunk)}.peek:focus-visible{outline:none;box-shadow:var(--x-focus)}
+.peek svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+form>button{position:relative;min-height:50px;font:600 16px/1 var(--x-f-text);border:0;border-radius:999px;background:var(--x-lime);color:#262626;cursor:pointer;margin-top:4px;transition:background-color var(--x-d-fast),transform var(--x-d-fast) var(--x-settle)}
+form>button:hover{background:var(--x-lime-hover)}form>button:active{transform:scale(.97)}
+form>button:focus-visible{outline:none;box-shadow:var(--x-focus)}
+form>button[disabled]{cursor:progress;color:transparent}
+form>button[disabled]::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:2.5px solid #262626;border-right-color:transparent;animation:x-spin .7s linear infinite}
+.err{display:none;gap:10px;align-items:flex-start;background:var(--x-err-bg);color:#7A1A14;border-radius:var(--x-r-sm);padding:12px 14px;font-size:14px;line-height:1.4}
+.err.on{display:flex}
+.err::before{content:"!";flex:0 0 20px;height:20px;border-radius:50%;background:var(--x-err);color:#fff;font:700 13px/20px Arial;text-align:center}
+.tiny{font-size:12.5px;color:var(--x-muted);margin:0}
+.help{border-top:1px solid var(--x-stone);padding-top:14px;display:grid;gap:6px}
+.code{font-family:inherit;font-weight:600;background:var(--x-stone);padding:1px 6px;border-radius:4px}
+.fgt{justify-self:center;font-size:14px;font-weight:600;color:var(--x-fg2);text-decoration:underline;text-decoration-color:var(--x-lime);text-decoration-thickness:2px;text-underline-offset:4px;padding:4px 8px;border-radius:6px}
+.fgt:hover{color:var(--x-fg)}.fgt:focus-visible{outline:none;box-shadow:var(--x-focus)}
+.done{display:grid;gap:14px}
+.done .ic{width:56px;height:56px;border-radius:50%;background:var(--x-lime);display:grid;place-items:center;animation:x-pop var(--x-d-md) var(--x-snap)}
+.done .ic svg{width:30px;height:30px;fill:none;stroke:#262626;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.done .ic path{stroke-dasharray:30;stroke-dashoffset:30;animation:x-draw .45s .2s var(--x-settle) forwards}
+.done a.btn{display:flex;align-items:center;justify-content:center;min-height:50px;font-weight:600;border-radius:999px;background:var(--x-lime);color:#262626;text-decoration:none}
+.done a.btn:focus-visible{outline:none;box-shadow:var(--x-focus)}
+body.leaving form{transition:opacity var(--x-d-md),transform var(--x-d-md) var(--x-exit);opacity:0;transform:translateY(-8px) scale(.98)}
+/* signing in: the logo stays still on its plate; the block band waits, then fills when the server says yes */
+.sx{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;background:var(--x-bg);opacity:0;transition:opacity var(--x-d-sm) var(--x-settle)}
 .sx.on{opacity:1}.sx[hidden]{display:none}
-.sx::before{content:"";position:absolute;inset:0;background:linear-gradient(#E3E0D7 .8px,transparent .8px) 0 0/80px 80px,linear-gradient(90deg,#E3E0D7 .8px,transparent .8px) 0 0/80px 80px;-webkit-mask-image:radial-gradient(70% 60% at 50% 50%,#000,transparent 75%);mask-image:radial-gradient(70% 60% at 50% 50%,#000,transparent 75%);opacity:.7}
-.sx .in{position:relative;display:grid;justify-items:center;gap:16px;padding:24px;text-align:center}
-.sx .lg{position:relative;width:min(340px,72vw)}
-.sx .lg img{display:block;width:100%;height:auto;animation:reveal .9s .05s var(--ease) both}
-.sx .lg::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.85) 50%,transparent 62%) no-repeat;background-size:250% 100%;background-position:120% 0;
--webkit-mask:url(/brand/logo_primary.png) center/100% 100% no-repeat;mask:url(/brand/logo_primary.png) center/100% 100% no-repeat;animation:sheen 1.8s .9s ease-in-out infinite}
-.sx .bk{position:absolute;right:-18px;top:-14px;width:30px;height:30px;background:var(--lime);border-radius:0 20px 0 30px;animation:pop .5s .55s cubic-bezier(.3,1.6,.5,1) both,bob 1.3s 1.1s ease-in-out infinite alternate}
-.sx .st{margin:6px 0 0;font:600 16px/1.3 "Instrument Sans",Arial,sans-serif;color:var(--ink);animation:rise .5s .35s var(--ease) both}
-.sx .bar{width:200px;max-width:60vw;height:3px;border-radius:3px;background:var(--stone);overflow:hidden;animation:rise .5s .45s var(--ease) both}
-.sx .bar i{display:block;height:100%;width:38%;border-radius:3px;background:var(--ink);animation:load 1.15s ease-in-out infinite}
-.sx.ok .bar i{width:100%;animation:none;background:var(--lime2);transition:width .25s}
-.sx .tag{margin:4px 0 0;font:italic 600 19px/1.2 Fraunces,Georgia,serif;font-variation-settings:"SOFT" 100;color:var(--g2);letter-spacing:-.01em;animation:rise .6s .6s var(--ease) both}
-@keyframes reveal{from{clip-path:inset(0 100% 0 0);transform:scale(.97);filter:blur(3px)}to{clip-path:inset(0 0 0 0);transform:none;filter:none}}
-@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-20% 0}}
-@keyframes pop{from{transform:scale(0) rotate(-30deg)}to{transform:none}}
-@keyframes bob{to{transform:translateY(-5px) rotate(6deg)}}
-@keyframes load{0%{transform:translateX(-110%)}100%{transform:translateX(280%)}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.sx .lg::after{display:none}.sx .bar i{width:60%}}
-</style></head><body><main class="wrap">${side ? `<section class="stage"><picture><source media="(max-width:900px)" srcset="/brand/logo_compact.png"><img class="logo" src="/brand/logo_primary.png" alt="Dupedia"></picture>${SCENE}
-<p class="line">Serious about play.<small>Sales, site plans, factory, finance and market intelligence — one system for the whole company.</small></p></section>` : ""}
+.sx .plate{background:#fff;border-radius:var(--x-r-sm);padding:14px 18px;line-height:0;box-shadow:0 0 0 1px var(--x-line)}
+.sx .plate img{width:min(260px,64vw);height:auto;display:block}
+.sx .x-band{--_s:30px}
+.sx.ok .x-band i{background:#262626;animation:x-blockin var(--x-d-md) var(--x-snap) both}
+.sx.ok .x-band i:nth-child(even){background:var(--x-lime)}
+.sx.ok .x-band i:nth-child(2){animation-delay:60ms}.sx.ok .x-band i:nth-child(3){animation-delay:120ms}.sx.ok .x-band i:nth-child(4){animation-delay:180ms}
+.sx.ok .x-band--wait i{animation-iteration-count:1}
+.sx .st{margin:0;font:600 16px/1.3 var(--x-f-text);color:var(--x-fg)}
+.sx .sub2{margin:-8px 0 0;font-size:13px;color:var(--x-muted);min-height:18px}
+.sx .tag{margin:0;font:italic 500 19px/1.2 var(--x-f-display);font-variation-settings:"SOFT" 100;color:var(--x-fg2)}
+@media (max-width:900px){
+  .wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .deck{padding:max(20px,env(safe-area-inset-top,0px)) 20px 0 max(20px,env(safe-area-inset-left,0px));gap:14px;flex-direction:row;flex-wrap:wrap;align-items:flex-end;min-height:0}
+  .deck .plate{padding:9px 12px}.deck .plate img{width:140px}
+  .deck h2{font-size:30px;flex:1 1 100%;max-width:none;margin-bottom:2px}
+  .deck p,.deck .ver{display:none}
+  .deck .band{flex:1 1 100%;width:100%;max-width:none;height:56px;margin-top:4px}
+  .panel{padding:24px 16px 40px;align-items:flex-start}
+}
+@media (max-width:480px){form{padding:28px 20px 22px}h1{font-size:28px}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}}
+</style></head><body><main class="wrap">${side ? `<section class="deck" aria-label="Dupedia X FORCE"><span class="plate"><img src="/brand/logo_compact.png" alt="Dupedia" width="240" height="124"></span>
+<h2>Serious about <em>play.</em></h2><p>Sales, site plans, factory, finance and market intelligence. One system for the whole company.</p><span class="ver"><i></i>X FORCE 2.0</span>${BAND}</section>` : ""}
 <section class="panel">${inner}</section></main></body></html>`;
-const PEEK = `<label class="peek"><input type="checkbox" data-peek-for="pw"> Show</label>`;
-const LOGIN = PAGE("Sign in · X FORCE", `<form id="f" novalidate><h1>Welcome to X&nbsp;FORCE</h1><p class="sub">Your intelligent operating system for everything Dupedia.</p>
+const EYE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const PEEK = `<button type="button" class="peek" data-peek-for="pw" aria-pressed="false" aria-label="Show password">${EYE}<span>Show</span></button>`;
+const LOGIN = PAGE("Sign in · X FORCE", `<form id="f" novalidate><h1>Welcome to X&nbsp;<em>FORCE</em></h1><p class="sub">Sign in to Dupedia's operating system.</p>
 <div class="err" id="e" role="alert"></div>
 <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
 <label>Password<span class="fld"><input id="pw" name="password" type="password" autocomplete="current-password" required>${PEEK}</span></label>
 <button>Sign in</button><a class="fgt" href="/forgot">Forgot your password?</a>
 <div class="help"><p class="tiny">Accounts are created by an administrator. Five failed attempts lock the account for 15 minutes.</p></div></form>
-<div class="sx" id="sx" hidden role="status" aria-live="polite"><div class="in"><div class="lg"><img src="/brand/logo_primary.png" alt="Dupedia" width="340" height="120"><span class="bk" aria-hidden="true"></span></div>
-<p class="st" id="sx-t">Signing in…</p><div class="bar" aria-hidden="true"><i></i></div><p class="tag">serious about play</p></div></div>
+<div class="sx" id="sx" hidden role="status" aria-live="polite"><span class="plate"><img src="/brand/logo_compact.png" alt="Dupedia" width="260" height="134"></span>
+<div class="x-band x-band--wait" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="st" id="sx-t">Checking your account…</p><p class="sub2" id="sx-s"></p><p class="tag">Serious about play.</p></div>
 <script src="/xf-login.js"></script>`);
 const SETUP = PAGE("Set up · X FORCE", `<form id="f" data-setup="1" novalidate><h1>Set up X FORCE</h1><p class="sub">Create the owner account. This page closes for good afterwards.</p>
 <div class="err" id="e" role="alert"></div>
@@ -523,14 +529,14 @@ const RESET = PAGE("Choose a new password · X FORCE", `<form id="f" data-mode="
 <script src="/xf-login.js"></script>`);
 const NOSETUP = PAGE("Not set up · X FORCE", `<form><h1>Almost there</h1><p class="sub">X FORCE has no administrator yet, and no setup code is configured.</p>
 <p class="tiny">In Cloudflare: Workers &amp; Pages → this project → Settings → Variables and Secrets → add a <b>Secret</b> named <span class="code">SETUP_CODE</span> (a long random code only you know), then reload this page.</p></form>`);
-const LOGIN_JS = `(function(){var f=document.getElementById("f");if(!f)return;var er=document.getElementById("e"),b=f.querySelector("button");
+const LOGIN_JS = `(function(){var f=document.getElementById("f");if(!f)return;var er=document.getElementById("e"),b=f.querySelector("button:not(.peek)");
 var mode=f.dataset.mode||"";var tok="";if(mode==="reset"){var m=/[#&]t=([A-Za-z0-9_-]{20,200})/.exec(location.hash);tok=m?m[1]:"";try{history.replaceState(null,"",location.pathname);}catch(x){}
 if(!tok){f.innerHTML='<h1>This link is incomplete</h1><p class="sub">Open the link from your e-mail again, or ask for a new one.</p><a class="fgt" href="/forgot">Send a new link</a>';return;}}
-function done(h,t,l,lt){f.innerHTML='<div class="done"><div class="ic"></div><h1>'+h+'</h1><p class="sub">'+t+'</p>'+(l?'<a class="btn" href="'+l+'">'+lt+'</a>':'')+'</div>';}
-function peeks(){f.querySelectorAll("[data-peek-for]").forEach(function(c){c.onchange=function(){var i=document.getElementById(c.dataset.peekFor);i.type=c.checked?"text":"password";i.toggleAttribute("data-peek",c.checked);};});}peeks();
+function done(h,t,l,lt){f.innerHTML='<div class="done"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></div><h1>'+h+'</h1><p class="sub">'+t+'</p>'+(l?'<a class="btn" href="'+l+'">'+lt+'</a>':'')+'</div>';}
+function peeks(){f.querySelectorAll("[data-peek-for]").forEach(function(c){c.onclick=function(){var i=document.getElementById(c.dataset.peekFor),on=i.type==="password";i.type=on?"text":"password";c.setAttribute("aria-pressed",on);c.setAttribute("aria-label",on?"Hide password":"Show password");c.querySelector("span").textContent=on?"Hide":"Show";i.focus();};});}peeks();
 var oldpw="";function change(o){mode="change";oldpw=o||"";f.dataset.mode="change";
-f.innerHTML='<h1>Choose your own password</h1><p class="sub">You signed in with a temporary password. Choose a new one to continue — the temporary password stops working as soon as you do.</p><div class="err" id="e" role="alert"></div>'+(oldpw?'':'<label>Temporary password<input name="old" type="password" autocomplete="current-password" required autofocus></label>')+'<label>New password<span class="fld"><input id="pw" name="password" type="password" autocomplete="new-password" required'+(oldpw?' autofocus':'')+'><label class="peek"><input type="checkbox" data-peek-for="pw"> Show</label></span><span class="tiny">10 or more characters, with letters and a digit.</span></label><label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label><button>Save and continue</button><a class="fgt" href="#" id="so">Sign out</a>';
-er=document.getElementById("e");b=f.querySelector("button");peeks();var fi=f.querySelector("[autofocus]");if(fi)fi.focus();
+f.innerHTML='<h1>Choose your own password</h1><p class="sub">You signed in with a temporary password. Choose a new one to continue — the temporary password stops working as soon as you do.</p><div class="err" id="e" role="alert"></div>'+(oldpw?'':'<label>Temporary password<input name="old" type="password" autocomplete="current-password" required autofocus></label>')+'<label>New password<span class="fld"><input id="pw" name="password" type="password" autocomplete="new-password" required'+(oldpw?' autofocus':'')+'>${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label><label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label><button>Save and continue</button><a class="fgt" href="#" id="so">Sign out</a>';
+er=document.getElementById("e");b=f.querySelector("button:not(.peek)");peeks();var fi=f.querySelector("[autofocus]");if(fi)fi.focus();
 document.getElementById("so").onclick=function(ev){ev.preventDefault();fetch("/api/logout",{method:"POST",headers:{"x-xf":"1"}}).finally(function(){location.href="/login";});};}
 if(!mode&&/[?&]change=1/.test(location.search))change("");
 function bad(m,el){er.textContent=m;er.classList.add("on");f.setAttribute("data-bad","");if(el)el.focus();}
@@ -542,17 +548,17 @@ var d=Object.fromEntries(new FormData(f));
 if(mode==="forgot"&&!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(d.email.trim()))return bad("Enter a valid e-mail address.",f.querySelector("input[name=email]"));
 if(mode==="reset"||mode==="change"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d=mode==="reset"?{token:tok,password:d.password}:{old:oldpw||d.old,password:d.password};}
 b.disabled=true;b.setAttribute("aria-busy","true");
-var sx=document.getElementById("sx"),signin=!mode&&!f.dataset.setup&&sx;if(signin){sx.classList.remove("ok");document.getElementById("sx-t").textContent="Signing in…";sx.hidden=false;requestAnimationFrame(function(){requestAnimationFrame(function(){sx.classList.add("on");});});}
+var sx=document.getElementById("sx"),signin=!mode&&!f.dataset.setup&&sx;if(signin){sx.classList.remove("ok");document.getElementById("sx-t").textContent="Checking your account…";document.getElementById("sx-s").textContent="";sx.hidden=false;var slow=setTimeout(function(){document.getElementById("sx-s").textContent="Still working. Your connection may be slow.";},8000);requestAnimationFrame(function(){requestAnimationFrame(function(){sx.classList.add("on");});});}
 var ac=window.AbortController?new AbortController():null,tm=setTimeout(function(){if(ac)ac.abort();},20000);
 var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d),signal:ac?ac.signal:undefined}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server did not answer. Check your connection and try again."};});clearTimeout(tm);
-function unsx(){if(!signin)return;sx.classList.remove("on");setTimeout(function(){sx.hidden=true;},260);}
+if(signin)clearTimeout(slow);function unsx(){if(!signin)return;sx.classList.remove("on");setTimeout(function(){sx.hidden=true;},260);}
 if(r.error||(!mode&&r.mustChange))unsx();
 if(r.error){b.disabled=false;b.removeAttribute("aria-busy");if(mode==="change"&&r.error==="old"){if(oldpw){location.href="/login";return;}r.message="The temporary password is not correct.";}var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
 if(!mode&&r.mustChange){b.disabled=false;b.removeAttribute("aria-busy");return change(d.password);}
 if(mode==="forgot")return done("Check your e-mail",r.message,"/login","Back to sign in");
 if(mode==="reset")return done("Password changed","You can now sign in with your new password. Your other sessions were signed out.","/login","Sign in");
-if(signin){sx.classList.add("ok");document.getElementById("sx-t").textContent="Signed in — opening your dashboard…";try{sessionStorage.setItem("xf.splash","1");}catch(x){}
-setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:220);return;}
+if(signin){sx.classList.add("ok");sx.querySelector(".x-band").classList.remove("x-band--wait");document.getElementById("sx-t").textContent="Signed in. Opening your dashboard…";try{sessionStorage.setItem("xf.splash","1");}catch(x){}
+setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:420);return;}
 document.body.classList.add("leaving");setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:320);};
 addEventListener("pageshow",function(e){var sx=document.getElementById("sx");if(e.persisted&&sx){sx.classList.remove("on");sx.hidden=true;if(b){b.disabled=false;b.removeAttribute("aria-busy");}}});})();`;
 const setupDone = async (env) => !!(await env.DB.prepare("SELECT v FROM kv WHERE k = 'setup_done'").first()) || !!(await env.DB.prepare("SELECT uid FROM users LIMIT 1").first());
