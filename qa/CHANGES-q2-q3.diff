@@ -1,0 +1,542 @@
+diff --git a/.assetsignore b/.assetsignore
+index 6c3fbf5..3147123 100644
+--- a/.assetsignore
++++ b/.assetsignore
+@@ -11,3 +11,4 @@ package-lock.json
+ .dev.vars
+ .wrangler
+ .gitignore
++*.diff
+diff --git a/CLOUDFLARE.md b/CLOUDFLARE.md
+index 152f87f..9e0f270 100644
+--- a/CLOUDFLARE.md
++++ b/CLOUDFLARE.md
+@@ -96,7 +96,7 @@ Secrets go only in the dashboard as **Secret**, never in this file. The only sec
+ 
+ ## Not on Cloudflare yet
+ 
+-- **Market Intelligence research (1.4.2).** Runs inside this Worker with Claude (Claude API + web search) — see "Research with Claude" below. `/api/ingest` answers "not available" (nothing is uploaded from outside).
++- **Market Intelligence research (2.1).** Runs inside this Worker with Tavily (search) + Gemini (analysis), both free tiers — see "Research with Tavily + Gemini" below. `/api/ingest` answers "not available" (nothing is uploaded from outside).
+ - **Private chats.** They are end-to-end encrypted and start empty here.
+ - **Email and phone notifications.** Notifications are in-app only.
+ 
+@@ -109,28 +109,45 @@ npx wrangler dev        # http://localhost:8787 — local D1, nothing touches th
+ ```
+ 
+ 
+-## Research with Claude (1.4.2)
++## Research with Tavily + Gemini (2.1, free tiers)
+ 
+-"Run research now" (Mission Control) asks this Worker to run each job with Claude. Claude searches the web; only items whose
+-source page that search actually returned are kept, then the same rules as the claude.ai research (worker/intel.js = ops/intel.py)
+-check, de-duplicate and score them. Nothing is invented and nothing is sent to anyone.
++"Run research now" (Mission Control) asks this Worker to run each job:
++- **Tavily** searches the web with fixed searches per job. Its free plan gives 1,000 credits a month, and a job uses about 4–6.
++- **Gemini** reads only the pages Tavily returned and answers in the job's format. It's free when the Google project has no billing.
++- Only items whose link is one of those pages are kept. Then worker/intel.js checks, de-duplicates and scores them.
++- Nothing is invented and nothing is sent to anyone. Only public web text and the research brief go to Google; internal records never do.
+ 
+ **Switch it on (once):**
+-1. Go to console.anthropic.com → sign in → **Billing**: add a payment method / credit (the API is billed separately from a Claude subscription).
+-2. **API keys** → **Create key** → copy it (it is shown once).
+-3. Cloudflare dashboard → **Workers & Pages** → **dupedia** → **Settings** → **Variables and Secrets** → **Add** → type **Secret**,
+-   name `ANTHROPIC_API_KEY`, paste the key → **Deploy**.
+-4. In X FORCE: Mission Control → **Run research now…** → Start. Each job takes 1–3 minutes; keep the page open. If you close it,
+-   the hourly job (at :28) carries on with what is left.
+-
+-**Optional settings** (same place, type *Text*): `RESEARCH_MODEL` (default `claude-sonnet-5-5`), `RESEARCH_MAX_SEARCHES` (web searches
+-per job, default 8), `RESEARCH_DAILY_JOBS` (jobs per day for the whole company, default 10).
+-
+-**Cost:** web search is $10 per 1,000 searches plus Claude usage; with the defaults a job makes at most 8 searches and the company
+-at most 10 jobs a day. Check actual spend in console.anthropic.com → Usage; you can also set a monthly spend limit there.
+-
+-**Limits:** only administrators can run research (the Worker refuses others). The key never reaches the browser or GitHub.
+-On the free Workers plan a job is short on CPU; if a run fails with a Cloudflare "exceeded CPU" error, the Workers Paid plan
++1. **Tavily:** app.tavily.com → sign up (free "Researcher" plan, no card) → **API Keys** → copy the key. Leave **pay-as-you-go OFF**.
++2. **Gemini:** aistudio.google.com → **Get API key** → create the key in a Google project **without a billing account** (then nothing
++   can be charged; over the free quota Google refuses instead of billing). Then open **Rate limit** in AI Studio and note the daily limit.
++3. Cloudflare dashboard → **Workers & Pages** → **dupedia** → **Settings** → **Variables and Secrets** → **Add** → type **Secret**:
++   `TAVILY_API_KEY` = the Tavily key, and `GEMINI_API_KEY` = the Gemini key → **Deploy**.
++4. In X FORCE: Mission Control → **Run research now…** → Start. Each job takes about 1 minute; keep the page open. If you close it, the
++   hourly job (at minute :28, Cron Trigger "28 * * * *" in wrangler.jsonc) finishes it: whole requests, oldest first, up to
++   8 minutes per run (`RESEARCH_TICK_BUDGET_MIN`), until a free limit says wait — then it continues the next hour.
++   Requests that were already queued start the same way. One queued more than 2 days ago only starts with **Queue again** (Automation Health).
++
++**Check it runs:** Workers & Pages → dupedia → **Settings → Trigger events** must list `28 * * * *`. **Logs** at minute :28 show
++`sweep: …` and `research: …` lines. Mission Control → Automation Health shows each request:
++- Queued / Running (job k of n) / Waiting (and why)
++- Missing configuration (with the secret's name)
++- Completed / Partially completed / Failed
++
++**Optional settings** (same place, type *Text*):
++- `GEMINI_MODEL` (default `gemini-3.8-flash`; `gemini-3.5-flash-lite` uses less quota)
++- `GEMINI_DAILY_CALLS` (default 100; set below the AI Studio daily limit)
++- `TAVILY_MONTHLY_CREDITS` (default 900) and `TAVILY_DAILY_CREDITS` (default 60)
++- `RESEARCH_DAILY_JOBS` (jobs per day for the whole company, default 10)
++
++When a limit or a free quota is reached, research **waits** and continues later. Nothing is charged.
++
++**Claude (paid, optional):** only when an administrator sets `RESEARCH_PROVIDER` = `claude` and adds `ANTHROPIC_API_KEY`. Then Claude
++searches and analyses: $10 per 1,000 web searches plus Claude usage, at most 8 searches a job (`RESEARCH_MAX_SEARCHES`), with `RESEARCH_MODEL`.
++A Claude key alone never switches research to Claude.
++
++**Limits:** only administrators can run research (the Worker refuses others). The keys never reach the browser or GitHub.
++On the free Workers plan a job is short on CPU. If a run fails with a Cloudflare "exceeded CPU" error, the Workers Paid plan
+ ($5/month) removes that limit.
+ 
+ 
+diff --git a/app/intel.js b/app/intel.js
+index cc1ce33..70e8de1 100644
+--- a/app/intel.js
++++ b/app/intel.js
+@@ -115,8 +115,8 @@
+     if (!todo.length) throw Object.assign(new Error(`Already queued or running: ${busy.map(jobLabel).join(", ")}.`), { code: "busy" });
+     const id = rid("rq-"), doc = { jobs: todo, by: me().id, at: now(), status: "queued", started: null, via: null };
+     await DS().set(`mi/req/r/${id}`, doc);
+-    const { fired, why, server } = await fireTask(id, todo);
+-    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : null, fireNote: fired ? "" : why }));
++    const { fired, why, server, code } = await fireTask(id, todo);
++    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : null, fireNote: fired ? "" : why, fireCode: fired ? null : code || null }));
+     return { id, jobs: todo, skipped: busy, fired, why, server: !!server };
+   }
+   /** Ask the research task to start (Claude Code Remote connector). Never throws; says why when it could not. */
+@@ -124,8 +124,11 @@
+     // 1.4.2 — on Cloudflare the Worker runs the research itself (Claude API + web search); the page drives it job by job
+     if (root.XFServer && root.XFServer.researchStatus) {
+       const st = await root.XFServer.researchStatus().catch((e) => ({ error: e.message }));
+-      return st && st.configured ? { fired: true, why: "", server: true }
+-        : { fired: false, server: true, why: st && st.error ? `Could not check the research connection (${st.error}).` : "Research is not connected yet: an administrator must add the Claude API key (ANTHROPIC_API_KEY) to the Worker in Cloudflare (see CLOUDFLARE.md). The request stays queued and runs within the hour once the key is added." };
++      // 2.1: the Worker says exactly which secret is missing (Tavily + Gemini by default); no promise of a time it cannot keep
++      if (st && st.configured) return { fired: true, why: "", server: true };
++      if (st && st.error) return { fired: false, server: true, code: "status_error", why: `Could not check the research connection (${st.error}). The request is saved and stays queued.` };
++      const miss = (st && st.missingMessage) || "Research cannot run yet: a research secret is missing in Cloudflare (see CLOUDFLARE.md).";
++      return { fired: false, server: true, code: "not_configured", why: `${miss} The request is saved and stays queued. Once the secret is added, the hourly research job (at minute :28) runs it, or press “Queue again” here to run it now. Requests older than 2 days are only started with “Queue again”.` };
+     }
+     const trig = ((root.DPUI && root.DPUI.App.config.settings.intel) || {}).triggerId || (((await schedule()).tasks || {}).research) || "";
+     let fired = false, why = trig ? "" : "No research task is configured (Admin › Settings › Market Intelligence).";
+@@ -168,8 +171,8 @@
+       requeuedAt: at, requeuedBy: me().id, fireNote: Number.isFinite(t) && Date.now() - t >= EXPIRE_MS ? "Queued again by an administrator (the original request had expired)." : "Queued again by an administrator." });
+     delete doc.id;
+     await DS().set(`mi/req/r/${id}`, doc);
+-    const { fired, why, server } = await fireTask(id, todo);
+-    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : doc.via || null, fireNote: fired ? doc.fireNote : `${doc.fireNote} ${why}`.trim() }));
++    const { fired, why, server, code } = await fireTask(id, todo);
++    await DS().set(`mi/req/r/${id}`, Object.assign({}, doc, { via: server ? "cloudflare" : fired ? "page" : doc.via || null, fireNote: fired ? doc.fireNote : `${doc.fireNote} ${why}`.trim(), fireCode: fired ? null : code || null }));
+     return { id, jobs: todo, skipped: [], fired, why, server: !!server };
+   }
+   /** A run that started but never reported back (90+ minutes): record it as failed so it can be queued again. Never marks it done. */
+@@ -206,7 +209,9 @@
+     if (def[2] === "sweep") { const lr = sweep && sweep.lastRun; return { job: k, label: def[1], kind: "hourly server sweep", lastSuccess: lr || null, lastAttempt: lr || null, status: lr ? (Date.now() - Date.parse(lr) < 3 * 3600e3 ? "ok" : "stale") : "unknown",
+       next: lr ? new Date(Date.parse(lr) + 3600e3).toISOString() : null, created: k === "release" ? (sweep && sweep.lastReleases) : k === "followups" ? (sweep && sweep.lastReminders) : k === "overdue" ? (sweep && sweep.lastOverdue) : null, error: null, schedule: "Hourly at :28 UTC + every open session" }; }
+     const q = (reqs || []).find((r) => (r.jobs || []).includes(k) && ["queued", "running"].includes(r.status));
+-    return { job: k, label: def[1], kind: def[2] === "app" ? "generated in the app" : "research task", lastSuccess: s.lastSuccess || null, lastAttempt: s.lastAttempt || null, status: q ? q.status : s.status || "never run", created: s.created, updated: s.updated, error: s.error || null,
++    // 2.1: a job held back by a limit, free quota or missing secret shows "waiting" with the reason, not "queued"
++    const qp = q && q.progress && q.progress[k], waitNote = (qp && qp.status === "waiting" && qp.note) || (s.status === "waiting" && s.waiting) || null;
++    return { job: k, label: def[1], kind: def[2] === "app" ? "generated in the app" : "research task", lastSuccess: s.lastSuccess || null, lastAttempt: s.lastAttempt || null, status: waitNote ? "waiting" : q ? q.status : s.status || "never run", waiting: waitNote, created: s.created, updated: s.updated, error: s.error || null,
+       failures: s.failures || 0, next: sj && sj.cron ? nextRun(sj.cron) : null, schedule: sj ? sj.label : def[2] === "app" ? "On demand (Generate)" : "Not scheduled — Run now", notes: s.notes || [] };
+   }
+ 
+diff --git a/app/ui-mission.js b/app/ui-mission.js
+index b67084a..1bad345 100644
+--- a/app/ui-mission.js
++++ b/app/ui-mission.js
+@@ -188,21 +188,40 @@
+ 
+   /* ---------------- automation health ---------------- */
+   async function autoTab(B) {
+-    const [st, reqs, sweep, runsL, sched] = await Promise.all([I.jobsState(), I.requests(), DPStore.tryGet("sweep/state"), I.runs(20), I.schedule()]);
++    const [st, reqs, sweep, runsL, sched, srv] = await Promise.all([I.jobsState(), I.requests(), DPStore.tryGet("sweep/state"), I.runs(20), I.schedule(),
++      root.XFServer && root.XFServer.researchStatus ? root.XFServer.researchStatus().catch(() => null) : null]);
+     const trig = (App.config.settings.intel || {}).triggerId || ((sched.tasks || {}).research);
+     const waitBy = Object.fromEntries((((sweep || {}).research || {}).waiting || []).map((w) => [w.id, w]));
+     const reqWhy = (r) => (["queued", "running"].includes(r.status) && waitBy[r.id]) || null;
+     const stalled = (r) => r.status === "running" && !(Date.now() - Date.parse(r.startedAt) < 90 * 60e3);
++    // 2.1: plain status words; "Completed" only for a request whose jobs all saved their results (status "done")
++    const reqState = (r) => {
++      const pg = r.progress || {}, n = (r.jobs || []).length, fin = Object.values(pg).filter((x) => ["done", "failed"].includes(x && x.status)).length;
++      if (r.status === "done") return ["Completed", "ok"];
++      if (r.status === "partial") return ["Partially completed", "warn"];
++      if (r.status === "failed") return ["Failed", "err"];
++      if (r.status === "cancelled") return ["Cancelled", ""];
++      if (r.status === "running") return stalled(r) ? ["Stalled", "warn"] : [`Running — job ${Math.min(n, fin + 1)} of ${n}`, "info"];
++      if (r.status === "queued") {
++        const w = reqWhy(r);
++        if (r.fireCode === "not_configured" && !Object.keys(pg).length) return ["Missing configuration", "warn"];
++        if (w && w.reason === "expired") return ["Expired — queue again", "warn"];
++        if (Object.values(pg).some((x) => x && x.status === "waiting")) return ["Waiting", "warn"];
++        return ["Queued", "info"];
++      }
++      return [String(r.status || "—"), ""];
++    };
+     const reqActs = (r) => [(r.status === "queued" && reqWhy(r) && ["expired", "no-time", "start-failed"].includes(reqWhy(r).reason)) || r.status === "failed" ? `<button class="btn ghost xs mc-btn" data-rq-again="${esc(r.id)}">Queue again</button>` : "",
+       stalled(r) ? `<button class="btn ghost xs mc-btn" data-rq-fail="${esc(r.id)}">Mark failed</button>` : "",
+       r.status === "queued" ? `<button class="btn ghost xs mc-btn" data-rq-cancel="${esc(r.id)}">Cancel</button>` : ""].join(" ");
+     B.innerHTML = `${box("Automation Health", `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Job</th><th>Runs as</th><th>Schedule</th><th>Last successful run</th><th>Last attempt</th><th>Next run</th><th>Status</th><th class="r">Created / updated</th><th>Errors</th></tr></thead><tbody>
+       ${I.JOBS.map(([k]) => { const h = I.health(k, st, sweep, reqs, sched); return `<tr><td><b>${esc(h.label)}</b></td><td class="small">${esc(h.kind)}</td><td class="small">${esc(h.schedule)}</td><td class="small">${h.lastSuccess ? esc(dt(h.lastSuccess)) + `<div class="tiny mc-muted">${esc(ago(h.lastSuccess))}</div>` : "—"}</td><td class="small">${h.lastAttempt ? esc(dt(h.lastAttempt)) : "—"}</td><td class="small">${h.next ? esc(dt(h.next)) : "on request"}</td>
+-        <td><span class="pill ${h.status === "ok" ? "ok" : ["failed", "stale"].includes(h.status) ? "err" : ["queued", "running"].includes(h.status) ? "info" : "warn"}">${esc(h.status)}</span>${h.failures ? `<div class="tiny">${h.failures} failure(s) in a row</div>` : ""}</td><td class="r num small">${h.created != null ? h.created : "—"} / ${h.updated != null ? h.updated : "—"}</td><td class="tiny">${esc(h.error || "")}</td></tr>`; }).join("")}</tbody></table></div>
+-      <p class="tiny mc-muted">Research runs as Claude scheduled tasks on the schedules shown (times in your device's zone), plus “Run now” requests. A request is processed by the X FORCE research task${trig ? "" : " — <b>not configured yet</b>"}; if this page cannot start it, it runs with the next daily research run (the hourly sweep also tries to start it sooner, but that is not guaranteed). A failed run keeps the last good data and is shown here. Two requests for the same job never run at once, and every record is de-duplicated, so a repeated run cannot create duplicate opportunities, reports or notifications.</p>`)}
+-      ${box("Run requests", reqs.length ? `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Requested</th><th>By</th><th>Jobs</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>${reqs.slice(0, 20).map((r) => `<tr><td class="small">${esc(dt(r.at))}</td><td class="small">${esc(DPAuth.nameSync(r.by) || "—")}</td><td class="small">${(r.jobs || []).map((j) => esc(I.jobLabel(j))).join(", ")}</td><td><span class="pill ${r.status === "done" ? "ok" : r.status === "failed" ? "err" : "info"}">${esc(r.status)}</span>${r.finishedAt ? `<div class="tiny mc-muted">${esc(dt(r.finishedAt))}</div>` : ""}</td><td class="tiny">${esc(r.result || r.fireNote || "")}${r.progress && !r.result ? `<div class="tiny">${Object.entries(r.progress).map(([j, x]) => `${esc(I.jobLabel(j))}: ${esc(x.status)}${x.status === "done" ? ` (${x.created || 0} new)` : x.error || x.note ? " — " + esc(x.error || x.note) : ""}`).join(" · ")}</div>` : ""}${reqWhy(r) ? `<div class="tiny"><b>Hourly sweep:</b> ${esc(reqWhy(r).detail)}</div>` : ""}</td><td>${reqActs(r)}</td></tr>`).join("")}</tbody></table></div>
+-      <p class="tiny mc-muted">A request is started automatically between 10 minutes and 2 days after it was made. An older request, one the research task never picked up (3 attempts), or a run that failed waits here until an administrator queues it again — it is never started or marked complete on its own.</p>` : `<p class="small mc-muted">No requests yet.</p>`)}
+-      ${box("Recent research runs", runsL.length ? `<div class="tl">${runsL.map((r) => `<div><span class="tiny mc-muted">${esc(dt(r.at))}</span><span class="small">${esc(r.label || r.job)} — ${r.ok ? `${r.created || 0} new, ${r.updated || 0} updated` : `<b>failed</b>: ${esc(r.error || "")}`}</span></div>`).join("")}</div>` : `<p class="small mc-muted">No runs yet.</p>`)}`;
++        <td><span class="pill ${h.status === "ok" ? "ok" : ["failed", "stale"].includes(h.status) ? "err" : ["queued", "running"].includes(h.status) ? "info" : "warn"}">${esc(h.status)}</span>${h.failures ? `<div class="tiny">${h.failures} failure(s) in a row</div>` : ""}</td><td class="r num small">${h.created != null ? h.created : "—"} / ${h.updated != null ? h.updated : "—"}</td><td class="tiny">${esc(h.status === "waiting" ? h.waiting || "" : h.error || "")}</td></tr>`; }).join("")}</tbody></table></div>
++      ${srv ? `<p class="small">${srv.configured ? `<span class="pill ok">Research connected</span> Tavily + ${esc(srv.model || "Gemini")}` : `<span class="pill warn">Missing configuration</span> ${esc(srv.missingMessage || "")}`}<br><span class="tiny mc-muted">Last hourly research run: ${srv.lastTick ? `${esc(dt(srv.lastTick.at))} — ${srv.lastTick.skipped ? esc(srv.lastTick.skipped) : srv.lastTick.idle ? "nothing was due" : `${srv.lastTick.ran.length} job(s) run${srv.lastTick.ran.some((x) => x.code === "limit") ? ", then waiting for a limit or free quota" : ""}`}` : "none recorded yet"} · next: ${esc(dt(srv.nextTickAt))}</span></p>` : ""}
++      ${root.XFServer ? `<p class="tiny mc-muted">On this site research runs inside the X FORCE server: Tavily searches the web and Gemini reads only the pages Tavily returned (both free tiers; nothing is charged). “Run research now” runs the jobs while this page is open; otherwise the hourly research job (at minute :28) finishes it — whole requests, oldest first, until a free limit says wait. A request older than 2 days is only started with “Queue again”. A failed job keeps its error here and can be queued again; every record is de-duplicated, so a repeated run updates findings instead of duplicating them.</p>` : `<p class="tiny mc-muted">Research runs as Claude scheduled tasks on the schedules shown (times in your device's zone), plus “Run now” requests. A request is processed by the X FORCE research task${trig ? "" : " — <b>not configured yet</b>"}; if this page cannot start it, it runs with the next daily research run (the hourly sweep also tries to start it sooner, but that is not guaranteed). A failed run keeps the last good data and is shown here. Two requests for the same job never run at once, and every record is de-duplicated, so a repeated run cannot create duplicate opportunities, reports or notifications.</p>`}`)}
++      ${box("Run requests", reqs.length ? `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Requested</th><th>By</th><th>Jobs</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>${reqs.slice(0, 20).map((r) => `<tr><td class="small">${esc(dt(r.at))}</td><td class="small">${esc(DPAuth.nameSync(r.by) || "—")}</td><td class="small">${(r.jobs || []).map((j) => esc(I.jobLabel(j))).join(", ")}</td><td><span class="pill ${reqState(r)[1]}">${esc(reqState(r)[0])}</span>${r.finishedAt ? `<div class="tiny mc-muted">${esc(dt(r.finishedAt))}</div>` : ""}</td><td class="tiny">${esc(r.result || r.fireNote || "")}${r.progress && !r.result ? `<div class="tiny">${Object.entries(r.progress).map(([j, x]) => `${esc(I.jobLabel(j))}: ${esc(x.status)}${x.status === "done" ? ` (${x.created || 0} new)` : x.error || x.note ? " — " + esc(x.error || x.note) : ""}`).join(" · ")}</div>` : ""}${reqWhy(r) ? `<div class="tiny"><b>Hourly sweep:</b> ${esc(reqWhy(r).detail)}</div>` : ""}</td><td>${reqActs(r)}</td></tr>`).join("")}</tbody></table></div>
++      <p class="tiny mc-muted">${root.XFServer ? "The hourly research run (at minute :28) carries on with any request up to 2 days old — whole requests, oldest first — and stops when a free limit or quota says wait; it continues the next hour. An older request, or one that failed, waits here until an administrator queues it again. “Completed” appears only after every job saved its results; “Partially completed” when some jobs failed." : "A request is started automatically between 10 minutes and 2 days after it was made. An older request, one the research task never picked up (3 attempts), or a run that failed waits here until an administrator queues it again — it is never started or marked complete on its own."}</p>` : `<p class="small mc-muted">No requests yet.</p>`)}
++      ${box("Recent research runs", runsL.length ? `<div class="tl">${runsL.map((r) => `<div><span class="tiny mc-muted">${esc(dt(r.at))}</span><span class="small">${esc(r.label || r.job)} — ${r.ok ? `${r.created || 0} new, ${r.updated || 0} updated` : r.waiting ? `<b>waiting</b>: ${esc(r.error || "")}` : `<b>failed</b>: ${esc(r.error || "")}`}</span></div>`).join("")}</div>` : `<p class="small mc-muted">No runs yet.</p>`)}`;
+     const act = (key, fn, done) => $$(`[data-${key}]`, B).forEach((b) => (b.onclick = async () => { b.disabled = true;
+       try { const r = await fn(b.getAttribute(`data-${key}`)); U.toast(done(r), { ms: 8000 }); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); } autoTab(B); }));
+     act("rq-again", async (id) => { const r = await I.requeue(id); if (r.server) { serverRun(r); return Object.assign({}, r, { quiet: true }); } return r; }, (r) => r.quiet ? "Queued again." : r.fired ? `Research started: ${r.jobs.map(I.jobLabel).join(", ")}.` : `Queued again (${r.jobs.map(I.jobLabel).join(", ")}). ${r.why} The hourly sweep starts it after 10 minutes.`);
+@@ -225,7 +244,7 @@
+   async function serverRun(r) {
+     const names = r.jobs.map(I.jobLabel).join(", ");
+     if (!r.fired) { U.toast(`Request saved (${names}). ${r.why}`, { err: true, ms: 14000 }); if (M.tab === "auto") renderMission(); return; }
+-    U.toast(`Research started with Claude: ${names}. Each job takes 1–3 minutes — keep this page open (if you close it, the rest runs within the hour).`, { ms: 12000 });
++    U.toast(`Research started: ${names}. Each job takes 1–3 minutes — keep this page open. If you close it, the hourly research job (at minute :28) finishes the rest.`, { ms: 12000 });
+     M.tab = "auto"; renderMission();
+     const end = await I.runOnServer(r.id, (s) => {
+       if (s.job) U.toast(s.ok ? `${s.label}: ${s.created || 0} new, ${s.updated || 0} updated.` : `${s.label || "Research"}: ${s.error || "failed"}`, { err: !s.ok, ms: 9000 });
+diff --git a/assetsignore-contents.txt b/assetsignore-contents.txt
+index 374b581..a6a9494 100644
+--- a/assetsignore-contents.txt
++++ b/assetsignore-contents.txt
+@@ -12,3 +12,4 @@ package-lock.json
+ .dev.vars
+ .wrangler
+ .gitignore
++*.diff
+diff --git a/qa/fake-d1.mjs b/qa/fake-d1.mjs
+index 08dc393..f3661c5 100644
+--- a/qa/fake-d1.mjs
++++ b/qa/fake-d1.mjs
+@@ -5,7 +5,8 @@ import { DatabaseSync } from "node:sqlite";
+ export function fakeD1() {
+   const db = new DatabaseSync(":memory:");
+   db.exec(`CREATE TABLE docs (path TEXT PRIMARY KEY, parent TEXT NOT NULL, data TEXT NOT NULL, v INTEGER NOT NULL DEFAULT 1, at TEXT NOT NULL);
+-    CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL); CREATE TABLE leases (path TEXT PRIMARY KEY, holder TEXT NOT NULL, exp INTEGER NOT NULL);`);
++    CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL); CREATE TABLE leases (path TEXT PRIMARY KEY, holder TEXT NOT NULL, exp INTEGER NOT NULL);
++    CREATE TABLE users (uid TEXT PRIMARY KEY, owner INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1);`);
+   const stmt = (sql, args = []) => ({
+     bind: (...a) => stmt(sql, a),
+     first: async () => db.prepare(sql).get(...args) ?? null,
+diff --git a/worker/index.js b/worker/index.js
+index 90962ec..40aa723 100644
+--- a/worker/index.js
++++ b/worker/index.js
+@@ -16,7 +16,7 @@ import "../app/fab.js";
+ import "../app/holidays.js";
+ import "../app/jobs13.js";
+ import { computeSweep } from "./sweep.js";
+-import { researchConfig, runRequestJob, researchTick } from "./research.js";
++import { researchConfig, runRequestJob, researchTick, missingMessage } from "./research.js";
+ import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
+ import { usageSummary } from "./usage.js";
+ import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
+@@ -611,8 +611,11 @@ async function sweep(env) {
+   let o;
+   try { o = computeSweep(docs, Date.now());
+     // 1.4.2: here the Worker itself runs research (researchTick, right after this sweep); no claude.ai task is started
+-    if (researchConfig(env).configured && o.state.research) for (const w of o.state.research.waiting) if (w.reason === "start-failed") {
+-      const t = "Not finished yet — the hourly research job on this site carries on with it (it may be waiting for today's limit or another run).";
++    // 2.1: the "start-failed" label of the old claude.ai task never applies here — give the real reason instead
++    const rc = researchConfig(env);
++    if (o.state.research) for (const w of o.state.research.waiting) if (w.reason === "start-failed") {
++      const t = rc.configured ? "Not finished yet — the hourly research job on this site carries on with it (it may be waiting for today's limit or another run)."
++        : "Waiting for configuration — " + missingMessage(rc).text + " It is still queued and starts once the secret is added (requests older than 2 days need “Queue again”).";
+       o.notes = o.notes.map((n) => (n.includes(w.id) && n.includes(w.detail) ? n.replace(w.detail, t) : n)); w.detail = t; }
+   }
+   catch (e) { await setDoc(env, "sweep/state", JSON.stringify(Object.assign({}, prevState, { lastError: String(e.message).slice(0, 300), lastErrorAt: now() }))); return { ok: false, error: e.message }; }
+@@ -890,7 +893,9 @@ async function route(req, env, ctx) {
+   if (p === "/api/jobs/sweep" && M === "POST") return json(200, await sweep(env));
+   // 1.4.2 — Market Intelligence research run by Claude (Claude API + web search); the key stays in Cloudflare
+   if (p === "/api/research/status" && M === "GET") { const c = researchConfig(env), k = "research:" + now().slice(0, 10), r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(k).first();
+-    return json(200, { configured: c.configured, model: c.model, maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0,
++    const lt = await env.DB.prepare("SELECT v FROM kv WHERE k = 'research:lastTick'").first(), nx = new Date(); nx.setUTCMinutes(28, 0, 0); if (nx <= new Date()) nx.setUTCHours(nx.getUTCHours() + 1);
++    return json(200, { configured: c.configured, ready: c.ready, missing: c.missing, missingMessage: missingMessage(c).text, model: c.model,
++      lastTick: lt ? JSON.parse(lt.v) : null, nextTickAt: nx.toISOString(), maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0,
+       provider: c.provider, tavily: c.tavily, gemini: c.gemini, geminiModel: c.geminiModel, usage: await usageSummary(env, acc.uid),
+       markets: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.label])),
+       depths: Object.fromEntries(Object.entries(DEPTHS).map(([k, d]) => [k, { label: d.label, searches: d.queries, pages: d.extract, maxCredits: creditEstimate(k) }])) }); }
+@@ -900,7 +905,7 @@ async function route(req, env, ctx) {
+     return json(r.ok ? 200 : r.code ? 429 : 400, r); }
+   if (p === "/api/research/topic/step" && M === "POST") { const b = await body(req), r = await stepTopic(env, String(b.id || ""));
+     return json(r.ok ? 200 : r.busy ? 409 : 400, r); }
+-  if (p === "/api/jobs/research" && M === "POST") return json(200, await researchTick(env));
++  if (p === "/api/jobs/research" && M === "POST") return json(200, await researchTick(env, { budgetMs: 2 * 60e3, by: acc.uid }));   // manual: at most 2 minutes of new jobs
+   if (p === "/api/research/run" && M === "POST") { const b = await body(req); if (!/^[A-Za-z0-9_\-]{1,80}$/.test(String(b.id || ""))) return json(400, { error: "invalid_argument", message: "Request id missing." });
+     return json(200, await runRequestJob(env, String(b.id), b.job ? String(b.job) : null, acc.uid)); }
+   return json(404, { error: "not_found" });
+diff --git a/worker/providers.js b/worker/providers.js
+index 4be6f20..dde2a66 100644
+--- a/worker/providers.js
++++ b/worker/providers.js
+@@ -112,3 +112,36 @@ export async function tavilyExtract(env, urls, { depth = "basic", maxChars = 600
+   const per = depth === "advanced" ? 2 : 1;
+   return { results, failed, credits: credits(j, Math.ceil(results.length / 5) * per) };
+ }
++
++/* ======================= Gemini (analysis only — it never searches; it reads the sources Tavily returned) =======================
++   Free tier: a Google project WITHOUT a billing account (then nothing can be charged; over quota = 429 RESOURCE_EXHAUSTED).
++   On the free tier Google may use and human-review what is sent, so only public web text and the research brief are sent.
++     GEMINI_API_KEY     secret — aistudio.google.com → Get API key (project without billing)
++     GEMINI_MODEL       optional, default gemini-3.8-flash (gemini-3.5-flash-lite uses less quota)
++     GEMINI_BASE_URL    optional, for tests only
++     GEMINI_TIMEOUT_MS  optional, default 90000 */
++export const geminiConfigured = (env) => !!(env.GEMINI_API_KEY && String(env.GEMINI_API_KEY).length > 10);
++export const geminiModel = (env) => String(env.GEMINI_MODEL || "gemini-3.8-flash").replace(/[^A-Za-z0-9._-]/g, "");
++function geminiDescribe(name, status, j, txt, headers) {
++  const e = (j && j.error) || {}, msg = clip(e.message || txt, 200), reason = JSON.stringify(e.details || "");
++  if (status === 400 && /API_KEY_INVALID|API key not valid/i.test(reason + msg)) return new ProviderError(name, "auth", "Gemini refused the API key — check GEMINI_API_KEY in Cloudflare.", { status });
++  if (status === 400 && /location is not supported|FAILED_PRECONDITION/i.test(msg + e.status)) return new ProviderError(name, "auth", `Gemini is not available for this project or region: ${msg}`, { status });
++  if (status === 403) return new ProviderError(name, "auth", `Gemini refused access (403): ${msg}`, { status });
++  if (status === 429) { const daily = /per.?day|PerDay|quota/i.test(reason + msg);
++    return new ProviderError(name, daily ? "quota" : "rate_limited", daily ? "Gemini's free daily quota is used up. Research waits until it resets (midnight Pacific time, 10 or 11 a.m. in Cairo); nothing is charged." : "Gemini rate limit reached — it will be tried again in a minute.", { status, retryAfterMs: retryAfterMs(headers) }); }
++  return defaultDescribe(name, status, j, txt, headers);
++}
++/** One Gemini call that must answer JSON. Returns {text, tokens, model, finish}. Throws ProviderError. */
++export async function geminiJson(env, { system, prompt, maxOutputTokens = 8192 }) {
++  if (!geminiConfigured(env)) throw new ProviderError("Gemini", "not_configured", "Research analysis is not connected: add the GEMINI_API_KEY secret to this Worker (see CLOUDFLARE.md).");
++  const model = geminiModel(env), base = String(env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
++  const t = parseInt(env.GEMINI_TIMEOUT_MS, 10), timeoutMs = Number.isFinite(t) && t >= 100 ? Math.min(t, 120000) : 90000;
++  const j = await callJson(`${base}/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
++    body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: prompt }] }],
++      generationConfig: { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens } }) }, { name: "Gemini", timeoutMs, retries: 1, describe: geminiDescribe });
++  if (j.promptFeedback && j.promptFeedback.blockReason) throw new ProviderError("Gemini", "bad_request", `Gemini declined the request (${j.promptFeedback.blockReason}).`);
++  const c = (j.candidates || [])[0] || {}, text = ((c.content && c.content.parts) || []).filter((p) => p && typeof p.text === "string" && !p.thought).map((p) => p.text).join("");
++  const tokens = (j.usageMetadata && Number(j.usageMetadata.totalTokenCount)) || 0;
++  if (!text) throw new ProviderError("Gemini", "server", `Gemini returned no answer (${c.finishReason || "no reason given"}).`, { tokens });
++  return { text, tokens, model: j.modelVersion || model, finish: c.finishReason || null };
++}
+diff --git a/worker/research.js b/worker/research.js
+index d9faa51..f7bf909 100644
+--- a/worker/research.js
++++ b/worker/research.js
+@@ -11,7 +11,8 @@
+      RESEARCH_DAILY_JOBS    optional, research jobs per day, all users together (default 10)
+      ANTHROPIC_BASE_URL     optional, for tests only */
+ import { ingest, JOBS } from "./intel.js";
+-import { tavilyConfigured } from "./providers.js";
++import { tavilyConfigured, geminiConfigured, geminiModel } from "./providers.js";
++import { askFree } from "./freejobs.js";
+ 
+ const MIN = 60e3, DAY = 864e5;
+ export const RESEARCH_JOBS = ["opportunities", "news", "fx", "materials", "weekly"];
+@@ -20,11 +21,22 @@ const parentOf = (p) => { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.sl
+ 
+ export function researchConfig(env) {
+   const n = (v, d, lo, hi) => { const x = parseInt(v, 10); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
+-  return { configured: !!(env.ANTHROPIC_API_KEY && String(env.ANTHROPIC_API_KEY).length > 20), model: String(env.RESEARCH_MODEL || "claude-sonnet-5-5"),
+-    maxSearches: n(env.RESEARCH_MAX_SEARCHES, 8, 1, 20), dailyJobs: n(env.RESEARCH_DAILY_JOBS, 10, 1, 200),
+-    // 2.1 — free providers (Tavily + Gemini). "claude" only when an administrator sets it; never chosen automatically.
+-    provider: String(env.RESEARCH_PROVIDER || "free").toLowerCase() === "claude" ? "claude" : "free",
+-    tavily: tavilyConfigured(env), gemini: !!(env.GEMINI_API_KEY && String(env.GEMINI_API_KEY).length > 10), geminiModel: String(env.GEMINI_MODEL || "gemini-3.8-flash") };
++  // 2.1 — free providers (Tavily searches, Gemini analyses). "claude" (paid) only when an administrator sets RESEARCH_PROVIDER=claude.
++  const provider = String(env.RESEARCH_PROVIDER || "free").toLowerCase() === "claude" ? "claude" : "free";
++  const claudeKey = !!(env.ANTHROPIC_API_KEY && String(env.ANTHROPIC_API_KEY).length > 20), tavily = tavilyConfigured(env), gemini = geminiConfigured(env);
++  const missing = provider === "claude" ? (claudeKey ? [] : ["ANTHROPIC_API_KEY"]) : [].concat(tavily ? [] : ["TAVILY_API_KEY"], gemini ? [] : ["GEMINI_API_KEY"]);
++  // configured = research can run now (kept under this name: the page and the hourly job read it)
++  return { configured: !missing.length, ready: !missing.length, missing, provider, claudeKey, tavily, gemini, geminiModel: geminiModel(env),
++    model: provider === "claude" ? String(env.RESEARCH_MODEL || "claude-sonnet-5-5") : geminiModel(env),
++    maxSearches: n(env.RESEARCH_MAX_SEARCHES, 8, 1, 20), dailyJobs: n(env.RESEARCH_DAILY_JOBS, 10, 1, 200) };
++}
++/** The exact message when a secret is missing: which secret, and where it goes. */
++export function missingMessage(cfg) {
++  if (!cfg.missing.length) return { text: "", names: "" };
++  const names = cfg.missing.map((m) => `<b>${m}</b>`).join(" and "), plain = cfg.missing.join(" and ");
++  const why = cfg.provider === "claude" ? "RESEARCH_PROVIDER is set to claude (paid)" : "research searches with Tavily and Gemini analyses the results, both on free tiers";
++  const two = cfg.missing.length > 1;
++  return { text: `Research cannot run yet: the Worker is missing the secret${two ? "s" : ""} ${plain} (${why}). Add ${two ? "them" : "it"} in Cloudflare → Workers & Pages → dupedia → Settings → Variables and Secrets → Add → type Secret, then Deploy. See CLOUDFLARE.md.`, names };
+ }
+ 
+ /* ---------------- D1 helpers ---------------- */
+@@ -43,6 +55,7 @@ const insertIfAbsent = (env, p, d) => env.DB.prepare("INSERT INTO docs (path, pa
+ 
+ /* ---------------- daily limit and one-at-a-time lock ---------------- */
+ async function usedToday(env) { const r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind("research:" + nowIso().slice(0, 10)).first(); return r ? parseInt(r.v, 10) || 0 : 0; }
++const uncountUse = (env) => env.DB.prepare("UPDATE kv SET v = CAST(MAX(0, CAST(v AS INTEGER) - 1) AS TEXT) WHERE k = ?").bind("research:" + nowIso().slice(0, 10)).run();
+ async function countUse(env) { const k = "research:" + nowIso().slice(0, 10);
+   await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, '1') ON CONFLICT(k) DO UPDATE SET v = CAST(CAST(kv.v AS INTEGER) + 1 AS TEXT)").bind(k).run(); }
+ async function lock(env, holder) {
+@@ -125,13 +138,20 @@ Answer: a JSON list of {"materialId" (an id from the list),"price","unit","curre
+ Answer: ONE JSON object {"executiveSummary","changes":["…"],"priorities":[{"text","oppId" (an id from the saved opportunities),"owner","deadline"}],"threats":[{"text","sources":[{"url","title"}]}],"facts":[{"text","sources":[{"url","title"}]}] (verified facts only, each with a source),"inferences":[{"text"}],"recommendations":[{"title","reason","benefit","effort","risks","nextStep","owner" (a role),"deadline","sources":[…],"oppIds":[…]}],"unknowns":[{"text"}],"sources":[{"title","url"}],"dataQuality":"…"}.`,
+ };
+ const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
+-function contextFor(job, db) {
++function contextFor(job, db, { publicOnly = false } = {}) {
+   const opps = Object.entries(db["mi/opps/o"] || {});
+   if (job === "opportunities") return opps.length ? "Already saved (skip anything with the same source URL or the same project):\n" + opps.slice(-150).map(([, o]) => `- ${clip(o.title, 90)} | ${clip(o.organization, 50)} | ${clip(o.sourceUrl, 160)}`).join("\n") : "Nothing saved yet.";
+   if (job === "news") { const n = Object.values(db["mix/news/n"] || {}).sort((a, b) => String(b.discoveredAt).localeCompare(String(a.discoveredAt))).slice(0, 60);
+     return n.length ? "Already saved (skip these):\n" + n.map((x) => `- ${clip(x.headline, 120)} | ${clip(x.url, 160)}`).join("\n") : "Nothing saved yet."; }
+   if (job === "materials") { const m = Object.entries(db["mix/mat/m"] || {}).slice(0, 25);
+     return m.length ? "Materials (id | name | unit | grade):\n" + m.map(([id, x]) => `- ${id} | ${clip(x.name, 80)} | ${clip(x.unit, 10)} | ${clip(x.grade || x.spec || "", 80)}`).join("\n") : "NO MATERIALS ARE SAVED — return []."; }
++  if (job === "weekly" && publicOnly) {
++    // free Gemini: only public fields of saved records (title, organisation, source); status/priority/score/notes stay in X FORCE
++    const top = opps.map(([id, o]) => Object.assign({ id }, o)).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 30);
++    const news = Object.values(db["mix/news/n"] || {}).sort((a, b) => String(b.discoveredAt).localeCompare(String(a.discoveredAt))).slice(0, 20);
++    return "Saved opportunities (id | title | organization | source):\n" + (top.map((o) => `- ${o.id} | ${clip(o.title, 90)} | ${clip(o.organization, 50)} | ${clip(o.sourceUrl, 160)}`).join("\n") || "none")
++      + "\n\nRecent public news already saved:\n" + (news.map((x) => `- ${clip(x.headline, 120)} ${clip(x.url, 160)}`).join("\n") || "none");
++  }
+   if (job === "weekly") {
+     const top = opps.map(([id, o]) => Object.assign({ id }, o)).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 30);
+     const news = Object.values(db["mix/news/n"] || {}).sort((a, b) => String(b.discoveredAt).localeCompare(String(a.discoveredAt))).slice(0, 20);
+@@ -186,25 +206,44 @@ async function ceoOf(env) {
+ export async function runJob(env, jobName, { by = "page" } = {}) {
+   const cfg = researchConfig(env);
+   if (!RESEARCH_JOBS.includes(jobName)) return { ok: false, error: "Unknown research job." };
+-  if (!cfg.configured) return { ok: false, error: "Research is not connected: add the ANTHROPIC_API_KEY secret to this Worker in Cloudflare (see CLOUDFLARE.md).", code: "not_configured" };
++  if (!cfg.configured) return { ok: false, error: missingMessage(cfg).text, code: "not_configured", missing: cfg.missing };
+   if ((await usedToday(env)) >= cfg.dailyJobs) return { ok: false, error: `Today's research limit (${cfg.dailyJobs} jobs) is used up. It resets at midnight UTC; an administrator can raise RESEARCH_DAILY_JOBS.`, code: "limit" };
+   const holder = jobName + ":" + Math.random().toString(36).slice(2);
+   if (!(await lock(env, holder))) return { ok: false, error: "Another research job is running — try again in a few minutes.", code: "busy", retry: true };
+   try {
+     await countUse(env);
+     const { db, ver } = await loadDb(env);
+-    let res, extra = [], err = null;
++    let res, extra = [], err = null, code = null;
+     try {
+-      const a = await askClaude(env, cfg, { name: jobName, db });
+-      const parsed = extractJson(a.finalText);
+-      if (parsed === undefined) { err = "Claude's answer could not be read as JSON — nothing was saved."; }
++      let parsed, seen, info, more = [];
++      if (cfg.provider === "claude") {
++        const a = await askClaude(env, cfg, { name: jobName, db });
++        parsed = extractJson(a.finalText); seen = seenFrom(a.messages); info = `${a.searches} web search(es) · model ${a.model || cfg.model}`;
++      } else {
++        const shape = jobName === "weekly" ? SHAPES.weekly.replace("plus at most 6 searches about competitor positioning or market activity", "plus the SOURCES below about competitor positioning or market activity") : SHAPES[jobName];
++        const a = await askFree(env, jobName, db, { shape, context: contextFor(jobName, db, { publicOnly: true }), extractJson });
++        parsed = a.parsed; seen = a.seen; more = a.notes;
++        info = `${a.searches} Tavily search(es), ${a.credits} credit(s), ${a.sources} source(s) · ${a.model}${a.tokens ? ` · ${a.tokens} tokens` : ""}`;
++      }
++      if (parsed === undefined) { err = "The AI answer could not be read as JSON — nothing was saved."; }
+       else {
+-        const f = evidenceFilter(jobName, parsed, seenFrom(a.messages)); extra = f.notes;
+-        extra.push(`${a.searches} web search(es) · model ${a.model || cfg.model}`);
++        const f = evidenceFilter(jobName, parsed, seen); extra = f.notes.concat(more);
++        extra.push(info);
+         res = ingest(jobName, db, jobName === "weekly" ? f.cands : (f.cands || []), Date.now());
+       }
+-    } catch (e) { err = String(e.message || e).slice(0, 300); if (e.retry) extra.push("Temporary problem — safe to run again."); }
++    } catch (e) {
++      err = String(e.message || e).slice(0, 300);
++      if (e.limit) { code = "limit"; await uncountUse(env); extra.push("Waiting for a usage limit or free quota — it continues later; nothing is charged."); }
++      else if (e.code === "not_configured") code = "not_configured";
++      else if (e.retry) extra.push("Temporary problem — safe to run again.");
++    }
+     if (err) { res = ingest(jobName, db, null, Date.now()); for (const w of res.writes) if (w.data && "error" in w.data) w.data.error = err; res.error = err; }
++    // 2.1: waiting for a limit/quota is not a failure — job health says "waiting" (with the reason), the failure count stays
++    if (code === "limit") for (const w of res.writes) {
++      if (w.collection === "mi/state/jobs") { const prev = (db["mi/state/jobs"] || {})[jobName] || {};
++        Object.assign(w.data, { status: "waiting", waiting: err, error: null, failures: parseInt(prev.failures, 10) || 0, runs: parseInt(prev.runs, 10) || 0 }); }
++      if (w.collection === "mi/runs/r") Object.assign(w.data, { waiting: true });
++    }
+     // job health + run history get the evidence notes too
+     for (const w of res.writes) if (w.collection === "mi/state/jobs" || w.collection === "mi/runs/r") w.data.notes = extra.concat(w.data.notes || []).slice(0, 30);
+     const st = [], conflicts = [];
+@@ -220,7 +259,7 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
+     }
+     if (st.length) { const out = await env.DB.batch(st.map((x) => x[1])); out.forEach((r, i) => { const p = st[i][0]; if (p && !p.startsWith("mi/state/") && !p.startsWith("mi/runs/") && r.meta && r.meta.changes === 0) conflicts.push(p); }); }
+     const notes = extra.concat(res.notes || []).concat(conflicts.length ? [`${conflicts.length} record(s) were changed by someone during the run and were left as they are.`] : []);
+-    return { ok: res.ok && !err, job: jobName, label: JOBS[jobName], created: res.stats.created, updated: res.stats.updated, notes: notes.slice(0, 30), error: err, by };
++    return { ok: res.ok && !err, job: jobName, label: JOBS[jobName], created: res.stats.created, updated: res.stats.updated, notes: notes.slice(0, 30), error: err, code, by };
+   } finally { await unlock(env, holder); }
+ }
+ 
+@@ -243,20 +282,75 @@ export async function runRequestJob(env, id, wanted, by) {
+   const next = Object.assign({}, after, { progress: pg });
+   if (!left.length) {
+     const failed = jobs.filter((j) => pg[j].status === "failed");
+-    Object.assign(next, { status: failed.length === jobs.length ? "failed" : "done", finishedAt: nowIso(),
++    // 2.1: "partial" when some jobs failed and others saved their results; "done" only when every job saved its results
++    Object.assign(next, { status: failed.length === jobs.length ? "failed" : failed.length ? "partial" : "done", finishedAt: nowIso(),
+       result: jobs.map((j) => `${JOBS[j]}: ${pg[j].status === "done" ? `${pg[j].created} new, ${pg[j].updated} updated` : "failed — " + (pg[j].error || "")}`).join(" · ").slice(0, 600) });
+   } else if (retryLater) Object.assign(next, { status: "queued", fireNote: out.error });
+   await upsert(env, p, next).run();
+   return Object.assign({}, out, { request: id, left, finished: !left.length, status: next.status });
+ }
+ 
+-/** Hourly: carry on with a request the page did not finish (closed tab, limit reached yesterday…). One job per tick. */
+-export async function researchTick(env) {
+-  if (!researchConfig(env).configured) return { skipped: "not configured" };
+-  const { docs } = await coll(env, "mi/req/r");
+-  const open = Object.entries(docs).filter(([, r]) => ["queued", "running"].includes(r.status) && Date.now() - Date.parse(r.at) < 2 * DAY)
+-    .filter(([, r]) => (r.jobs || []).some((j) => { const s = (r.progress || {})[j]; return !s || s.status === "waiting" || (s.status === "running" && Date.now() - Date.parse(s.at) > 15 * MIN && (s.tries || 0) < 3); }))
+-    .sort((a, b) => String(a[1].at).localeCompare(String(b[1].at)));
+-  if (!open.length) return { idle: true };
+-  return runRequestJob(env, open[0][0], null, "hourly");
++/* ---------------- hourly processing (cron "28 * * * *" → scheduled() → researchTick) ----------------
++   2.1: one tick finishes whole requests — oldest first, job after job — and stops STARTING new jobs once its time budget
++   (RESEARCH_TICK_BUDGET_MIN, default 8 minutes; a cron run may last 15) is used, or when a limit, a missing secret or a
++   running page job says "wait". Each job still takes the one-at-a-time lock (runJob), and a tick holds its own lease, so two
++   ticks (or a tick and an administrator's /api/jobs/research call) never overlap. A job that stopped responding 3 times is
++   marked failed with that reason, so its request can finish instead of hanging. Requests older than 2 days are left for
++   "Queue again" (the sweep labels them). */
++const TICK_LEASE = "research:tick";
++const due = (r, now) => ["queued", "running"].includes(r.status) && now - Date.parse(r.at) < 2 * DAY
++  && (r.jobs || []).some((j) => { const s = (r.progress || {})[j]; return !s || s.status === "waiting" || (s.status === "running" && now - Date.parse(s.at) > 15 * MIN && (s.tries || 0) < 3); });
++
++/** Jobs left "running" by a run that died (e.g. the Worker was stopped) 3 times: mark them failed and finish their request. */
++async function closeDeadJobs(env, now) {
++  const { docs, ver } = await coll(env, "mi/req/r"), closed = [];
++  for (const [id, r] of Object.entries(docs)) {
++    if (!["queued", "running"].includes(r.status)) continue;
++    const jobs = (r.jobs || []).filter((j) => RESEARCH_JOBS.includes(j)), pg = Object.assign({}, r.progress || {}); let changed = false;
++    for (const j of jobs) { const s = pg[j]; if (s && s.status === "running" && now - Date.parse(s.at) > 15 * MIN && (s.tries || 0) >= 3) {
++      pg[j] = Object.assign({}, s, { status: "failed", at: nowIso(), error: "Stopped responding 3 times (the run was interrupted) — queue it again." }); changed = true; } }
++    if (!changed) continue;
++    const next = Object.assign({}, r, { progress: pg });
++    if (!jobs.some((j) => !["done", "failed"].includes(pg[j] && pg[j].status))) {
++      const failed = jobs.filter((j) => pg[j].status === "failed");
++      Object.assign(next, { status: failed.length === jobs.length ? "failed" : "partial", finishedAt: nowIso(),
++        result: jobs.map((j) => `${JOBS[j]}: ${pg[j].status === "done" ? `${pg[j].created || 0} new, ${pg[j].updated || 0} updated` : "failed — " + (pg[j].error || "")}`).join(" · ").slice(0, 600) });
++    }
++    const p = `mi/req/r/${id}`, r2 = await upsertIf(env, p, next, ver[p]).run();
++    if (r2.meta && r2.meta.changes) closed.push(id);
++  }
++  return closed;
++}
++
++export async function researchTick(env, opts = {}) {
++  const out = await tickOnce(env, opts);
++  // what Mission Control shows as "last hourly research run" (kv research:lastTick)
++  const brief = { at: nowIso(), by: opts.by || "hourly", idle: !!out.idle, skipped: out.skipped || null, missing: out.missing || null,
++    ran: (out.ran || []).map((x) => ({ job: x.job, ok: x.ok, code: x.code })), closed: (out.closed || []).length, ms: out.ms || 0 };
++  await env.DB.prepare("INSERT INTO kv (k, v) VALUES ('research:lastTick', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(JSON.stringify(brief)).run().catch(() => {});
++  return out;
++}
++async function tickOnce(env, { budgetMs } = {}) {
++  const cfg = researchConfig(env);
++  if (!cfg.configured) return { skipped: "not configured", missing: cfg.missing };
++  const mins = parseInt(env.RESEARCH_TICK_BUDGET_MIN, 10), budget = budgetMs != null ? budgetMs : (Number.isFinite(mins) ? Math.max(1, Math.min(13, mins)) : 8) * MIN;
++  const t0 = Date.now(), holder = "tick:" + Math.random().toString(36).slice(2);
++  await env.DB.prepare("DELETE FROM leases WHERE path = ? AND exp < ?").bind(TICK_LEASE, t0).run();
++  const got = await env.DB.prepare("INSERT INTO leases (path, holder, exp) VALUES (?, ?, ?) ON CONFLICT(path) DO NOTHING RETURNING holder").bind(TICK_LEASE, holder, t0 + 15 * MIN).first();
++  if (!got) return { skipped: "another research tick is running" };
++  const ran = [];
++  try {
++    const closed = await closeDeadJobs(env, t0);
++    while (Date.now() - t0 < budget) {
++      const { docs } = await coll(env, "mi/req/r"), now = Date.now();
++      const open = Object.entries(docs).filter(([, r]) => due(r, now)).sort((a, b) => String(a[1].at).localeCompare(String(b[1].at)));
++      if (!open.length) break;
++      const r = await runRequestJob(env, open[0][0], null, "hourly");
++      ran.push({ request: open[0][0], job: r.job || null, ok: !!r.ok, created: r.created || 0, updated: r.updated || 0, code: r.code || null, error: r.error || null, status: r.status || null });
++      // stop for this hour when waiting is the right answer: a limit/quota, a missing secret, or a job running elsewhere
++      if (!r.ok && (["limit", "not_configured", "busy"].includes(r.code) || !r.job)) break;
++    }
++    const out = { ran, closed, ms: Date.now() - t0, budgetUsed: Date.now() - t0 >= budget };
++    return ran.length || closed.length ? out : { idle: true };
++  } finally { await env.DB.prepare("DELETE FROM leases WHERE path = ? AND holder = ?").bind(TICK_LEASE, holder).run(); }
+ }
+diff --git a/worker/sweep.js b/worker/sweep.js
+index 9e0cd12..d210a2d 100644
+--- a/worker/sweep.js
++++ b/worker/sweep.js
+@@ -209,7 +209,7 @@ export function computeSweep(docs, nowMs = Date.now()) {
+     const r = reqs[k], st = r.status, a = parse(r.at);
+     const jobs = Array.isArray(r.jobs) ? r.jobs.filter((j) => typeof j === "string" && RESEARCH_JOBS.has(j)) : [];
+     let why = null;
+-    if (["done", "failed", "cancelled"].includes(st) || running.includes(k)) continue;
++    if (["done", "partial", "failed", "cancelled"].includes(st) || running.includes(k)) continue;
+     if (st === "running") why = ["stalled", `Marked running since ${r.startedAt || "an unknown time"} with no result after 90 minutes — the run may have failed. Not restarted automatically: mark it failed and queue it again in Mission Control.`];
+     else if (st !== "queued") why = ["status", `Status \u201c${pyStr(st)}\u201d — only queued requests are started.`];
+     else if (a == null) why = ["no-time", "No valid request time — not started. Queue it again in Mission Control."];

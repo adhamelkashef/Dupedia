@@ -128,7 +128,7 @@
       if (st && st.configured) return { fired: true, why: "", server: true };
       if (st && st.error) return { fired: false, server: true, code: "status_error", why: `Could not check the research connection (${st.error}). The request is saved and stays queued.` };
       const miss = (st && st.missingMessage) || "Research cannot run yet: a research secret is missing in Cloudflare (see CLOUDFLARE.md).";
-      return { fired: false, server: true, code: "not_configured", why: `${miss} The request is saved and stays queued. Once the secret is added, the hourly research job (at minute :28) starts it, one job per hour, or press “Queue again” here to run it now. Requests older than 2 days are only started with “Queue again”.` };
+      return { fired: false, server: true, code: "not_configured", why: `${miss} The request is saved and stays queued. Once the secret is added, the hourly research job (at minute :28) runs it, or press “Queue again” here to run it now. Requests older than 2 days are only started with “Queue again”.` };
     }
     const trig = ((root.DPUI && root.DPUI.App.config.settings.intel) || {}).triggerId || (((await schedule()).tasks || {}).research) || "";
     let fired = false, why = trig ? "" : "No research task is configured (Admin › Settings › Market Intelligence).";
@@ -209,7 +209,9 @@
     if (def[2] === "sweep") { const lr = sweep && sweep.lastRun; return { job: k, label: def[1], kind: "hourly server sweep", lastSuccess: lr || null, lastAttempt: lr || null, status: lr ? (Date.now() - Date.parse(lr) < 3 * 3600e3 ? "ok" : "stale") : "unknown",
       next: lr ? new Date(Date.parse(lr) + 3600e3).toISOString() : null, created: k === "release" ? (sweep && sweep.lastReleases) : k === "followups" ? (sweep && sweep.lastReminders) : k === "overdue" ? (sweep && sweep.lastOverdue) : null, error: null, schedule: "Hourly at :28 UTC + every open session" }; }
     const q = (reqs || []).find((r) => (r.jobs || []).includes(k) && ["queued", "running"].includes(r.status));
-    return { job: k, label: def[1], kind: def[2] === "app" ? "generated in the app" : "research task", lastSuccess: s.lastSuccess || null, lastAttempt: s.lastAttempt || null, status: q ? q.status : s.status || "never run", created: s.created, updated: s.updated, error: s.error || null,
+    // 2.1: a job held back by a limit, free quota or missing secret shows "waiting" with the reason, not "queued"
+    const qp = q && q.progress && q.progress[k], waitNote = (qp && qp.status === "waiting" && qp.note) || (s.status === "waiting" && s.waiting) || null;
+    return { job: k, label: def[1], kind: def[2] === "app" ? "generated in the app" : "research task", lastSuccess: s.lastSuccess || null, lastAttempt: s.lastAttempt || null, status: waitNote ? "waiting" : q ? q.status : s.status || "never run", waiting: waitNote, created: s.created, updated: s.updated, error: s.error || null,
       failures: s.failures || 0, next: sj && sj.cron ? nextRun(sj.cron) : null, schedule: sj ? sj.label : def[2] === "app" ? "On demand (Generate)" : "Not scheduled — Run now", notes: s.notes || [] };
   }
 

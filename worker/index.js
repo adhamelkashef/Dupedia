@@ -893,7 +893,9 @@ async function route(req, env, ctx) {
   if (p === "/api/jobs/sweep" && M === "POST") return json(200, await sweep(env));
   // 1.4.2 — Market Intelligence research run by Claude (Claude API + web search); the key stays in Cloudflare
   if (p === "/api/research/status" && M === "GET") { const c = researchConfig(env), k = "research:" + now().slice(0, 10), r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(k).first();
-    return json(200, { configured: c.configured, ready: c.ready, missing: c.missing, missingMessage: missingMessage(c).text, model: c.model, maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0,
+    const lt = await env.DB.prepare("SELECT v FROM kv WHERE k = 'research:lastTick'").first(), nx = new Date(); nx.setUTCMinutes(28, 0, 0); if (nx <= new Date()) nx.setUTCHours(nx.getUTCHours() + 1);
+    return json(200, { configured: c.configured, ready: c.ready, missing: c.missing, missingMessage: missingMessage(c).text, model: c.model,
+      lastTick: lt ? JSON.parse(lt.v) : null, nextTickAt: nx.toISOString(), maxSearches: c.maxSearches, dailyJobs: c.dailyJobs, usedToday: r ? parseInt(r.v, 10) || 0 : 0,
       provider: c.provider, tavily: c.tavily, gemini: c.gemini, geminiModel: c.geminiModel, usage: await usageSummary(env, acc.uid),
       markets: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.label])),
       depths: Object.fromEntries(Object.entries(DEPTHS).map(([k, d]) => [k, { label: d.label, searches: d.queries, pages: d.extract, maxCredits: creditEstimate(k) }])) }); }
@@ -903,7 +905,7 @@ async function route(req, env, ctx) {
     return json(r.ok ? 200 : r.code ? 429 : 400, r); }
   if (p === "/api/research/topic/step" && M === "POST") { const b = await body(req), r = await stepTopic(env, String(b.id || ""));
     return json(r.ok ? 200 : r.busy ? 409 : 400, r); }
-  if (p === "/api/jobs/research" && M === "POST") return json(200, await researchTick(env));
+  if (p === "/api/jobs/research" && M === "POST") return json(200, await researchTick(env, { budgetMs: 2 * 60e3, by: acc.uid }));   // manual: at most 2 minutes of new jobs
   if (p === "/api/research/run" && M === "POST") { const b = await body(req); if (!/^[A-Za-z0-9_\-]{1,80}$/.test(String(b.id || ""))) return json(400, { error: "invalid_argument", message: "Request id missing." });
     return json(200, await runRequestJob(env, String(b.id), b.job ? String(b.job) : null, acc.uid)); }
   return json(404, { error: "not_found" });

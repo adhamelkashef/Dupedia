@@ -238,6 +238,12 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
       else if (e.retry) extra.push("Temporary problem — safe to run again.");
     }
     if (err) { res = ingest(jobName, db, null, Date.now()); for (const w of res.writes) if (w.data && "error" in w.data) w.data.error = err; res.error = err; }
+    // 2.1: waiting for a limit/quota is not a failure — job health says "waiting" (with the reason), the failure count stays
+    if (code === "limit") for (const w of res.writes) {
+      if (w.collection === "mi/state/jobs") { const prev = (db["mi/state/jobs"] || {})[jobName] || {};
+        Object.assign(w.data, { status: "waiting", waiting: err, error: null, failures: parseInt(prev.failures, 10) || 0, runs: parseInt(prev.runs, 10) || 0 }); }
+      if (w.collection === "mi/runs/r") Object.assign(w.data, { waiting: true });
+    }
     // job health + run history get the evidence notes too
     for (const w of res.writes) if (w.collection === "mi/state/jobs" || w.collection === "mi/runs/r") w.data.notes = extra.concat(w.data.notes || []).slice(0, 30);
     const st = [], conflicts = [];
@@ -284,13 +290,67 @@ export async function runRequestJob(env, id, wanted, by) {
   return Object.assign({}, out, { request: id, left, finished: !left.length, status: next.status });
 }
 
-/** Hourly: carry on with a request the page did not finish (closed tab, limit reached yesterday…). One job per tick. */
-export async function researchTick(env) {
-  if (!researchConfig(env).configured) return { skipped: "not configured" };
-  const { docs } = await coll(env, "mi/req/r");
-  const open = Object.entries(docs).filter(([, r]) => ["queued", "running"].includes(r.status) && Date.now() - Date.parse(r.at) < 2 * DAY)
-    .filter(([, r]) => (r.jobs || []).some((j) => { const s = (r.progress || {})[j]; return !s || s.status === "waiting" || (s.status === "running" && Date.now() - Date.parse(s.at) > 15 * MIN && (s.tries || 0) < 3); }))
-    .sort((a, b) => String(a[1].at).localeCompare(String(b[1].at)));
-  if (!open.length) return { idle: true };
-  return runRequestJob(env, open[0][0], null, "hourly");
+/* ---------------- hourly processing (cron "28 * * * *" → scheduled() → researchTick) ----------------
+   2.1: one tick finishes whole requests — oldest first, job after job — and stops STARTING new jobs once its time budget
+   (RESEARCH_TICK_BUDGET_MIN, default 8 minutes; a cron run may last 15) is used, or when a limit, a missing secret or a
+   running page job says "wait". Each job still takes the one-at-a-time lock (runJob), and a tick holds its own lease, so two
+   ticks (or a tick and an administrator's /api/jobs/research call) never overlap. A job that stopped responding 3 times is
+   marked failed with that reason, so its request can finish instead of hanging. Requests older than 2 days are left for
+   "Queue again" (the sweep labels them). */
+const TICK_LEASE = "research:tick";
+const due = (r, now) => ["queued", "running"].includes(r.status) && now - Date.parse(r.at) < 2 * DAY
+  && (r.jobs || []).some((j) => { const s = (r.progress || {})[j]; return !s || s.status === "waiting" || (s.status === "running" && now - Date.parse(s.at) > 15 * MIN && (s.tries || 0) < 3); });
+
+/** Jobs left "running" by a run that died (e.g. the Worker was stopped) 3 times: mark them failed and finish their request. */
+async function closeDeadJobs(env, now) {
+  const { docs, ver } = await coll(env, "mi/req/r"), closed = [];
+  for (const [id, r] of Object.entries(docs)) {
+    if (!["queued", "running"].includes(r.status)) continue;
+    const jobs = (r.jobs || []).filter((j) => RESEARCH_JOBS.includes(j)), pg = Object.assign({}, r.progress || {}); let changed = false;
+    for (const j of jobs) { const s = pg[j]; if (s && s.status === "running" && now - Date.parse(s.at) > 15 * MIN && (s.tries || 0) >= 3) {
+      pg[j] = Object.assign({}, s, { status: "failed", at: nowIso(), error: "Stopped responding 3 times (the run was interrupted) — queue it again." }); changed = true; } }
+    if (!changed) continue;
+    const next = Object.assign({}, r, { progress: pg });
+    if (!jobs.some((j) => !["done", "failed"].includes(pg[j] && pg[j].status))) {
+      const failed = jobs.filter((j) => pg[j].status === "failed");
+      Object.assign(next, { status: failed.length === jobs.length ? "failed" : "partial", finishedAt: nowIso(),
+        result: jobs.map((j) => `${JOBS[j]}: ${pg[j].status === "done" ? `${pg[j].created || 0} new, ${pg[j].updated || 0} updated` : "failed — " + (pg[j].error || "")}`).join(" · ").slice(0, 600) });
+    }
+    const p = `mi/req/r/${id}`, r2 = await upsertIf(env, p, next, ver[p]).run();
+    if (r2.meta && r2.meta.changes) closed.push(id);
+  }
+  return closed;
+}
+
+export async function researchTick(env, opts = {}) {
+  const out = await tickOnce(env, opts);
+  // what Mission Control shows as "last hourly research run" (kv research:lastTick)
+  const brief = { at: nowIso(), by: opts.by || "hourly", idle: !!out.idle, skipped: out.skipped || null, missing: out.missing || null,
+    ran: (out.ran || []).map((x) => ({ job: x.job, ok: x.ok, code: x.code })), closed: (out.closed || []).length, ms: out.ms || 0 };
+  await env.DB.prepare("INSERT INTO kv (k, v) VALUES ('research:lastTick', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(JSON.stringify(brief)).run().catch(() => {});
+  return out;
+}
+async function tickOnce(env, { budgetMs } = {}) {
+  const cfg = researchConfig(env);
+  if (!cfg.configured) return { skipped: "not configured", missing: cfg.missing };
+  const mins = parseInt(env.RESEARCH_TICK_BUDGET_MIN, 10), budget = budgetMs != null ? budgetMs : (Number.isFinite(mins) ? Math.max(1, Math.min(13, mins)) : 8) * MIN;
+  const t0 = Date.now(), holder = "tick:" + Math.random().toString(36).slice(2);
+  await env.DB.prepare("DELETE FROM leases WHERE path = ? AND exp < ?").bind(TICK_LEASE, t0).run();
+  const got = await env.DB.prepare("INSERT INTO leases (path, holder, exp) VALUES (?, ?, ?) ON CONFLICT(path) DO NOTHING RETURNING holder").bind(TICK_LEASE, holder, t0 + 15 * MIN).first();
+  if (!got) return { skipped: "another research tick is running" };
+  const ran = [];
+  try {
+    const closed = await closeDeadJobs(env, t0);
+    while (Date.now() - t0 < budget) {
+      const { docs } = await coll(env, "mi/req/r"), now = Date.now();
+      const open = Object.entries(docs).filter(([, r]) => due(r, now)).sort((a, b) => String(a[1].at).localeCompare(String(b[1].at)));
+      if (!open.length) break;
+      const r = await runRequestJob(env, open[0][0], null, "hourly");
+      ran.push({ request: open[0][0], job: r.job || null, ok: !!r.ok, created: r.created || 0, updated: r.updated || 0, code: r.code || null, error: r.error || null, status: r.status || null });
+      // stop for this hour when waiting is the right answer: a limit/quota, a missing secret, or a job running elsewhere
+      if (!r.ok && (["limit", "not_configured", "busy"].includes(r.code) || !r.job)) break;
+    }
+    const out = { ran, closed, ms: Date.now() - t0, budgetUsed: Date.now() - t0 >= budget };
+    return ran.length || closed.length ? out : { idle: true };
+  } finally { await env.DB.prepare("DELETE FROM leases WHERE path = ? AND holder = ?").bind(TICK_LEASE, holder).run(); }
 }

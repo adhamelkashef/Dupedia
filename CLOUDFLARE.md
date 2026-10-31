@@ -124,7 +124,8 @@ npx wrangler dev        # http://localhost:8787 — local D1, nothing touches th
 3. Cloudflare dashboard → **Workers & Pages** → **dupedia** → **Settings** → **Variables and Secrets** → **Add** → type **Secret**:
    `TAVILY_API_KEY` = the Tavily key, and `GEMINI_API_KEY` = the Gemini key → **Deploy**.
 4. In X FORCE: Mission Control → **Run research now…** → Start. Each job takes about 1 minute; keep the page open. If you close it, the
-   hourly job (at minute :28, Cron Trigger "28 * * * *" in wrangler.jsonc) carries on, one job per hour.
+   hourly job (at minute :28, Cron Trigger "28 * * * *" in wrangler.jsonc) finishes it: whole requests, oldest first, up to
+   8 minutes per run (`RESEARCH_TICK_BUDGET_MIN`), until a free limit says wait — then it continues the next hour.
    Requests that were already queued start the same way. One queued more than 2 days ago only starts with **Queue again** (Automation Health).
 
 **Check it runs:** Workers & Pages → dupedia → **Settings → Trigger events** must list `28 * * * *`. **Logs** at minute :28 show
