@@ -132,3 +132,28 @@ at most 10 jobs a day. Check actual spend in console.anthropic.com → Usage; yo
 **Limits:** only administrators can run research (the Worker refuses others). The key never reaches the browser or GitHub.
 On the free Workers plan a job is short on CPU; if a run fails with a Cloudflare "exceeded CPU" error, the Workers Paid plan
 ($5/month) removes that limit.
+
+
+## Password recovery by e-mail (1.4.4)
+
+Administrators can reset anyone's password from **User Management → Reset password…**: an e-mailed single-use link
+(preferred, expires in 24 hours) or a temporary password shown once (works for 24 hours, must be changed at sign-in).
+Employees can use **Forgot your password?** on the sign-in page (link expires in 30 minutes). Without e-mail set up,
+the temporary password still works and the Forgot page says recovery by e-mail is not switched on — it never pretends.
+
+**Switch e-mail on (once):**
+1. Create a free account at resend.com (free plan: 3,000 e-mails a month, 100 a day).
+2. **Domains → Add domain**: add a domain Dupedia owns (for example `dupedia.com` or a sub-domain such as `mail.dupedia.com`)
+   and add the DNS records Resend shows at your domain registrar. Wait until Resend shows it as *Verified*.
+   Without a verified domain Resend only delivers to your own address — not to employees.
+3. **API keys → Create API key** (permission: *Sending access*), copy it.
+4. Cloudflare → Workers & Pages → **dupedia** → Settings → Variables and Secrets:
+   - add **Secret** `RESEND_API_KEY` = the key;
+   - add **Text** `MAIL_FROM` = `X FORCE <no-reply@your-verified-domain>`;
+   - optional **Text** `APP_URL` = the address people open X FORCE at (links in e-mails use it; otherwise the address the request came in on).
+5. Deploy, then test: User Management → your colleague → Reset password… → *Send the reset link*. The screen says whether the
+   e-mail service accepted the message; if not, it says why (for example "domain is not verified").
+
+Security: only a SHA-256 hash of each link is stored; links work once; a new link cancels older ones; using a link ends
+every session of that account; the Forgot form answers the same way whether or not the address exists and is limited to
+3 requests per address and 10 per network per 15 minutes; tokens and temporary passwords are never written to logs.

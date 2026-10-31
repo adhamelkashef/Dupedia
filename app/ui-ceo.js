@@ -12,7 +12,7 @@
 (function (root) {
   "use strict";
   const U = DPUI, { $, $$, esc, App } = U, H = DPShell, O = DPOrders, C = DPCommission;
-  const D = { per: "month", ac: "", acSt: "open", aq: "", aw: "", sq: "" };
+  const D = { per: "month", ac: "", acSt: "open", aq: "", aw: "", sq: "", ag: "all", ap: "all" };
   const PERIODS = { today: "Today", week: "This week", month: "This month", quarter: "This quarter", ytd: "Year to date" };
   function range(per) {
     const n = new Date(), y = n.getFullYear(), m = n.getMonth(); let a;
@@ -29,47 +29,115 @@
     const docs = root.DPFin ? await DPFin.docs().catch(() => null) : null, inv = docs ? docs.filter((x) => x.status === "issued") : null;
     return { invoiced: inv ? inv.filter((x) => x.kind === "tax_invoice").reduce((t, x) => t + (x.totalMinor || 0), 0) - inv.filter((x) => x.kind === "credit_note").reduce((t, x) => t + (x.totalMinor || 0), 0) : null, rows, comms, jobs, leads, claims, dir, workers, staffs, log: logs.flatMap((x) => (x.data.entries || []).map((e) => Object.assign({ day: x.id }, e))).sort((a, b) => String(b.at).localeCompare(String(a.at))) };
   }
-  /** The exception list: every item names the record, why it is flagged, and the action. */
-  /** 1.3 — compact "Needs your attention": urgent exceptions first (strong colour only for them), then ordinary items and
-   *  my overdue reminders in a quiet list; one line each, details on demand, three-plus more behind "Show all". */
+  /** 1.4.4 — "Needs your attention": one list, grouped (Urgent first, then Sales · Finance · Factory & engineering ·
+   *  Operations — only groups with real items), each item one scannable line with its date, owner and one action; details
+   *  and "Acknowledge" on demand. Acknowledging only hides an item from the count for you — the issue stays until the
+   *  record changes. Urgent items cannot be acknowledged. Nothing here is invented: every item comes from alerts(). */
+  const GROUPS = [["sales", "Sales"], ["finance", "Finance"], ["factory", "Factory & engineering"], ["ops", "Operations"]];
+  const GROUP_OF = { Payments: "finance", Commission: "finance", Quotations: "sales", "Follow-ups": "sales", Leads: "sales", Deadline: "factory", Engineering: "factory", Factory: "factory", Quality: "factory", Records: "ops", "Ask CEO": "ops", Reminder: "ops", Access: "ops" };
+  const PRIO = { 3: ["Urgent", "u"], 2: ["High", "h"], 1: ["Normal", "n"] };
+  const AT = { items: [], ack: {}, open: new Set() };
+  const sigOf = (a) => { let h = 0; for (const c of a.title + "|" + a.body + "|" + (a.date || "")) h = (h * 31 + c.charCodeAt(0)) | 0; return String(h >>> 0); };
+  const ackPath = () => `data/users/${DPStore.st.userId}/ack`;
+  const fmtD = (iso) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
+  function dateLine(a) {
+    if (!a.date) return "";
+    const t = Date.parse(a.date); if (!isFinite(t)) return "";
+    if (a.dk === "due") return t < Date.now() ? `Overdue since ${fmtD(a.date)}` : `Due ${fmtD(a.date)}`;
+    return `Since ${fmtD(a.date)}`;
+  }
+  /** Default order: urgent → overdue → nearest deadline → approvals → everything else (oldest first). */
+  function rank(a, b) {
+    if (b.sev !== a.sev) return b.sev - a.sev;
+    const od = (x) => (x.dk === "due" && x.date && Date.parse(x.date) < Date.now() ? 0 : 1); if (od(a) !== od(b)) return od(a) - od(b);
+    const due = (x) => (x.dk === "due" && x.date ? Date.parse(x.date) : Infinity); if (due(a) !== due(b)) return due(a) - due(b);
+    const ap = (x) => (/^(Approve|Verify|Reply|Assign)/.test(x.action || "") ? 0 : 1); if (ap(a) !== ap(b)) return ap(a) - ap(b);
+    return (Date.parse(a.date || 0) || 0) - (Date.parse(b.date || 0) || 0);
+  }
   function attention(al) {
-    const rem = (root.DPLive && DPLive.L.reminders || []).filter((r) => DPLive.isOverdue(r)).map((r) => ({ sev: r.priority === "urgent" ? 3 : 1, cat: "Reminder", title: r.title, body: (r.notes || "").slice(0, 160), action: "Open", go: { view: "reminders" }, when: DPLive.dueAt(r) }));
-    const all = rem.concat(al), urgent = all.filter((a) => a.sev >= 3), rest = all.filter((a) => a.sev < 3), ic = { Reminder: "⏰", Payments: "¤", Payment: "¤", Engineering: "⚙", Factory: "⚙", Commission: "%", Leads: "◎", Orders: "◆", Access: "⚿" };
-    const row = (a, i, cls) => `<details class="att ${cls}"><summary><span class="ai">${ic[a.cat] || "•"}</span><span class="at"><b>${esc(a.title)}</b><span class="tiny muted">${esc(a.cat)}${a.when ? " · " + esc(new Date(a.when).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : ""}</span></span><button class="btn ${cls === "u" ? "lime" : "ghost"} xs" data-al="${i}">${esc(a.action || "Open")}</button></summary><div class="small muted">${esc(a.body || "")}</div></details>`;
-    if (!all.length) return `<div class="card att-wrap"><div class="row between"><h3>Needs your attention</h3><span class="pill ok">All clear</span></div></div>`;
-    const idx = (a) => al.indexOf(a) >= 0 ? al.indexOf(a) : "r" + rem.indexOf(a);
-    return `<div class="card att-wrap"><div class="row between"><h3>Needs your attention</h3><span class="tiny muted">${urgent.length ? `<b class="neg">${urgent.length} urgent</b> · ` : ""}${rest.length} other</span></div>
-      ${urgent.map((a) => row(a, idx(a), "u")).join("")}${rest.slice(0, 4).map((a) => row(a, idx(a), "")).join("")}
-      ${rest.length > 4 ? `<details class="att-more"><summary class="small">Show all (${rest.length - 4} more)</summary>${rest.slice(4).map((a) => row(a, idx(a), "")).join("")}</details>` : ""}</div>`;
+    const rem = (root.DPLive && DPLive.L.reminders || []).filter((r) => DPLive.isOverdue(r)).map((r) => ({ sev: r.priority === "urgent" ? 3 : 1, cat: "Reminder", title: r.title, body: (r.notes || "").slice(0, 160), action: "Open", go: { view: "reminders" }, date: DPLive.dueAt(r), dk: "due", key: "rem:" + r.id, who: "You" }));
+    AT.items = rem.concat(al).map((a, i) => Object.assign({ key: a.key || `${a.cat}:${a.title}`, grp: GROUP_OF[a.cat] || "ops", i }, a)).sort(rank);
+    return `<section class="att2 card" id="att-box" aria-labelledby="att-h"><div class="att2-load"><div class="spinner"></div></div></section>`;
+  }
+  async function loadAck() { try { AT.ack = ((await DPStore.tryGet(ackPath())) || {}).items || {}; } catch (e) { AT.ack = {}; } }
+  const isAck = (a) => a.sev < 3 && AT.ack[a.key] && AT.ack[a.key].sig === sigOf(a);
+  function itemHtml(a, acked) {
+    const [pl, pc] = PRIO[a.sev] || PRIO[1], dl = dateLine(a), late = a.dk === "due" && a.date && Date.parse(a.date) < Date.now(), open = AT.open.has(a.key), id = "ati-" + a.i;
+    const grpL = (GROUPS.find((g) => g[0] === a.grp) || [, "Operations"])[1];
+    return `<article class="ati p-${pc}${acked ? " acked" : ""}" data-k="${esc(a.key)}">
+      <div class="ati-row"><span class="ati-pr" aria-hidden="true"></span>
+        <button type="button" class="ati-t" aria-expanded="${open}" aria-controls="${id}" data-x><b>${esc(a.title)}</b><span class="ati-d">${esc(a.body || "")}</span></button>
+        <span class="ati-meta">${dl ? `<span class="ati-date${late ? " late" : ""}">${esc(dl)}</span>` : ""}${a.who ? `<span class="ati-who">${esc(a.who)}</span>` : ""}</span>
+        <button type="button" class="btn xs ${a.sev >= 3 && !acked ? "" : "ghost"} ati-go" data-go2>${esc(a.action || "Open")}</button></div>
+      <div class="ati-more" id="${id}" ${open ? "" : "hidden"}><dl><div><dt>Area</dt><dd>${esc(grpL)} · ${esc(a.cat)}</dd></div><div><dt>Priority</dt><dd>${esc(pl)}</dd></div>${dl ? `<div><dt>Date</dt><dd>${esc(dl)} (${esc(new Date(a.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))})</dd></div>` : ""}${a.who ? `<div><dt>Responsible</dt><dd>${esc(a.who)}</dd></div>` : ""}<div class="w"><dt>Details</dt><dd>${esc(a.body || "—")}</dd></div></dl>
+        <div class="row">${acked ? `<button type="button" class="btn ghost xs" data-unack>Show in the list again</button>` : a.sev >= 3 ? `<span class="tiny muted">Urgent items stay here until the issue itself is resolved.</span>` : `<button type="button" class="btn ghost xs" data-ack>Acknowledge</button><span class="tiny muted">Hides it from your count until something changes. It does not resolve the issue.</span>`}</div></div></article>`;
+  }
+  function drawAtt() {
+    const box = $("#att-box"); if (!box) return;
+    const all = AT.items, live = all.filter((a) => !isAck(a)), acked = all.filter(isAck);
+    const pf = D.ap || "all", gf = D.ag || "all";
+    const fit = (a) => (pf === "all" || (PRIO[a.sev] || PRIO[1])[1] === pf) && (gf === "all" || (gf === "urgent" ? a.sev >= 3 : a.grp === gf && a.sev < 3));
+    const urgent = live.filter((a) => a.sev >= 3), gcount = (g) => live.filter((a) => a.grp === g && a.sev < 3).length;
+    const tabs = [["all", "All", live.length], ["urgent", "Urgent", urgent.length]].concat(GROUPS.map(([k, l]) => [k, l, gcount(k)])).filter((t) => t[0] === "all" || t[2]);
+    if (!tabs.some((t) => t[0] === gf)) D.ag = "all";
+    const vis = live.filter(fit), sec = (title, list) => (list.length ? `<div class="att2-g"><h4>${esc(title)} <span>${list.length}</span></h4>${list.map((a) => itemHtml(a, false)).join("")}</div>` : "");
+    let body;
+    if (!all.length) body = `<div class="att2-empty"><b>All clear</b><span class="small muted">Nothing needs your attention right now. This list updates by itself when orders, payments, leads or production change.</span></div>`;
+    else if (!vis.length) body = `<div class="att2-empty"><b>Nothing in this view</b><span class="small muted">${live.length ? "Try another filter." : "Everything open has been acknowledged."}</span></div>`;
+    else if ((D.ag || "all") === "all") body = sec("Urgent", vis.filter((a) => a.sev >= 3)) + GROUPS.map(([k, l]) => sec(l, vis.filter((a) => a.sev < 3 && a.grp === k))).join("");
+    else body = `<div class="att2-g">${vis.map((a) => itemHtml(a, false)).join("")}</div>`;
+    box.innerHTML = `<header class="att2-h"><div><h3 id="att-h">Needs your attention</h3><span class="att2-n">${live.length ? `${live.length} open${urgent.length ? ` · <b>${urgent.length} urgent</b>` : ""}` : "All clear"}</span></div>
+        ${all.length ? `<div class="att2-f"><div class="att2-tabs" role="tablist" aria-label="Area">${tabs.map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${(D.ag || "all") === k}" data-ag="${k}">${esc(l)} <em>${n}</em></button>`).join("")}</div>
+        <label class="att2-p"><span class="sr">Priority</span><select class="in sm" id="att-p" aria-label="Priority"><option value="all">Any priority</option><option value="u"${pf === "u" ? " selected" : ""}>Urgent</option><option value="h"${pf === "h" ? " selected" : ""}>High</option><option value="n"${pf === "n" ? " selected" : ""}>Normal</option></select></label></div>` : ""}</header>
+      <div class="att2-list">${body}</div>
+      ${acked.length ? `<details class="att2-ack"><summary>Acknowledged by you (${acked.length})</summary>${acked.map((a) => itemHtml(a, true)).join("")}</details>` : ""}`;
+    $$("[data-ag]", box).forEach((b) => (b.onclick = () => { D.ag = b.dataset.ag; drawAtt(); }));
+    const ps = $("#att-p", box); if (ps) ps.onchange = () => { D.ap = ps.value; drawAtt(); };
+    $$(".ati", box).forEach((el) => {
+      const a = all.find((x) => x.key === el.dataset.k); if (!a) return;
+      $("[data-x]", el).onclick = () => { if (AT.open.has(a.key)) AT.open.delete(a.key); else AT.open.add(a.key); const m = $(".ati-more", el), on = AT.open.has(a.key); m.hidden = !on; $("[data-x]", el).setAttribute("aria-expanded", on); };
+      $("[data-go2]", el).onclick = () => { if (a.go) U.go(a.go.view, a.go.opts || {}); };
+      const ak = $("[data-ack]", el); if (ak) ak.onclick = () => setAck(a, true);
+      const un = $("[data-unack]", el); if (un) un.onclick = () => setAck(a, false);
+    });
+  }
+  async function setAck(a, on) {
+    if (on && a.sev >= 3) return;
+    const next = Object.assign({}, AT.ack); if (on) next[a.key] = { at: new Date().toISOString(), sig: sigOf(a) }; else delete next[a.key];
+    for (const k of Object.keys(next)) if (!AT.items.some((x) => x.key === k)) delete next[k];   // forget items that no longer exist
+    const prev = AT.ack; AT.ack = next; drawAtt();
+    try { await DPStore.set(ackPath(), { items: next, at: new Date().toISOString() }); U.toast(on ? "Acknowledged — it stays open until the record changes." : "Back in your list."); }
+    catch (e) { AT.ack = prev; drawAtt(); U.toast("Not saved: " + (e.message || "try again"), { err: true }); }
   }
   function alerts(d) {
     const out = [], set = App.config.settings.ceo || {}, big = Math.round((+set.largeQuote || 1000000) * 100), today = new Date().toISOString().slice(0, 10), cur = App.config.pricebook.currency || "EGP";
-    const add = (sev, cat, title, body, go, action) => out.push({ sev, cat, title, body, go, action });
+    const add = (sev, cat, title, body, go, action, x = {}) => out.push(Object.assign({ sev, cat, title, body, go, action }, x));   // x: {key, date, dk: "due"|"since", who}
+    const nm = (u) => (u && DPAuth.nameSync(u)) || "";
     for (const j of d.jobs.filter((x) => x.status !== "cancelled")) {
-      if (["delayed", "atrisk"].includes(j.ds.key) || (j.e && ["blocked", "delayed"].includes(j.e.status))) add(j.ds.key === "delayed" || (j.e && j.e.status === "blocked") ? 3 : 2, "Deadline", `${j.name}: ${j.e && j.e.status === "blocked" ? "blocked" : j.ds.label.toLowerCase()}`, `Target ${(j.e && j.e.expectedCompletion) || j.deadlineOriginal || "—"}${j.e && j.e.riskReason ? " · " + j.e.riskReason : ""}${j.engineerUid ? " · " + DPAuth.nameSync(j.engineerUid) : ""}`, { view: "engorders", opts: { oid: j.oid } }, "Open order");
-      if (!j.engineerUid) add(Date.now() - Date.parse(j.acceptedAt || 0) > 864e5 ? 3 : 2, "Engineering", `${j.name}: no engineer assigned`, `Accepted ${H.dateS(j.acceptedAt)} — waiting in the engineering queue`, { view: "engqueue" }, "Assign engineer");
-      else if (!(j.e && j.e.factory && j.e.factory.dest) && !(j.e && j.e.status === "completed") && Date.now() - Date.parse(j.acceptedAt || 0) > 2 * 864e5) add(2, "Factory", `${j.name}: no manufacturing or outsourcing assignment`, `Engineer ${DPAuth.nameSync(j.engineerUid)} has not assigned production yet`, { view: "factory", opts: { dest: "none" } }, "Open Factory");
-      if (j.e && j.e.qc && j.e.qc.status === "failed") add(3, "Quality", `${j.name}: quality check failed`, (j.e.qc.checklist || []).filter((c) => !c.ok).map((c) => c.item).slice(0, 2).join(" · "), { view: "engorders", opts: { oid: j.oid } }, "Review");
-      if (j.ds.missing && j.status !== "cancelled") add(1, "Records", `${j.name}: no project deadline recorded`, "Information missing — not a confirmed delay", { view: "engorders", opts: { oid: j.oid } }, "Set deadline");
+      if (["delayed", "atrisk"].includes(j.ds.key) || (j.e && ["blocked", "delayed"].includes(j.e.status))) add(j.ds.key === "delayed" || (j.e && j.e.status === "blocked") ? 3 : 2, "Deadline", `${j.name}: ${j.e && j.e.status === "blocked" ? "blocked" : j.ds.label.toLowerCase()}`, `Target ${(j.e && j.e.expectedCompletion) || j.deadlineOriginal || "—"}${j.e && j.e.riskReason ? " · " + j.e.riskReason : ""}${j.engineerUid ? " · " + DPAuth.nameSync(j.engineerUid) : ""}`, { view: "engorders", opts: { oid: j.oid } }, "Open order", { key: "job-late:" + j.oid, date: (j.e && j.e.expectedCompletion) || j.deadlineOriginal || null, dk: "due", who: nm(j.engineerUid) || "Engineering" });
+      if (!j.engineerUid) add(Date.now() - Date.parse(j.acceptedAt || 0) > 864e5 ? 3 : 2, "Engineering", `${j.name}: no engineer assigned`, `Accepted ${H.dateS(j.acceptedAt)} — waiting in the engineering queue`, { view: "engqueue" }, "Assign engineer", { key: "job-noeng:" + j.oid, date: j.acceptedAt || null, dk: "since", who: "Engineering" });
+      else if (!(j.e && j.e.factory && j.e.factory.dest) && !(j.e && j.e.status === "completed") && Date.now() - Date.parse(j.acceptedAt || 0) > 2 * 864e5) add(2, "Factory", `${j.name}: no manufacturing or outsourcing assignment`, `Engineer ${DPAuth.nameSync(j.engineerUid)} has not assigned production yet`, { view: "factory", opts: { dest: "none" } }, "Open Factory", { key: "job-nofac:" + j.oid, date: j.acceptedAt || null, dk: "since", who: nm(j.engineerUid) });
+      if (j.e && j.e.qc && j.e.qc.status === "failed") add(3, "Quality", `${j.name}: quality check failed`, (j.e.qc.checklist || []).filter((c) => !c.ok).map((c) => c.item).slice(0, 2).join(" · "), { view: "engorders", opts: { oid: j.oid } }, "Review", { key: "job-qc:" + j.oid, date: (j.e.qc && j.e.qc.at) || null, dk: "since", who: nm(j.engineerUid) || "Engineering" });
+      if (j.ds.missing && j.status !== "cancelled") add(1, "Records", `${j.name}: no project deadline recorded`, "Information missing — not a confirmed delay", { view: "engorders", opts: { oid: j.oid } }, "Set deadline", { key: "job-nodl:" + j.oid, who: nm(j.engineerUid) || "Engineering" });
     }
-    if (root.DPAskCeo && DPAskCeo.canReadInbox()) for (const t of (DPAskCeo.S.threads || []).filter((x) => x.unread)) add(2, "Ask CEO", `${t.name}: ${t.unread} unread question${t.unread === 1 ? "" : "s"}`, (t.last.text || "Attachment").slice(0, 90), { view: "askceo", opts: { uid: t.uid } }, "Reply");
+    if (root.DPAskCeo && DPAskCeo.canReadInbox()) for (const t of (DPAskCeo.S.threads || []).filter((x) => x.unread)) add(2, "Ask CEO", `${t.name}: ${t.unread} unread question${t.unread === 1 ? "" : "s"}`, (t.last.text || "Attachment").slice(0, 90), { view: "askceo", opts: { uid: t.uid } }, "Reply", { key: "askceo:" + t.uid, date: (t.last && t.last.at) || null, dk: "since", who: t.name });
     for (const r of d.rows) {
-      if (r.pay && r.pay.overpaidMinor > 0) add(3, "Payments", `${r.p.name}: overpayment to review`, `Verified ${H.money(r.pay.verifiedMinor, r.cur)} against an order value of ${H.money(r.pay.payableMinor, r.cur)}`, { view: "register", opts: { oid: r.oid } }, "Review");
-      if (r.overdue > 0) add(3, "Payments", `${r.p.name}: customer payment overdue`, `${H.money(r.overdue, r.cur)} past due by the payment schedule · ${DPAuth.nameSync(r.ownerId) || ""}`, { view: "register", opts: { oid: r.oid } }, "Open order");
-      if (r.custKey === "issued" && (r.total || 0) >= big && Date.now() - Date.parse(r.p.issuedAt || 0) > 7 * 864e5) add(2, "Quotations", `${r.p.name}: large quotation awaiting the client`, `${H.money(r.total, r.cur)} issued ${H.dateS(r.p.issuedAt)} by ${DPAuth.nameSync(r.ownerId) || "—"}`, { view: "register", opts: { pid: r.p.id, owner: r.ownerId } }, "Open");
-      if (r.order) for (const p of (r.order.payments || []).filter((x) => x.status === "recorded")) add(2, "Payments", `${r.p.name}: payment awaiting verification`, `${H.money2(p.amountMinor, r.cur)} on ${p.date}${(p.files || []).length ? "" : " · no payment evidence attached"}`, { view: "payverify" }, "Verify");
-      for (const x of r.reps.filter((y) => y.status === "submitted")) add(2, "Payments", `${r.p.name}: payment reported by sales`, `${H.money2(x.amountMinor, r.cur)} on ${x.date}${x.hasFile ? "" : " · no evidence attached"}`, { view: "payverify" }, "Verify");
-      if (r.order && r.order.valueCheck) add(2, "Records", `${r.p.name}: booked value differs from the accepted quotation`, `Quotation ${H.money(r.order.valueCheck.quotedTotalMinor, r.cur)} · price book now ${H.money(r.order.valueCheck.bookedTotalMinor, r.cur)}`, { view: "register", opts: { oid: r.oid } }, "Check");
-      if (r.accepted && !r.cancelled && r.sub && !r.sched.length && !(r.order && (r.order.payments || []).length) && !r.reps.length) add(1, "Records", `${r.p.name}: no payment schedule or payment recorded`, `Accepted ${H.dateS(r.sub.acceptedAt)}`, { view: "register", opts: { oid: r.oid } }, "Open");
+      if (r.pay && r.pay.overpaidMinor > 0) add(3, "Payments", `${r.p.name}: overpayment to review`, `Verified ${H.money(r.pay.verifiedMinor, r.cur)} against an order value of ${H.money(r.pay.payableMinor, r.cur)}`, { view: "register", opts: { oid: r.oid } }, "Review", { key: "pay-over:" + r.oid, who: "Finance" });
+      if (r.overdue > 0) add(3, "Payments", `${r.p.name}: customer payment overdue`, `${H.money(r.overdue, r.cur)} past due by the payment schedule`, { view: "register", opts: { oid: r.oid } }, "View payment", { key: "pay-due:" + r.oid, date: (DPUI.scheduleRows(r) || []).filter((x) => x.st[0] !== "Paid" && x.due && x.due < today).map((x) => x.due).sort()[0] || null, dk: "due", who: nm(r.ownerId) || "Finance" });
+      if (r.custKey === "issued" && (r.total || 0) >= big && Date.now() - Date.parse(r.p.issuedAt || 0) > 7 * 864e5) add(2, "Quotations", `${r.p.name}: large quotation awaiting the client`, `${H.money(r.total, r.cur)} issued ${H.dateS(r.p.issuedAt)} by ${DPAuth.nameSync(r.ownerId) || "—"}`, { view: "register", opts: { pid: r.p.id, owner: r.ownerId } }, "Open", { key: "quote-big:" + r.p.id, date: r.p.issuedAt || null, dk: "since", who: nm(r.ownerId) });
+      if (r.order) for (const p of (r.order.payments || []).filter((x) => x.status === "recorded")) add(2, "Payments", `${r.p.name}: payment awaiting verification`, `${H.money2(p.amountMinor, r.cur)} on ${p.date}${(p.files || []).length ? "" : " · no payment evidence attached"}`, { view: "payverify" }, "Verify", { key: `pay-ver:${r.oid}:${p.id || p.date}`, date: p.date || null, dk: "since", who: "Finance" });
+      for (const x of r.reps.filter((y) => y.status === "submitted")) add(2, "Payments", `${r.p.name}: payment reported by sales`, `${H.money2(x.amountMinor, r.cur)} on ${x.date}${x.hasFile ? "" : " · no evidence attached"}`, { view: "payverify" }, "Verify", { key: `pay-rep:${r.oid}:${x.id || x.date}`, date: x.date || null, dk: "since", who: nm(r.ownerId) });
+      if (r.order && r.order.valueCheck) add(2, "Records", `${r.p.name}: booked value differs from the accepted quotation`, `Quotation ${H.money(r.order.valueCheck.quotedTotalMinor, r.cur)} · price book now ${H.money(r.order.valueCheck.bookedTotalMinor, r.cur)}`, { view: "register", opts: { oid: r.oid } }, "Check", { key: "value-check:" + r.oid, who: nm(r.ownerId) });
+      if (r.accepted && !r.cancelled && r.sub && !r.sched.length && !(r.order && (r.order.payments || []).length) && !r.reps.length) add(1, "Records", `${r.p.name}: no payment schedule or payment recorded`, `Accepted ${H.dateS(r.sub.acceptedAt)}`, { view: "register", opts: { oid: r.oid } }, "Open", { key: "no-sched:" + r.oid, date: r.sub.acceptedAt || null, dk: "since", who: nm(r.ownerId) });
     }
     const waiting = d.comms.filter((c) => ["calculated", "pending", "returned"].includes(c.status));
-    if (waiting.length) add(2, "Commission", `${waiting.length} commission${waiting.length === 1 ? "" : "s"} awaiting approval`, `${H.money(waiting.reduce((a, c) => a + (c.calculatedMinor || 0), 0), cur)} calculated`, { view: "approvecomm" }, "Approve");
+    if (waiting.length) add(2, "Commission", `${waiting.length} commission${waiting.length === 1 ? "" : "s"} awaiting approval`, `${H.money(waiting.reduce((a, c) => a + (c.calculatedMinor || 0), 0), cur)} calculated`, { view: "approvecomm" }, "Approve", { key: "comm-await", date: waiting.map((c) => c.at || c.calculatedAt).filter(Boolean).sort()[0] || null, dk: "since", who: "Administrators" });
     const dirById = Object.fromEntries(d.dir.map((r) => [r.uid, r]));
     for (const uid of Object.keys(dirById)) {
       const over = DPLeadOps.followUps(uid).filter((f) => f.when === "overdue");
-      if (over.length) add(over.length > 3 ? 3 : 2, "Follow-ups", `${DPAuth.fullName(dirById[uid])}: ${over.length} follow-up${over.length === 1 ? "" : "s"} overdue`, over.slice(0, 2).map((f) => ((d.leads.find((l) => l.id === f.leadId) || {}).name || "") + " · " + new Date(f.followUpAt).toLocaleDateString()).join(" · "), { view: "allleads" }, "Review leads");
+      if (over.length) add(2, "Follow-ups", `${DPAuth.fullName(dirById[uid])}: ${over.length} follow-up${over.length === 1 ? "" : "s"} overdue`, over.slice(0, 2).map((f) => ((d.leads.find((l) => l.id === f.leadId) || {}).name || "") + " · " + new Date(f.followUpAt).toLocaleDateString()).join(" · "), { view: "allleads" }, "Review leads", { key: "fu:" + uid, date: over.map((f) => f.followUpAt).filter(Boolean).sort()[0] || null, dk: "due", who: DPAuth.fullName(dirById[uid]) });
     }
-    for (const l of d.leads) { const own = DPLeads.ownership(l, d.claims[l.id] || []); if (own.owner && own.deadline && Date.parse(own.deadline) - Date.now() < 6 * 3600e3) add(1, "Leads", `${l.name}: no meaningful activity`, `Owner ${DPAuth.nameSync(own.owner)} · returns to the Lead Mine ${DPLeadOps.fmtRemaining(Date.parse(own.deadline) - Date.now()).replace(" left", "")}`, { view: "allleads" }, "Open"); }
+    for (const l of d.leads) { const own = DPLeads.ownership(l, d.claims[l.id] || []); if (own.owner && own.deadline && Date.parse(own.deadline) - Date.now() < 6 * 3600e3) add(1, "Leads", `${l.name}: no meaningful activity`, `Owner ${DPAuth.nameSync(own.owner)} · returns to the Lead Mine ${DPLeadOps.fmtRemaining(Date.parse(own.deadline) - Date.now()).replace(" left", "")}`, { view: "allleads" }, "Open", { key: "lead-idle:" + l.id, date: own.deadline, dk: "due", who: nm(own.owner) }); }
     void today; return out.sort((a, b) => b.sev - a.sev);
   }
 
@@ -133,6 +201,7 @@
         ${card({ view: "factory" }, "Workers on projects", wAlloc.length, `${wAct.length - wAlloc.length} of ${wAct.length} available`)}${card({ view: "engqueue" }, "Delayed or blocked", d.jobs.filter((j) => j.status !== "cancelled" && (["delayed"].includes(j.ds.key) || (j.e && ["blocked", "hold", "delayed"].includes(j.e.status)))).length, "orders", "")}</div>
       <div class="dgrid"><div class="card stack"><h3>Engineering workload</h3>${eng.length ? `<div class="tl">${eng.map((x) => `<div><span class="small"><b>${esc(DPAuth.fullName(x.e))}</b></span><span>${x.open} open order${x.open === 1 ? "" : "s"}${x.late ? ` · <span class="pill err">${x.late} at risk / delayed</span>` : ""}</span></div>`).join("")}</div>` : `<p class="small muted">No engineers yet.</p>`}</div>
         <div class="card stack"><div class="row between"><h3>Recent system activity</h3><button class="btn ghost xs" data-go='${esc(JSON.stringify({ view: "audit" }))}'>Audit Log</button></div>${d.log.length ? `<div class="tl">${d.log.slice(0, 8).map((e) => `<div><span class="tiny muted">${esc(new Date(e.at).toLocaleString([], { dateStyle: "short", timeStyle: "short" }))}</span><span><b>${esc(e.action)}</b> — ${esc(DPAuth.nameSync(e.by) || "system")}${e.detail ? " · " + esc(String(e.detail).slice(0, 90)) : ""}</span></div>`).join("")}</div>` : `<p class="small muted">Nothing yet.</p>`}</div></div></div></details></div>`;
+    loadAck().then(drawAtt);
     const B = $("#ceo-body"), vis = al.filter((a) => !D.ac || a.cat === D.ac);
     $$("[data-ac]", B).forEach((b) => (b.onclick = () => { D.ac = b.dataset.ac; renderCeo(); }));
     $$("[data-al]", B).forEach((b) => (b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); const k = b.dataset.al; if (k[0] === "r") return U.go("reminders"); const a = al[+k]; if (a && a.go) U.go(a.go.view, a.go.opts || {}); }));

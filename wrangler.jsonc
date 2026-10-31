@@ -8,7 +8,7 @@
     "directory": ".",
     "binding": "ASSETS",
     // these paths go through the Worker (sign-in, setup, the app page, the API); everything else is a static file
-    "run_worker_first": ["/", "/index.html", "/login", "/setup", "/xf-login.js", "/xf-shim.js", "/api/*", "/ops/*", "/server/*", "/qa/*"]
+    "run_worker_first": ["/", "/index.html", "/login", "/setup", "/xf-login.js", "/xf-shim.js", "/forgot", "/reset", "/api/*", "/ops/*", "/server/*", "/qa/*"]
   },
   "d1_databases": [
     // created automatically on the first deploy if it does not exist yet (or create it yourself with this exact name)

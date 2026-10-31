@@ -17,6 +17,7 @@ import "../app/holidays.js";
 import "../app/jobs13.js";
 import { computeSweep } from "./sweep.js";
 import { researchConfig, runRequestJob, researchTick } from "./research.js";
+import { mailConfigured, sendMail, resetEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
 const DOC_MAX = 256 * 1024, BODY_MAX = 4 * 1048576;
@@ -40,6 +41,9 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS docs_at ON docs(at)`,
   `CREATE TABLE IF NOT EXISTS gone (path TEXT PRIMARY KEY, at TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS gone_at ON gone(at)`,
+  // 1.4.4 — password resets: only a SHA-256 hash of each link token is kept; single use (used_at), expiry (exp, ms)
+  `CREATE TABLE IF NOT EXISTS resets (th TEXT PRIMARY KEY, uid TEXT NOT NULL, kind TEXT NOT NULL, exp INTEGER NOT NULL, created_at TEXT NOT NULL, created_by TEXT, used_at TEXT, mail TEXT)`,
+  `CREATE INDEX IF NOT EXISTS resets_uid ON resets(uid)`,
 ];
 let schemaReady = null;
 function ensureSchema(env) {
@@ -441,6 +445,8 @@ body.leaving .blk{transition:transform .45s var(--ease);transform:translateY(-12
 @media (max-width:900px){.wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr}.stage{min-height:200px;padding:20px;border-right:0;border-bottom:1px solid var(--line)}
 .stage .logo{width:150px}.stage .scene{width:min(62%,380px);right:-30px;bottom:-70px}.stage .line{display:none}.stage::before{-webkit-mask-image:linear-gradient(90deg,transparent 30%,#000 70%);mask-image:linear-gradient(90deg,transparent 30%,#000 70%)}.panel{padding:24px 16px 40px;align-items:flex-start}}
 @media (max-width:480px){.stage{min-height:150px}.stage .logo{width:130px}form{padding:28px 20px 22px;border-radius:18px}h1{font-size:26px}}
+.fgt{justify-self:center;font-size:13.5px;font-weight:600;color:var(--g2);text-decoration:underline;text-underline-offset:3px;padding:2px 6px;border-radius:6px}.fgt:hover{color:var(--ink)}.fgt:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.done{display:grid;gap:12px}.done .ic{width:44px;height:44px;border-radius:0 44px 0 0;background:var(--lime)}.done a.btn{display:block;text-align:center;font-weight:600;padding:13px;border-radius:999px;background:var(--lime);color:var(--ink);text-decoration:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><main class="wrap">${side ? `<section class="stage"><picture><source media="(max-width:900px)" srcset="/brand/logo_compact.png"><img class="logo" src="/brand/logo_primary.png" alt="Dupedia"></picture>${SCENE}
 <p class="line">Serious about play.<small>Sales, site plans, factory, finance and market intelligence — one system for the whole company.</small></p></section>` : ""}
@@ -450,8 +456,8 @@ const LOGIN = PAGE("Sign in · X FORCE", `<form id="f" novalidate><h1>Welcome to
 <div class="err" id="e" role="alert"></div>
 <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
 <label>Password<span class="fld"><input id="pw" name="password" type="password" autocomplete="current-password" required>${PEEK}</span></label>
-<button>Sign in</button>
-<div class="help"><p class="tiny">Forgot your password? An administrator can set a new one for you in User Management.</p><p class="tiny">Accounts are created by an administrator. Five failed attempts lock the account for 15 minutes.</p></div></form>
+<button>Sign in</button><a class="fgt" href="/forgot">Forgot your password?</a>
+<div class="help"><p class="tiny">Accounts are created by an administrator. Five failed attempts lock the account for 15 minutes.</p></div></form>
 <script src="/xf-login.js"></script>`);
 const SETUP = PAGE("Set up · X FORCE", `<form id="f" data-setup="1" novalidate><h1>Set up X FORCE</h1><p class="sub">Create the owner account. This page closes for good afterwards.</p>
 <div class="err" id="e" role="alert"></div>
@@ -459,18 +465,40 @@ const SETUP = PAGE("Set up · X FORCE", `<form id="f" data-setup="1" novalidate>
 <label>Your name<input name="name" required autocomplete="name"></label><label>Username<input name="username" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
 <label>Password<span class="fld"><input id="pw" name="password" type="password" required autocomplete="new-password">${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label>
 <button>Create owner account</button></form><script src="/xf-login.js"></script>`);
+const FORGOT = PAGE("Forgot password · X FORCE", `<form id="f" data-mode="forgot" novalidate><h1>Forgot your password?</h1><p class="sub">Enter the e-mail address on your X FORCE account. We will send you a link to choose a new password.</p>
+<div class="err" id="e" role="alert"></div>
+<label>E-mail address<input name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required autofocus></label>
+<button>Send the reset link</button><a class="fgt" href="/login">Back to sign in</a>
+<div class="help"><p class="tiny">The link works once and expires after 30 minutes. No e-mail? Check spam, or ask an administrator to reset your password.</p></div></form>
+<script src="/xf-login.js"></script>`);
+const NOMAIL = PAGE("Forgot password · X FORCE", `<form><h1>Forgot your password?</h1><p class="sub">Password recovery by e-mail is not switched on for this company yet.</p>
+<p class="tiny">Ask an administrator to reset your password: User Management → your name → Reset password.</p><a class="fgt" href="/login">Back to sign in</a></form>`);
+const RESET = PAGE("Choose a new password · X FORCE", `<form id="f" data-mode="reset" novalidate><h1>Choose a new password</h1><p class="sub">This ends every other session on your account.</p>
+<div class="err" id="e" role="alert"></div>
+<label>New password<span class="fld"><input id="pw" name="password" type="password" autocomplete="new-password" required autofocus>${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label>
+<label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label>
+<button>Save the new password</button><a class="fgt" href="/forgot">Need a new link?</a></form>
+<script src="/xf-login.js"></script>`);
 const NOSETUP = PAGE("Not set up · X FORCE", `<form><h1>Almost there</h1><p class="sub">X FORCE has no administrator yet, and no setup code is configured.</p>
 <p class="tiny">In Cloudflare: Workers &amp; Pages → this project → Settings → Variables and Secrets → add a <b>Secret</b> named <span class="code">SETUP_CODE</span> (a long random code only you know), then reload this page.</p></form>`);
 const LOGIN_JS = `(function(){var f=document.getElementById("f");if(!f)return;var er=document.getElementById("e"),b=f.querySelector("button");
+var mode=f.dataset.mode||"";var tok="";if(mode==="reset"){var m=/[#&]t=([A-Za-z0-9_-]{20,200})/.exec(location.hash);tok=m?m[1]:"";try{history.replaceState(null,"",location.pathname);}catch(x){}
+if(!tok){f.innerHTML='<h1>This link is incomplete</h1><p class="sub">Open the link from your e-mail again, or ask for a new one.</p><a class="fgt" href="/forgot">Send a new link</a>';return;}}
+function done(h,t,l,lt){f.innerHTML='<div class="done"><div class="ic"></div><h1>'+h+'</h1><p class="sub">'+t+'</p>'+(l?'<a class="btn" href="'+l+'">'+lt+'</a>':'')+'</div>';}
 f.querySelectorAll("[data-peek-for]").forEach(function(c){c.onchange=function(){var i=document.getElementById(c.dataset.peekFor);i.type=c.checked?"text":"password";i.toggleAttribute("data-peek",c.checked);};});
 function bad(m,el){er.textContent=m;er.classList.add("on");f.setAttribute("data-bad","");if(el)el.focus();}
 f.addEventListener("input",function(){if(er.classList.contains("on")){er.classList.remove("on");f.removeAttribute("data-bad");}});
 f.onsubmit=async function(e){e.preventDefault();er.classList.remove("on");f.removeAttribute("data-bad");
 var miss=[].slice.call(f.querySelectorAll("input[required]")).find(function(i){return !i.value.trim();});
 if(miss){return bad("Enter your "+(miss.closest("label").firstChild.textContent||"details").trim().toLowerCase()+".",miss);}
-b.disabled=true;b.setAttribute("aria-busy","true");var d=Object.fromEntries(new FormData(f));
-var r=await fetch(f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d)}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server cannot be reached. Check your connection and try again."};});
+var d=Object.fromEntries(new FormData(f));
+if(mode==="forgot"&&!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(d.email.trim()))return bad("Enter a valid e-mail address.",f.querySelector("input[name=email]"));
+if(mode==="reset"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d={token:tok,password:d.password};}
+b.disabled=true;b.setAttribute("aria-busy","true");
+var r=await fetch(mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d)}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server cannot be reached. Check your connection and try again."};});
 if(r.error){b.disabled=false;b.removeAttribute("aria-busy");var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
+if(mode==="forgot")return done("Check your e-mail",r.message,"/login","Back to sign in");
+if(mode==="reset")return done("Password changed","You can now sign in with your new password. Your other sessions were signed out.","/login","Sign in");
 document.body.classList.add("leaving");setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:320);};})();`;
 const setupDone = async (env) => !!(await env.DB.prepare("SELECT v FROM kv WHERE k = 'setup_done'").first()) || !!(await env.DB.prepare("SELECT uid FROM users LIMIT 1").first());
 async function indexHtml(env, req) {
@@ -567,7 +595,38 @@ async function alerts13(env) {
 }
 
 /* ======================= router ======================= */
-async function route(req, env) {
+/* ======================= 1.4.4 password recovery ======================= */
+const RESET_SELF_MIN = 30, RESET_ADMIN_MIN = 24 * 60, TEMP_HOURS = 24;
+const GENERIC_FORGOT = "If an account exists with this e-mail address, password recovery instructions have been sent.";
+const tokenNew2 = () => b64(rand(32)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const appOrigin = (env, req) => String(env.APP_URL || new URL(req.url).origin).replace(/\/+$/, "");
+/** Directory record (name, e-mail) of a login account. */
+async function dirOf(env, uid) {
+  const r = await env.DB.prepare("SELECT data FROM docs WHERE parent = 'directory' AND json_extract(data, '$.uid') = ? LIMIT 1").bind(uid).first();
+  if (r) { try { return JSON.parse(r.data); } catch (e) {} } return null;
+}
+const emailOf = (d) => String((d && d.email) || "").trim().toLowerCase();
+/** Create a single-use link for uid, e-mail it, record the attempt. The token itself is never stored or logged — only its hash. */
+async function issueLink(env, req, uid, kind, by) {
+  const a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(uid).first(); if (!a) return { ok: false, error: "No such account." };
+  const d = await dirOf(env, uid), to = emailOf(d); if (!to) return { ok: false, error: "This person has no e-mail address in X FORCE. Add one in their profile first." };
+  const t = tokenNew2(), mins = kind === "self" ? RESET_SELF_MIN : RESET_ADMIN_MIN, th = await sha256("reset:" + t);
+  await env.DB.batch([env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND used_at IS NULL AND kind IN ('self','admin-link')").bind("superseded " + now(), uid),
+    env.DB.prepare("INSERT INTO resets (th, uid, kind, exp, created_at, created_by, mail) VALUES (?, ?, ?, ?, ?, ?, 'sending')").bind(th, uid, kind, Date.now() + mins * 60e3, now(), by || null)]);
+  const origin = appOrigin(env, req), m = resetEmail({ name: (d && (d.firstName || d.displayName)) || a.name, link: `${origin}/reset#t=${t}`, minutes: mins, byAdmin: kind !== "self", origin });
+  const r = await sendMail(env, { to, subject: m.subject, html: m.html, text: m.text });
+  await env.DB.prepare("UPDATE resets SET mail = ? WHERE th = ?").bind(r.ok ? "sent " + now() : "failed: " + r.error, th).run();
+  await auditSrv(env, by || uid, kind === "self" ? "Password reset requested (e-mail link)" : "Password reset link sent by an administrator", uid, r.ok ? "E-mail accepted by the provider" : r.error);
+  return r.ok ? { ok: true, sentAt: now(), to: to.replace(/^(.).*(@.*)$/, "$1…$2") } : { ok: false, error: r.error };
+}
+async function auditSrv(env, by, action, target, detail) {
+  const id = now().replace(/[-:.TZ]/g, "").slice(0, 17) + "-" + tokenNew2().slice(0, 6).replace(/[^A-Za-z0-9]/g, "x");
+  await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, 'audit', ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind("audit/" + id, JSON.stringify({ action, target, by, at: now(), kind: "security", detail: String(detail || "").slice(0, 300), server: true }), now()).run();
+}
+/** Generate a readable temporary password (letters and digits, no look-alikes). */
+function tempPassword() { const c = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = rand(16); let s = ""; for (const x of r) s += c[x % c.length]; return s.slice(0, 6) + "-" + s.slice(6, 12) + (2 + (r[0] % 8)); }
+
+async function route(req, env, ctx) {
   const u = new URL(req.url), p = decodeURIComponent(u.pathname), M = req.method;
   // 1.3 — internal folders are never website files, whatever .assetsignore says (ops/ holds the manufacturing cost model)
   if (/^\/(ops|server|qa|worker|node_modules|\.git|\.github|\.wrangler)(\/|$)/i.test(p) || /^\/(\.dev\.vars|\.assetsignore|\.gitignore|wrangler\.jsonc|package(-lock)?\.json|[^/]*\.md|[^/]*-contents\.txt)$/i.test(p)) return respond(404, "Not found", "text/plain");
@@ -598,8 +657,46 @@ async function route(req, env) {
     if ((await limited(env, k1)) || (await limited(env, k2))) return json(429, { error: "locked", message: "Too many failed attempts. Try again in 15 minutes." });
     const a = await env.DB.prepare("SELECT * FROM users WHERE username = ?").bind(un).first();
     if (!a || !a.active || !(await checkPw(b.password, a))) { await failed(env, k1); await failed(env, k2, 30); return json(401, { error: "credentials", message: "Wrong username or password, or the account is deactivated." }); }
+    if (a.must_change) { const te = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind("tempexp:" + a.uid).first();
+      if (te && +te.v < Date.now()) return json(401, { error: "expired", message: "Your temporary password has expired. Ask an administrator for a new one, or use “Forgot your password?”." }); }
     await env.DB.batch([env.DB.prepare("DELETE FROM fails WHERE k = ?").bind(k1), env.DB.prepare("UPDATE users SET last_login = ? WHERE uid = ?").bind(now(), a.uid)]);
     return json(200, { ok: true, mustChange: !!a.must_change }, { "Set-Cookie": cookie(req, await newSession(env, a.uid), sessionDays(env) * 86400) });
+  }
+  // ---- 1.4.4 public: forgotten password (e-mail link), choosing a new password
+  if (p === "/forgot") return respond(200, mailConfigured(env) ? FORGOT : NOMAIL, "text/html; charset=utf-8");
+  if (p === "/reset") return respond(200, RESET, "text/html; charset=utf-8");
+  if (p === "/api/forgot" && M === "POST") {
+    if (!csrfOk(req)) return json(403, { error: "forbidden" });
+    if (!mailConfigured(env)) return json(503, { error: "not_configured", message: "Password recovery by e-mail is not switched on yet. Ask an administrator to reset your password." });
+    const b = await body(req), email = String(b.email || "").trim().toLowerCase().slice(0, 200), ek = "fe:" + (await sha256(email)), ik = "fi:" + ip(req);
+    const blocked = (await limited(env, ik)) || (await limited(env, ek));
+    await failed(env, ik, 10); await failed(env, ek, 3);   // every request counts: 10 per address / 3 per e-mail, then 15 minutes' pause
+    if (!blocked && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      const work = (async () => {
+        const rs = (await env.DB.prepare("SELECT data FROM docs WHERE parent = 'directory' AND LOWER(json_extract(data, '$.email')) = ?").bind(email).all()).results || [];
+        for (const r of rs.slice(0, 3)) { let d; try { d = JSON.parse(r.data); } catch (e) { continue; } if (!d.uid || d.active === false) continue;
+          const a = await env.DB.prepare("SELECT uid, active FROM users WHERE uid = ?").bind(d.uid).first(); if (a && a.active) await issueLink(env, req, a.uid, "self", null); }
+      })().catch((e) => console.error("forgot: " + (e && e.message)));
+      if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;   // the answer never waits for (or depends on) whether the address exists
+    }
+    return json(200, { ok: true, message: GENERIC_FORGOT });
+  }
+  if (p === "/api/reset" && M === "POST") {
+    if (!csrfOk(req)) return json(403, { error: "forbidden" });
+    const k = "rs:" + ip(req); if (await limited(env, k)) return json(429, { error: "locked", message: "Too many attempts. Try again in 15 minutes." });
+    const b = await body(req), t = String(b.token || ""), prob = pwProblem(b.password);
+    if (prob) return json(400, { error: "password", message: prob });
+    const row = /^[A-Za-z0-9_-]{20,200}$/.test(t) ? await env.DB.prepare("UPDATE resets SET used_at = ? WHERE th = ? AND used_at IS NULL AND exp > ? AND kind IN ('self','admin-link') RETURNING uid").bind(now(), await sha256("reset:" + t), Date.now()).first() : null;
+    if (!row) { await failed(env, k, 10); return json(400, { error: "token", message: "This link has expired or has already been used. Ask for a new one." }); }
+    const a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(row.uid).first();
+    if (!a || !a.active) return json(400, { error: "token", message: "This account is deactivated. Contact an administrator." });
+    const h = await hashPw(env, b.password);
+    await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 0 WHERE uid = ?").bind(h.salt, h.hash, h.iter, a.uid),
+      env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid), env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username),
+      env.DB.prepare("DELETE FROM kv WHERE k = ?").bind("tempexp:" + a.uid),
+      env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND used_at IS NULL").bind("superseded " + now(), a.uid)]);
+    await auditSrv(env, a.uid, "Password changed with a reset link", a.uid, "All sessions ended");
+    return json(200, { ok: true });
   }
   // ---- everything below needs a session
   const acc = await account(env, req);
@@ -627,12 +724,41 @@ async function route(req, env) {
     const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob });
     const h = await hashPw(env, b.password), keep = await sha256(cookies(req).xf_s || "");
     await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 0 WHERE uid = ?").bind(h.salt, h.hash, h.iter, acc.uid),
-      env.DB.prepare("DELETE FROM sessions WHERE uid = ? AND th <> ?").bind(acc.uid, keep)]);
+      env.DB.prepare("DELETE FROM sessions WHERE uid = ? AND th <> ?").bind(acc.uid, keep), env.DB.prepare("DELETE FROM kv WHERE k = ?").bind("tempexp:" + acc.uid)]);
     return json(200, { ok: true });
   }
   // ---- administrators
   if (!admin) return json(403, { error: "forbidden", message: "Administrators only." });
-  if (p === "/api/accounts" && M === "GET") return json(200, { accounts: ((await env.DB.prepare("SELECT * FROM users ORDER BY created_at").all()).results || []).map(pubAcc) });
+  if (p === "/api/accounts" && M === "GET") {
+    const last = {}; for (const r of ((await env.DB.prepare("SELECT uid, kind, created_at, used_at, mail, exp FROM resets ORDER BY created_at").all()).results || []))
+      last[r.uid] = { kind: r.kind, at: r.created_at, mail: r.mail || null, used: r.used_at && !String(r.used_at).startsWith("superseded") ? r.used_at : null, expired: !r.used_at && r.exp < Date.now() };
+    const locks = new Set(((await env.DB.prepare("SELECT k FROM fails WHERE k LIKE 'u:%' AND until > ?").bind(Date.now()).all()).results || []).map((r) => r.k.slice(2)));
+    return json(200, { mail: mailConfigured(env), accounts: ((await env.DB.prepare("SELECT * FROM users ORDER BY created_at").all()).results || []).map((x) => Object.assign(pubAcc(x), { lastReset: last[x.uid] || null, locked: locks.has(x.username) })) });
+  }
+  const mr = p.match(/^\/api\/accounts\/(u_[A-Za-z0-9]{10,40})\/reset$/);
+  if (mr && M === "POST") {
+    const b = await body(req), a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(mr[1]).first();
+    if (!a) return json(404, { error: "not_found", message: "No such account." });
+    if (a.uid === acc.uid) return json(400, { error: "self", message: "Change your own password in My Profile → Change password (or use “Forgot your password?” on the sign-in page)." });
+    if (a.owner && !acc.owner) return json(403, { error: "owner", message: "Only the owner can reset the owner's password." });
+    await env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username).run();   // a locked-out person can be helped at once
+    if (b.mode === "link") {
+      if (!mailConfigured(env)) return json(400, { error: "not_configured", message: "E-mail is not set up yet (RESEND_API_KEY and MAIL_FROM). Use a temporary password instead." });
+      const r = await issueLink(env, req, a.uid, "admin-link", acc.uid);
+      return json(r.ok ? 200 : 400, r.ok ? { ok: true, mode: "link", sentAt: r.sentAt, to: r.to } : { error: "mail", message: r.error });
+    }
+    if (b.mode === "temp") {
+      const pw = tempPassword(), h = await hashPw(env, pw), exp = Date.now() + TEMP_HOURS * 3600e3;
+      await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 1 WHERE uid = ?").bind(h.salt, h.hash, h.iter, a.uid),
+        env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid),
+        env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(exp)),
+        env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND used_at IS NULL").bind("superseded " + now(), a.uid),
+        env.DB.prepare("INSERT INTO resets (th, uid, kind, exp, created_at, created_by, mail) VALUES (?, ?, 'admin-temp', ?, ?, ?, 'not e-mailed — given in person')").bind(await sha256("temp:" + tokenNew2()), a.uid, exp, now(), acc.uid)]);
+      await auditSrv(env, acc.uid, "Temporary password issued by an administrator", a.uid, "Sessions ended; must be changed at next sign-in; expires in 24 hours");
+      return json(200, { ok: true, mode: "temp", tempPassword: pw, expiresAt: new Date(exp).toISOString() }, { "Cache-Control": "no-store" });
+    }
+    return json(400, { error: "invalid_argument", message: "Choose how to reset: e-mail link or temporary password." });
+  }
   if (p === "/api/accounts" && M === "POST") {
     const b = await body(req), un = String(b.username || "").trim().toLowerCase();
     if (!UNAME.test(un)) return json(400, { error: "username", message: "Username: 3–40 letters, digits, dot, dash or underscore." });
@@ -670,8 +796,8 @@ async function route(req, env) {
 }
 
 export default {
-  async fetch(req, env) {
-    try { return await route(req, env); }
+  async fetch(req, env, ctx) {
+    try { return await route(req, env, ctx); }
     catch (e) { console.error("error:", e && (e.stack || e)); return json(e.http || 500, { error: "server", message: e.http ? e.message : "Server error." }); }
   },
   async scheduled(event, env, ctx) {
