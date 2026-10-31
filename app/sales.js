@@ -264,8 +264,14 @@
   /* ---------------- commission rule ---------------- */
   async function commissionConfig() {
     const c = await DS().tryGet("config/commission");
-    const base = { current: C().DEFAULT_RULE.id, versions: [C().DEFAULT_RULE], trigger: "approval" };
-    return c && Array.isArray(c.versions) && c.versions.length ? Object.assign(base, c) : base;
+    const base = { current: C().RULE_C3.id, versions: [C().DEFAULT_RULE, C().RULE_C3], trigger: "approval" };
+    const out = c && Array.isArray(c.versions) && c.versions.length ? Object.assign(base, c) : base;
+    // 1.4.6: the owner approved rule C3. A saved configuration that still runs the unmodified standard C2 bands moves to C3
+    // for NEW orders (same method); a configuration an administrator customised, or that already knows C3, is left alone.
+    if (!out.versions.some((v) => v.id === "C3")) { const cur = out.versions.find((v) => v.id === out.current) || out.versions[out.versions.length - 1];
+      out.versions = out.versions.concat([Object.assign({}, C().RULE_C3, { method: cur && cur.method === "marginal" ? "marginal" : "whole" })]);
+      if (cur && C().sameBands(cur.bands, C().DEFAULT_RULE.bands)) { out.current = "C3"; out.c3Auto = true; } }
+    return out;
   }
   function ruleById(cfg, id) { return cfg.versions.find((v) => v.id === id) || null; }
   const currentRule = (cfg) => ruleById(cfg, cfg.current) || cfg.versions[cfg.versions.length - 1];
@@ -326,7 +332,9 @@
       ruleId: rule.id, rule: { method: rule.method, bands: rule.bands, label: rule.label }, method: rule.method, basis: rule.method, rateBp: calc.rateBp, breakdown: calc.breakdown, effectiveBp: calc.effectiveBp, amountMinor: calc.amountMinor, calculatedMinor: calc.amountMinor,
       approvedMinor: null, approvals: [], payouts: [], milestone: eligibilityCfg(settings).milestone, eligibleAt: null,
       status: "calculated", statusHistory: [{ status: "calculated", at: now(), by: me().id, note: "Order booked; commission calculated automatically" }], adjustments: [] };
-    await DS().set(`commissions/${sub.ownerId}/r/${oid}`, rec);
+    // 1.4.6: created once — an existing commission record for this order is never overwritten
+    const made = DS().create ? await DS().create(`commissions/${sub.ownerId}/r/${oid}`, rec) : (await DS().set(`commissions/${sub.ownerId}/r/${oid}`, rec), { created: true });
+    if (made && made.created === false) await AU().adminLog("Commission record kept", { target: oid, detail: "A commission record already existed for this order; it was not replaced." });
     const subDoc = Object.assign({}, sub); delete subDoc.id;
     await DS().set(`submissions/${sub.ownerId}/s/${sub.pid}`, Object.assign(subDoc, auto ? { booked: true, bookedAt: now(), orderId: oid } : { status: "approved", orderId: oid, decidedAt: now(), decidedBy: me().id })).catch(() => {});
     if (!auto) await setProjectStatus(sub.ownerId, sub.pid, "won", { orderId: oid, wonAt: at });
@@ -430,6 +438,50 @@
                       (unless an administrator turned on automatic approval). Approval is possible at any time. */
   const MILESTONES = { order: "Order approved", payment_verified: "First client payment verified", full_payment: "Client paid in full (verified)", ready: "Engineering: ready for installation", completed: "Engineering: completed / handed over" };
   function eligibilityCfg(settings) { const s = (settings || (root.DPUI && root.DPUI.App.config.settings) || {}).commission || {}; return { milestone: s.milestone || "order", autoApprove: !!s.autoApprove }; }
+  /* ---------- 1.4.6 commissions in payroll ----------
+     payrolls[]  {line, period, amountMinor, at, by, paidAt?, ref?, removedAt?} — where an approved commission was put through
+                 payroll. An entry is "open" until the payroll line is paid (paidAt) or the commission is taken out of a
+                 payroll that is still being prepared (removedAt). The commission becomes Paid only when that salary payment
+                 is verified in Transfers — never because it was added to payroll. */
+  const openPayrolls = (r) => (r.payrolls || []).filter((x) => !x.paidAt && !x.removedAt);
+  const inPayrollMinor = (r) => openPayrolls(r).reduce((a, x) => a + (x.amountMinor || 0), 0);
+  /** What the employee is owed in the end: nothing for a cancelled commission or one never approved. */
+  const dueMinor = (r) => (r.status === "cancelled" || r.approvedMinor == null ? 0 : owedMinor(r));
+  /** The amount that still has to go through payroll (negative = to recover after a reversal). */
+  const toPayrollMinor = (r, exceptLine = null) => dueMinor(r) - paidMinor(r) - openPayrolls(r).filter((x) => x.line !== exceptLine).reduce((a, x) => a + (x.amountMinor || 0), 0);
+  /** Life-cycle label for people (the stored status stays compatible with earlier versions). */
+  function stageOf(r) {
+    if (r.status === "cancelled") return { key: "cancelled", label: "Cancelled" }; if (r.status === "reversed") return { key: "reversed", label: "Reversed" };
+    if (r.status === "paid") return { key: "paid", label: "Paid" };
+    if (r.status === "approved") { const o = openPayrolls(r); return o.length ? { key: "payroll", label: "Included in payroll", period: o[o.length - 1].period } : { key: "approved", label: "Approved" }; }
+    if (r.status === "returned") return { key: "review", label: "Returned for review" };
+    if (r.status === "pending" || r.eligibleAt) return { key: "awaiting", label: "Earned — awaiting approval" };
+    return { key: "qualifying", label: "Pending qualification" };
+  }
+  /** Finance/administrator: record that a commission entry is (or is no longer) part of a payroll line being prepared. */
+  async function setPayrollEntry(uid, oid, line, period, amountMinor) {
+    return updateCommission(uid, oid, (r) => {
+      const e = (r.payrolls || []).find((x) => x.line === line && !x.paidAt && !x.removedAt);
+      if (e && e.amountMinor === amountMinor) return r;
+      if (e) { if (amountMinor) { e.amountMinor = amountMinor; e.changedAt = now(); } else e.removedAt = now(); }
+      else if (amountMinor) r.payrolls = (r.payrolls || []).concat([{ line, period, amountMinor, at: now(), by: me().id }]);
+      r.statusHistory = (r.statusHistory || []).concat([{ status: r.status, at: now(), by: me().id, note: amountMinor ? `In the ${period} payroll: ${amountMinor / 100}` : `Taken out of the ${period} payroll (being prepared)` }]);
+      return r;
+    }, amountMinor ? "Commission included in payroll" : "Commission removed from payroll", `${line} · ${amountMinor / 100}`);
+  }
+  /** The payroll line was paid (salary payment verified): the commission entry is paid with it. Idempotent per line. */
+  async function settleFromPayroll(uid, oid, { line, date, ref }) {
+    return updateCommission(uid, oid, (r) => {
+      const e = (r.payrolls || []).find((x) => x.line === line && !x.removedAt); if (!e || e.paidAt) return r;
+      if ((r.payouts || []).some((p) => p.txRef === "payroll:" + line)) { e.paidAt = date; return r; }
+      e.paidAt = date; e.ref = ref || "";
+      r.payouts = (r.payouts || []).concat([{ id: rid("po-"), date, ref: ref || "", amountMinor: e.amountMinor, at: now(), by: me().id, proof: null, txRef: "payroll:" + line, via: "payroll", period: e.period }]);
+      const due = dueMinor(r), paid = paidMinor(r);
+      if (r.status === "approved" && due > 0 && paid >= due) { r.paidAt = date; r.paidRef = ref || ""; return setStatus(r, "paid", `Paid with the ${e.period} salary${ref ? " · " + ref : ""}`); }
+      r.statusHistory = (r.statusHistory || []).concat([{ status: r.status, at: now(), by: me().id, note: `${e.amountMinor < 0 ? "Recovered" : "Paid"} ${Math.abs(e.amountMinor) / 100} with the ${e.period} salary${ref ? " · " + ref : ""}` }]);
+      return r;
+    }, "Commission paid with salary", `${line} ${ref || ""}`);
+  }
   const owedMinor = (r) => (r.approvedMinor != null ? r.approvedMinor : 0) + (r.adjustments || []).reduce((a, x) => a + (x.amountMinor || 0), 0);
   const paidMinor = (r) => (r.payouts || []).reduce((a, x) => a + (x.amountMinor || 0), 0) + (r.status === "paid" && !(r.payouts || []).length && r.paidAt ? owedMinor(r) : 0);
   async function approveCommission(uid, oid, { amountMinor, reason = "" } = {}) {
@@ -446,9 +498,12 @@
       return setStatus(r, "approved", amt === calc ? "Approved at the calculated amount" : `Approved ${amt / 100} (calculated ${calc / 100}): ${reason}`);
     }, "Commission approved", `${(amountMinor == null ? "calculated" : amountMinor / 100)} ${reason}`).then(async (r) => {
       if (root.DPNotify) await root.DPNotify.deliver(uid, { id: `comm-appr-${oid}-${(r.approvals || []).length}`, type: "commission", title: "Commission approved", body: `${r.name}: ${root.DPPricing.fmtMoney(r.approvedMinor, r.currency)} approved.`, link: { view: "mycomm" }, ref: oid }).catch(() => {});
+      await syncPay([r.salaryCycle]);
       return r;
     });
   }
+  /** 1.4.6: keep payroll lines that are still being prepared in step with commission changes (best effort; Finance re-checks). */
+  async function syncPay(periods) { if (!root.DPFin || !root.DPFin.syncPayrollCommissions) return; for (const p of new Set((periods || []).filter(Boolean))) await root.DPFin.syncPayrollCommissions(p).catch((e) => console.warn("payroll sync", e)); }
   async function returnCommission(uid, oid, reason) {
     if (!reason) throw new Error("A reason is required.");
     return updateCommission(uid, oid, (r) => { if (!["calculated", "pending"].includes(r.status)) throw new Error("Only commissions awaiting approval can be returned."); r.returnReason = reason; return setStatus(r, "returned", reason); }, "Commission returned for review", reason)
@@ -486,6 +541,7 @@
     if (proof) { reqCommFin(); await root.DPOrders.putFile(`commissions/${uid}/r/${oid}/po/${poid}`, proof); }
     return updateCommission(uid, oid, (r) => {
       if (!["approved", "paid"].includes(r.status) || r.approvedMinor == null) throw new Error("Approve the commission before recording a payout.");
+      if (openPayrolls(r).length) throw new Error(`This commission is in the ${openPayrolls(r)[0].period} payroll and is paid with that salary — it cannot be paid separately as well.`);
       const due = owedMinor(r) - paidMinor(r), amt = amountMinor == null ? due : Math.round(amountMinor);
       if (!(amt > 0)) throw new Error("Nothing is outstanding on this commission."); if (amt > due) throw new Error("The payout is larger than the outstanding amount.");
       if (txRef && (r.payouts || []).some((x) => x.txRef === txRef)) throw new Error("This payout is already recorded.");
@@ -501,7 +557,7 @@
     if (!reason) throw new Error("A reason is required."); if (!Number.isInteger(amountMinor) || !amountMinor) throw new Error("Enter a non-zero amount.");
     return updateCommission(uid, oid, (r) => { if (["cancelled"].includes(r.status)) throw new Error("This commission is cancelled."); r.adjustments = (r.adjustments || []).concat([{ id: rid("adj-"), at: now(), by: me().id, amountMinor, reason }]);
       if (r.status === "paid" && paidMinor(r) < owedMinor(r)) setStatus(r, "approved", "Adjusted after payment: balance outstanding"); return r; }, "Commission adjusted", `${amountMinor / 100} · ${reason}`)
-      .then(async (r) => { if (root.DPNotify) await root.DPNotify.deliver(uid, { id: `comm-adj-${oid}-${(r.adjustments || []).length}`, type: "commission", title: "Commission adjusted", body: `${r.name}: ${root.DPPricing.fmtMoney(amountMinor, r.currency)} — ${reason}`, link: { view: "mycomm" }, ref: oid }).catch(() => {}); return r; });
+      .then(async (r) => { await syncPay(openPayrolls(r).map((x) => x.period).concat(r.salaryCycle ? [r.salaryCycle] : [])); if (root.DPNotify) await root.DPNotify.deliver(uid, { id: `comm-adj-${oid}-${(r.adjustments || []).length}`, type: "commission", title: "Commission adjusted", body: `${r.name}: ${root.DPPricing.fmtMoney(amountMinor, r.currency)} — ${reason}`, link: { view: "mycomm" }, ref: oid }).catch(() => {}); return r; });
   }
   /** Recalculate under the current rule as an adjustment (only when an administrator decides to apply a new rule to an old order). */
   async function recalcAsAdjustment(uid, oid, reason) {
@@ -510,6 +566,21 @@
     const diff = C().calculate(rec.eligibleMinor, rule).amountMinor - base;
     if (!diff) throw new Error("The current rule gives the same amount.");
     return adjust(uid, oid, diff, `Recalculated under rule ${rule.id}: ${reason}`);
+  }
+  /** 1.4.6: an order's value was amended after the commission was calculated → an auditable PROPOSED adjustment, recalculated
+   *  under the rule stored on the commission record. Nothing changes until an administrator applies it (as an adjustment). */
+  async function proposeFromAmendment(oid) {
+    const o = await DS().tryGet(`orders/${oid}`); if (!o) return null; const path = `commissions/${o.ownerId}/r/${oid}`, rec = await DS().tryGet(path); if (!rec || ["cancelled"].includes(rec.status)) return null;
+    const amend = (o.valueAdjustments || []).filter((a) => a && a.status !== "void").reduce((a, x) => a + Math.round(+x.amountMinor || 0), 0);
+    const newElig = Math.max(0, rec.eligibleMinor + amend), rule = rec.rule && rec.rule.bands ? Object.assign({ id: rec.ruleId }, rec.rule) : C().DEFAULT_RULE;
+    const newCalc = C().calculate(newElig, rule).amountMinor, base = rec.approvedMinor != null ? owedMinor(rec) : (rec.calculatedMinor != null ? rec.calculatedMinor : rec.amountMinor);
+    const diff = newCalc - base; if (!diff) return null;
+    return updateCommission(o.ownerId, oid, (r) => { r.proposal = { at: now(), by: me().id, amendMinor: amend, eligibleMinor: newElig, calculatedMinor: newCalc, diffMinor: diff, ruleId: rec.ruleId, reason: "Order value amended" }; return r; }, "Commission adjustment proposed", `${oid}: ${diff / 100}`);
+  }
+  async function applyProposal(uid, oid) {
+    const r = await DS().get(`commissions/${uid}/r/${oid}`); if (!r || !r.proposal) throw new Error("No proposed adjustment.");
+    const pz = r.proposal; await adjust(uid, oid, pz.diffMinor, `Order value amended (${pz.amendMinor / 100}): recalculated on ${pz.eligibleMinor / 100} under rule ${pz.ruleId}`);
+    return updateCommission(uid, oid, (x) => { x.proposals = (x.proposals || []).concat([Object.assign({}, x.proposal, { appliedAt: now(), appliedBy: me().id })]); delete x.proposal; return x; }, "Commission adjustment applied", oid);
   }
   /** Flag a commission as eligible for review when the configured milestone is reached (administrator sessions). */
   async function checkEligibility(oid) {
@@ -540,7 +611,7 @@
     if (rec) await updateCommission(o.ownerId, oid, (r) => {
       const paid = paidMinor(r); if (paid > 0) { r.adjustments = (r.adjustments || []).concat([{ id: rid("adj-"), at: now(), by: me().id, amountMinor: -owedMinor(r), reason: "Reversal: order cancelled — " + reason }]); return setStatus(r, "reversed", reason); }
       return setStatus(r, "cancelled", reason);
-    }, "Commission cancelled/reversed", oid);
+    }, "Commission cancelled/reversed", oid).then(async (r) => { await syncPay(openPayrolls(r).map((x) => x.period)); return r; });
     await setProjectStatus(o.ownerId, o.pid, "cancelled", { statusNote: reason });
     await AU().adminLog("Cancelled order", { target: oid, reason });
     if (root.DPOrders) { await root.DPOrders.syncSalesView(oid).catch(() => {}); const a = await DS().tryGet(`assign/${oid}`); if (a) { await DS().set(`assign/${oid}`, Object.assign({}, a, { status: "cancelled", history: (a.history || []).concat([{ at: now(), by: me().id, action: "Order cancelled", detail: reason }]) }));
@@ -580,6 +651,6 @@
 
   root.DPLeads = { ORIGIN_KINDS, createLead, leadFiles, attachLeadFile, leadFile, removeLeadFile, ORG_TYPES, STAGES, STAGE_LABEL, OWNER_STAGES, CONTACT_SUB, QUAL, contactLabel, priority, scoreOf, listLeads, claimsByLead, ownership, myCrm, listCrm, stageOf, claim, release, updateCrm, addCrmEntry, syncStage,
     saveLead, reassign, adminRelease, setLeadStatus, correct, merge, importLeads, uids };
-  root.DPSales = { collectState, requestCollect, myCollectRequests, allCollectRequests, commissionConfig, currentRule, ruleById, saveCommissionConfig, estimate, submit, accept, clientRejected, orderIdFor, payoutProof, mySubmissions, allSubmissions, withdraw, approve, returnSubmission, listOrders, myCommissions, allCommissions,
+  root.DPSales = { proposeFromAmendment, applyProposal, openPayrolls, inPayrollMinor, dueMinor, toPayrollMinor, stageOf, setPayrollEntry, settleFromPayroll, collectState, requestCollect, myCollectRequests, allCollectRequests, commissionConfig, currentRule, ruleById, saveCommissionConfig, estimate, submit, accept, clientRejected, orderIdFor, payoutProof, mySubmissions, allSubmissions, withdraw, approve, returnSubmission, listOrders, myCommissions, allCommissions,
     approveCommission, returnCommission, markPaid, adjust, recalcAsAdjustment, checkEligibility, MILESTONES, eligibilityCfg, owedMinor, paidMinor, setSellingExpenses, cancelOrder, staffDoc, targetFor, setTarget, salesFigures, lastPeriods, period, inPer, setProjectStatus };
 })(typeof self !== "undefined" ? self : this);

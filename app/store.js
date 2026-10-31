@@ -84,6 +84,17 @@
   /** Read a document, tolerating "not visible" (the database answers those as absent). */
   const tryGet = (path) => be().get(path).catch(() => null);
   const tryList = (coll) => be().list(coll).catch(() => []);
+  /** 1.4.6 — a page of a collection by document id: {after} newer ids, {before} older ids, {limit}. Uses the server's paging
+   *  when it has it; otherwise reads the collection and pages in the browser (same result, more data). Ascending order. */
+  async function page(coll, o = {}) {
+    try {
+      if (st.mode === "cloud" && st.db && st.db.page) { const l = await st.db.page(coll, o); return o.since != null ? l : l.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)); }
+      let l = (await be().list(coll)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      if (o.since != null) return l;   // no write times here: the whole collection (the caller de-duplicates)
+      if (o.after != null) l = l.filter((x) => x.id > String(o.after)); if (o.before != null) l = l.filter((x) => x.id < String(o.before));
+      const n = o.limit || 200; return o.after != null && o.before == null ? l.slice(0, n) : l.slice(-n);
+    } catch (e) { return []; }
+  }
   function localStorageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   const mem = {};
@@ -264,7 +275,10 @@
     { path: "wall/{self}", read: "interact", write: "interact" },          //   …each person posts only under their own id (authorship = path)
     { path: "keys", read: "interact", write: "admin" },                    // public keys for private chat (end-to-end encrypted)
     { path: "keys/{self}", read: "interact", write: "interact" },
-    { path: "dmx", read: "interact", write: "interact" },                  // private chat: encrypted, at paths only the two participants can derive
+    { path: "dmx", read: "interact", write: "interact" },
+    // 1.4.6 — "active now" in chat: each person writes only their own heartbeat; everyone signed in can read it
+    { path: "presence", read: "interact", write: "admin" },
+    { path: "presence/{self}", read: "interact", write: "interact" },                  // private chat: encrypted, at paths only the two participants can derive
     // 1.1
     { path: "askceo", read: "admin", write: "admin" },                     // Ask CEO: the CEO's office reads and answers every conversation
     { path: "askceo/{self}", read: "interact", write: "interact" },       // … each employee only their own conversation with the CEO
@@ -320,7 +334,7 @@
     if (privateSibling) return false;
     return LV[level] >= LV[need[op]];
   }
-  root.DPStore = { st, create, init, setIdentity, capability, get, set, del, list, acquire, tryGet, tryList, saveProject, loadProject, listProjects, deleteProject, saveVersion, listVersions, getVersion,
+  root.DPStore = { st, create, init, setIdentity, capability, get, set, del, list, acquire, tryGet, tryList, page, saveProject, loadProject, listProjects, deleteProject, saveVersion, listVersions, getVersion,
     migrateLegacy, listTemplates, saveTemplate, deleteTemplate, getConfig, setConfig, getRestricted, setRestricted, getPref, setPref, putLocalHeavy, getLocalHeavy, compactCad,
     RULES, allowed, FINANCE_RULES, allowedFinance, localStorageGet, localStorageSet, local };
 })(typeof self !== "undefined" ? self : this);

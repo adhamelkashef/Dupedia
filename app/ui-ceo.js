@@ -34,7 +34,7 @@
    *  and "Acknowledge" on demand. Acknowledging only hides an item from the count for you — the issue stays until the
    *  record changes. Urgent items cannot be acknowledged. Nothing here is invented: every item comes from alerts(). */
   const GROUPS = [["sales", "Sales"], ["finance", "Finance"], ["factory", "Factory & engineering"], ["ops", "Operations"]];
-  const GROUP_OF = { Payments: "finance", Commission: "finance", Quotations: "sales", "Follow-ups": "sales", Leads: "sales", Deadline: "factory", Engineering: "factory", Factory: "factory", Quality: "factory", Records: "ops", "Ask CEO": "ops", Reminder: "ops", Access: "ops" };
+  const GROUP_OF = { Payments: "finance", Commission: "finance", Quotations: "sales", "Follow-ups": "sales", Leads: "sales", Deadline: "factory", Engineering: "factory", Factory: "factory", Quality: "factory", Records: "ops", "Ask CEO": "ops", Reminder: "ops", Access: "ops", Security: "ops" };
   const PRIO = { 3: ["Urgent", "u"], 2: ["High", "h"], 1: ["Normal", "n"] };
   const AT = { items: [], ack: {}, open: new Set() };
   const sigOf = (a) => { let h = 0; for (const c of a.title + "|" + a.body + "|" + (a.date || "")) h = (h * 31 + c.charCodeAt(0)) | 0; return String(h >>> 0); };
@@ -120,6 +120,9 @@
       if (j.e && j.e.qc && j.e.qc.status === "failed") add(3, "Quality", `${j.name}: quality check failed`, (j.e.qc.checklist || []).filter((c) => !c.ok).map((c) => c.item).slice(0, 2).join(" · "), { view: "engorders", opts: { oid: j.oid } }, "Review", { key: "job-qc:" + j.oid, date: (j.e.qc && j.e.qc.at) || null, dk: "since", who: nm(j.engineerUid) || "Engineering" });
       if (j.ds.missing && j.status !== "cancelled") add(1, "Records", `${j.name}: no project deadline recorded`, "Information missing — not a confirmed delay", { view: "engorders", opts: { oid: j.oid } }, "Set deadline", { key: "job-nodl:" + j.oid, who: nm(j.engineerUid) || "Engineering" });
     }
+    // 1.4.6 — an administrator reset the owner's password: urgent on the owner's dashboard for 7 days (only the owner receives it)
+    if (root.DPNotify) for (const n of (DPNotify.N.items || []).filter((x) => x.type === "security" && x.data && x.data.kind === "owner-reset" && Date.now() - Date.parse(x.at) < 7 * 864e5))
+      add(3, "Security", "Your owner password was reset by an administrator", n.body, { view: "audit" }, "Review audit log", { key: "sec:" + n.id, date: n.at, dk: "since", who: nm(n.data.by) });
     if (root.DPAskCeo && DPAskCeo.canReadInbox()) for (const t of (DPAskCeo.S.threads || []).filter((x) => x.unread)) add(2, "Ask CEO", `${t.name}: ${t.unread} unread question${t.unread === 1 ? "" : "s"}`, (t.last.text || "Attachment").slice(0, 90), { view: "askceo", opts: { uid: t.uid } }, "Reply", { key: "askceo:" + t.uid, date: (t.last && t.last.at) || null, dk: "since", who: t.name });
     for (const r of d.rows) {
       if (r.pay && r.pay.overpaidMinor > 0) add(3, "Payments", `${r.p.name}: overpayment to review`, `Verified ${H.money(r.pay.verifiedMinor, r.cur)} against an order value of ${H.money(r.pay.payableMinor, r.cur)}`, { view: "register", opts: { oid: r.oid } }, "Review", { key: "pay-over:" + r.oid, who: "Finance" });

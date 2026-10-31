@@ -153,7 +153,8 @@
     o.history = (o.history || []).concat([{ at: now(), by: me().id, action: "Order value amended", detail: `${amountMinor / 100} · ${reason.trim()}` }]);
     await DS().set(`orders/${oid}`, o); await syncSalesView(oid);
     await AU().adminLog("Order value amended", { target: oid, reason: reason.trim(), detail: `${amountMinor / 100}` });
-    if (NT()) await NT().deliver("@admins", { id: `va-${oid}-${o.valueAdjustments.length}`, type: "order", title: "Order value amended — check the commission", body: `${o.name}: ${amountMinor > 0 ? "+" : ""}${amountMinor / 100}. The commission is not recalculated automatically; review it in Approve Commission.`, link: { view: "approvecomm" }, ref: oid }).catch(() => {});
+    if (root.DPSales && root.DPSales.proposeFromAmendment) await root.DPSales.proposeFromAmendment(oid).catch((e) => console.warn("commission proposal", e));   // 1.4.6
+    if (NT()) await NT().deliver("@admins", { id: `va-${oid}-${o.valueAdjustments.length}`, type: "order", title: "Order value amended — check the commission", body: `${o.name}: ${amountMinor > 0 ? "+" : ""}${amountMinor / 100}. A commission adjustment has been proposed (nothing changes until it is applied); review it in Approve Commission.`, link: { view: "approvecomm" }, ref: oid }).catch(() => {});
     return o;
   }
   /** Administrator attaches (more) proof to a recorded payment. Evidence is never deleted. */

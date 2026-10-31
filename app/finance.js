@@ -191,7 +191,49 @@
       const line = { id: `${period}-${p.uid}`, period, uid: p.uid, name: AU().fullName(r) || r.displayName || "", role: r.role, department: r.department || "", currency: p.currency || "EGP", baseMinor: p.baseMinor, allowances: (p.allowances || []).map((a) => ({ label: a.label, amountMinor: a.amountMinor })),
         bonuses: [], deductions: [], recoveries: [], adjustments: [], method: p.method, payRef: p.payRef, status: "prepared", preparedBy: meId(), preparedAt: now(), txRefs: [], history: [{ at: now(), by: meId(), action: "Prepared" }] };
       Object.assign(line, C().payroll(line)); const r2 = await DS().create(`fin/payroll/r/${line.id}`, line); if (r2.created) made++; }
+    // 1.4.6: anyone owed approved commission for this salary cycle (or earlier) but without a salary profile gets a commission-only line
+    const comms = await commissionsDue(period), have2 = new Set((await payrollLines(period)).map((l) => l.uid));
+    for (const uid of new Set(comms.map((c) => c.uid))) { if (have2.has(uid)) continue; const r = dir.find((d) => d.uid === uid) || {};
+      const line = { id: `${period}-${uid}`, period, uid, name: AU().fullName(r) || r.displayName || AU().nameSync(uid) || "", role: r.role || "", department: r.department || "Sales", currency: "EGP", baseMinor: 0, allowances: [], bonuses: [], deductions: [], recoveries: [], adjustments: [], commissions: [],
+        commissionOnly: true, method: "Bank transfer", payRef: "", status: "prepared", preparedBy: meId(), preparedAt: now(), txRefs: [], history: [{ at: now(), by: meId(), action: "Prepared (commission only — no salary profile)" }] };
+      Object.assign(line, C().payroll(line)); const r2 = await DS().create(`fin/payroll/r/${line.id}`, line); if (r2.created) made++; }
+    await syncPayrollCommissions(period);
     await audit("Payroll prepared", { target: period, detail: `${made} line(s)` }); return made;
+  }
+  /* ---------------- 1.4.6 commissions in payroll ---------------- */
+  /** Approved commissions whose salary cycle is this period or earlier and that still have something to go through payroll. */
+  async function commissionsDue(period) {
+    const all = await root.DPSales.allCommissions(), out = [];
+    for (const r of all) { if (r.approvedMinor == null) continue; const cyc = r.salaryCycle || root.DPPay.salaryCycle({ acceptedAt: r.approvedAt, approvalAt: r.approvedCommissionAt });
+      if (!cyc || cyc > period) continue; if (root.DPSales.toPayrollMinor(r) === 0 && !root.DPSales.openPayrolls(r).length) continue; out.push(Object.assign({ cycle: cyc }, r)); }
+    return out;
+  }
+  /** Put due commissions into the payroll lines of `period` that are still being prepared (never into approved payroll), keep
+   *  them in step with approvals, adjustments and cancellations, and never put the same amount through payroll twice. */
+  async function syncPayrollCommissions(period) {
+    if (!(AU().isAdmin() || isFin())) return 0; if (!/^\d{4}-\d{2}$/.test(String(period || ""))) return 0;
+    const lines = (await payrollLines(period)).filter((l) => ["prepared", "pending_approval"].includes(l.status)); if (!lines.length) return 0;
+    const due = await commissionsDue(period), pendTx = (await txs()).filter((t) => t.links && t.links.commission && !["verified", "rejected", "cancelled"].includes(t.status));
+    let changed = 0;
+    for (const l of lines) {
+      const mine = due.filter((c) => c.uid === l.uid), next = [];
+      for (const c of mine) {
+        if (pendTx.some((t) => t.links.commission.uid === c.uid && t.links.commission.oid === c.oid)) continue;   // a separate payout is already in progress
+        const amt = root.DPSales.toPayrollMinor(c, l.id); if (!amt) continue;
+        next.push({ oid: c.oid, ref: c.ref || "", name: c.name || "", cycle: c.cycle, amountMinor: amt, label: amt < 0 ? "Commission reversal (recovery)" : "Sales commission" });
+      }
+      const before = JSON.stringify((l.commissions || []).map((x) => [x.oid, x.amountMinor])), after = JSON.stringify(next.map((x) => [x.oid, x.amountMinor]));
+      if (before === after) continue;
+      // the commission records first (the server checks the payroll line against them), then the line
+      for (const x of next) await root.DPSales.setPayrollEntry(l.uid, x.oid, l.id, period, x.amountMinor);
+      for (const x of l.commissions || []) if (!next.some((y) => y.oid === x.oid)) await root.DPSales.setPayrollEntry(l.uid, x.oid, l.id, period, 0);
+      const p = `fin/payroll/r/${l.id}`, cur = await DS().get(p); const b0 = C().payroll(cur).netMinor;
+      cur.commissions = next; Object.assign(cur, C().payroll(cur)); if (cur.status === "pending_approval") cur.status = "prepared";
+      cur.history = (cur.history || []).concat([{ at: now(), by: meId(), action: "Commission updated automatically", detail: next.map((x) => `${x.ref || x.oid}: ${x.amountMinor / 100}`).join("; ") || "none", before: { netMinor: b0 }, after: { netMinor: cur.netMinor } }]);
+      await DS().set(p, cur); changed++;
+      await audit("Payroll commission line updated", { target: l.id, before: { netMinor: b0 }, after: { netMinor: cur.netMinor }, detail: next.map((x) => x.oid).join(",") });
+    }
+    return changed;
   }
   async function editPayroll(id, patch, reason = "") {
     req(); const path = `fin/payroll/r/${id}`, l = await DS().get(path); if (!["prepared", "pending_approval"].includes(l.status)) throw new Error("Approved payroll cannot be edited. Record an adjustment in the next period.");
@@ -221,10 +263,12 @@
     const p = `fin/payroll/r/${id}`, l = await DS().get(p), s = C().paidStatus(l.netMinor, await linkedTxs((k) => k.payroll === id));
     l.status = s.state === "paid" ? "paid" : "partly_paid"; l.paidMinor = s.paidMinor; l.txRefs = Array.from(new Set((l.txRefs || []).concat([t.ref]))); l.history.push({ at: now(), by: meId(), action: l.status === "paid" ? "Paid" : "Partly paid", detail: t.ref });
     await DS().set(p, l); await payslip(l);
+    // 1.4.6: the commission in this payroll is paid only now that the salary payment is verified
+    if (l.status === "paid") for (const c of l.commissions || []) await root.DPSales.settleFromPayroll(l.uid, c.oid, { line: id, date: t.date || now().slice(0, 10), ref: t.ref }).catch((e) => console.warn("commission settle", e));
     if (NT()) await NT().deliver(l.uid, { id: `payslip-${id}-${l.status}`, type: "info", title: "Salary paid", body: `Your ${l.period} salary payment is recorded.`, link: { view: "profile" } }).catch(() => {});
   }
   /** Employee's own copy (no other person's data). */
-  async function payslip(l) { const c = await cfg(); if (!c.payslipsVisible) return; await DS().set(`payslips/${l.uid}/p/${l.period}`, { period: l.period, name: l.name, currency: l.currency, baseMinor: l.baseMinor, allowances: l.allowances, bonuses: l.bonuses, deductions: l.deductions.map((d) => ({ label: d.label, amountMinor: d.amountMinor, reason: d.reason })), recoveries: l.recoveries, adjustments: (l.adjustments || []).map((a) => ({ label: a.label, amountMinor: a.amountMinor, reason: a.reason })), grossMinor: l.grossMinor, netMinor: l.netMinor, status: l.status, paidMinor: l.paidMinor || 0, method: l.method, updatedAt: now() }).catch(() => {}); }
+  async function payslip(l) { const c = await cfg(); if (!c.payslipsVisible) return; await DS().set(`payslips/${l.uid}/p/${l.period}`, { period: l.period, name: l.name, currency: l.currency, baseMinor: l.baseMinor, allowances: l.allowances, bonuses: l.bonuses, commissions: (l.commissions || []).map((x) => ({ ref: x.ref, name: x.name, amountMinor: x.amountMinor, label: x.label })), commissionsMinor: l.commissionsMinor || 0, deductions: l.deductions.map((d) => ({ label: d.label, amountMinor: d.amountMinor, reason: d.reason })), recoveries: l.recoveries, adjustments: (l.adjustments || []).map((a) => ({ label: a.label, amountMinor: a.amountMinor, reason: a.reason })), grossMinor: l.grossMinor, netMinor: l.netMinor, status: l.status, paidMinor: l.paidMinor || 0, method: l.method, updatedAt: now() }).catch(() => {}); }
   const myPayslips = async () => (await DS().tryList(`payslips/${meId()}/p`)).map((x) => Object.assign({ period: x.id }, x.data));
 
   /* ---------------- workers ---------------- */
@@ -285,6 +329,7 @@
   /* ---------------- commission payouts (through the ledger; the existing commission record stays the source) ---------------- */
   async function payCommission(uid, oid, { account, method, date, amountMinor }) { req(); const r = await DS().get(`commissions/${uid}/r/${oid}`);
     if (!r || !["approved"].includes(r.status) || r.approvedMinor == null) throw new Error("Only an approved commission can be paid out.");
+    if (root.DPSales.openPayrolls(r).length) throw new Error(`This commission is in the ${root.DPSales.openPayrolls(r)[0].period} payroll and is paid with that salary.`);
     const paid = C().sum(r.payouts || [], (x) => x.amountMinor), out = Math.max(0, r.approvedMinor + C().sum(r.adjustments || [], (x) => x.amountMinor) - paid);
     if (!out) throw new Error("Nothing is outstanding."); const pend = (await linkedTxs((k) => k.commission && k.commission.uid === uid && k.commission.oid === oid)).filter((t) => !["verified", "rejected", "cancelled"].includes(t.status));
     if (pend.length) throw new Error("A payout for this commission is already in progress."); const amt = amountMinor ? Math.round(amountMinor) : out; if (amt > out) throw new Error("More than the outstanding commission.");
@@ -366,7 +411,7 @@
     return { cfg: c, accounts: A, txs: T, purchases: P, dues: D, payroll: PR, suppliers: S, taxRules: R, docs: I };
   }
 
-  root.DPFin = { F, cfg, saveCfg, can, isFin, req, accounts, saveAccount, txs, getTx, createTx, approve, reject, cancel, recordPayment, verify, reverse, addProof, proofFile, linkedTxs,
+  root.DPFin = { syncPayrollCommissions, commissionsDue, F, cfg, saveCfg, can, isFin, req, accounts, saveAccount, txs, getTx, createTx, approve, reject, cancel, recordPayment, verify, reverse, addProof, proofFile, linkedTxs,
     accountFor, postReceipt, unpostedReceipts, profiles, saveProfile, payrollLines, preparePayroll, editPayroll, submitPayroll, approvePayroll, payPayroll, myPayslips,
     wprofile, saveWProfile, DUE_KINDS, dues, addDue, decideDue, payDue, workerHistory, suppliers, saveSupplier, purchases, savePurchase, decidePurchase, markReceived, addPurchaseDoc, payPurchase,
     payCommission, taxRules, saveTaxRule, KINDS, docs, issueDoc, cancelDoc, draftFromOrder, salesDraft, salesDrafts, myDocs, importStatement, statementLines, matchLine, saveRecon, reconHistory, snapshot };

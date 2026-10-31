@@ -169,5 +169,8 @@ in person or by phone. Optionally tick *E-mail them sign-in instructions* (the e
 - Expiry: the administrator picks 4 hours, 24 hours or 3 days. Optional **Text** variables:
   `TEMP_PASSWORD_HOURS` (default 24, used when no choice is sent) and `TEMP_PASSWORD_MAX_HOURS` (upper limit, default 168 = 7 days).
   The first password of a newly created account also expires after `TEMP_PASSWORD_MAX_HOURS`.
-- Safeguards: nobody resets their own password here (use My Profile → Change password); only the owner can reset the
-  owner. Every generation and every refusal is written to the audit log (who, whom, when, e-mail result) — never the password.
+- Safeguards: nobody resets their own password here (use My Profile → Change password). Since 1.4.6 any administrator
+  can reset the **owner's** password for account recovery, without the owner's approval; the owner is always told — an
+  urgent item on their dashboard, an inbox alert and (when e-mail is set up and the owner has an address) an e-mail. The
+  owner account still cannot be demoted or deactivated. User Management shows whether each temporary password was used,
+  expired unused, replaced, or is still waiting; "used" and "expired" are written to the audit log. Every generation and every refusal is written to the audit log (who, whom, when, e-mail result) — never the password.

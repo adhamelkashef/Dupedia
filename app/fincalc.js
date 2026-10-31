@@ -229,11 +229,11 @@
   /* ---------------- payroll ---------------- */
   /** Gross = base + allowances + bonuses; Net = gross − deductions − recoveries + approved adjustments. */
   function payroll(line) {
-    const allow = sum(line.allowances, (x) => x.amountMinor), bonus = sum(line.bonuses, (x) => x.amountMinor);
+    const allow = sum(line.allowances, (x) => x.amountMinor), bonus = sum(line.bonuses, (x) => x.amountMinor), comm = sum(line.commissions || [], (x) => x.amountMinor);   // 1.4.6: approved commission, its own line
     const ded = sum(line.deductions, (x) => x.amountMinor), rec = sum(line.recoveries, (x) => x.amountMinor);
     const adj = sum((line.adjustments || []).filter((x) => x.approved !== false), (x) => x.amountMinor);
-    const gross = int(line.baseMinor) + allow + bonus, net = gross - ded - rec + adj;
-    return { baseMinor: int(line.baseMinor), allowancesMinor: allow, bonusesMinor: bonus, grossMinor: gross, deductionsMinor: ded, recoveriesMinor: rec, adjustmentsMinor: adj, netMinor: net };
+    const gross = int(line.baseMinor) + allow + bonus + comm, net = gross - ded - rec + adj;
+    return { baseMinor: int(line.baseMinor), allowancesMinor: allow, bonusesMinor: bonus, commissionsMinor: comm, grossMinor: gross, deductionsMinor: ded, recoveriesMinor: rec, adjustmentsMinor: adj, netMinor: net };
   }
   const PAYROLL_STATUS = { prepared: "Payroll prepared", pending_approval: "Awaiting approval", approved: "Approved for payment", partly_paid: "Partially paid", paid: "Paid", failed: "Payment rejected / failed" };
   /** Payment status of anything paid through the ledger: obligation amount vs verified linked transactions. */

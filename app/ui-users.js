@@ -94,7 +94,8 @@
   function resetLine(x) {
     const when = new Date(x.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }), mail = String(x.mail || "");
     const what = x.kind === "admin-temp" ? "Temporary password issued" : x.kind === "self" ? "Reset link requested by them" : "Reset link sent by an administrator";
-    const st = x.kind === "admin-temp" ? "" : x.used ? " · used" : x.expired ? " · expired unused" : mail.startsWith("sent") ? " · e-mail accepted by the provider" : mail.startsWith("failed") ? " · e-mail NOT sent" : "";
+    const tst = { used: " · used — they chose their own password", expired: " · expired unused (no longer works)", superseded: " · replaced by a newer reset", active: ` · not used yet, valid until ${x.exp ? new Date(x.exp).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—"}` };
+    const st = x.kind === "admin-temp" ? (tst[x.state] || "") : x.used ? " · used" : x.expired ? " · expired unused" : mail.startsWith("sent") ? " · e-mail accepted by the provider" : mail.startsWith("failed") ? " · e-mail NOT sent" : "";
     return `${what} ${when}${st}`;
   }
   function resetDialog(r, hr, info, mailOn) {
@@ -104,6 +105,7 @@
     const fmt = (d) => new Date(d).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
     U.openModal(`<h2>Password — ${esc(name)}</h2>
       <dl class="rp-who"><div><dt>Name</dt><dd>${esc(name)}</dd></div><div><dt>Registered e-mail</dt><dd>${esc(email || "— none on file")}</dd></div><div><dt>Role</dt><dd>${esc(role || "—")}</dd></div></dl>
+      ${info && info.owner ? `<div class="note warn small"><b>This is the owner account.</b> You can reset it for account recovery. The owner is told straight away — an alert in their inbox and on their dashboard${mailOn && email ? ", and an e-mail to " + esc(email) : ""}.</div>` : ""}
       <p class="small muted">Nobody can see the current password. Resetting also unlocks an account locked by failed sign-ins.${info && info.locked ? ' <span class="pill warn">Locked out now</span>' : ""}</p>
       ${info && info.lastReset ? `<div class="note small">Last: ${esc(resetLine(info.lastReset))}${String(info.lastReset.mail || "").startsWith("failed") ? " — " + esc(String(info.lastReset.mail).replace(/^failed:\s*/, "")) : ""}</div>` : ""}
       <div id="rp-main"><div class="rp-opts">

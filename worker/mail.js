@@ -64,3 +64,22 @@ export function tempEmail({ name, username, hours, origin }) {
 </table><p style="margin:16px 0 0 0;font-size:12px;color:#5E5E58">Dupedia X FORCE · Serious about play.</p></td></tr></table></body></html>`;
   return { subject, html, text };
 }
+
+/** Security notice to the owner: an administrator reset the owner's password. No password or link in it. */
+export function securityEmail({ name, by, what, when, origin }) {
+  const first = String(name || "").trim().split(/\s+/)[0] || "there", subject = "Security notice: your X FORCE owner password was reset";
+  const at = String(when || "").slice(0, 16).replace("T", " ") + " UTC";
+  const text = `Hello ${first},\n\n${by} reset the password of your X FORCE owner account (${what}) on ${at}.\n\nIf you arranged this, nothing else is needed. If you did not, sign in and change your password straight away, then check the audit log, or use "Forgot your password?" at ${origin}/forgot.\n\nDupedia X FORCE`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subject}</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Instrument Sans',Arial,Helvetica,sans-serif;color:#262626">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF6"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#FFFFFF;border:1px solid #DCDAD2;border-radius:18px">
+<tr><td style="padding:28px 32px 0 32px"><img src="${esc(origin)}/brand/logo_compact.png" width="130" alt="Dupedia" style="display:block;border:0;width:130px;height:auto"></td></tr>
+<tr><td style="padding:24px 32px 0 32px"><h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:1.25;font-weight:600">Your owner password was reset</h1></td></tr>
+<tr><td style="padding:14px 32px 0 32px;font-size:15px;line-height:1.6;color:#45453F">Hello ${esc(first)},<br><b>${esc(by)}</b> reset the password of your X&nbsp;FORCE owner account (${esc(what)}) on ${esc(at)}.</td></tr>
+<tr><td style="padding:14px 32px 0 32px;font-size:15px;line-height:1.6;color:#262626">If you arranged this, nothing else is needed. If you did <b>not</b>, sign in and change your password straight away and check the audit log.</td></tr>
+<tr><td style="padding:22px 32px 8px 32px"><a href="${esc(origin)}/forgot" style="display:inline-block;background:#262626;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:15px;padding:13px 26px;border-radius:999px">Secure my account</a></td></tr>
+<tr><td style="padding:20px 32px 28px 32px;font-size:13px;line-height:1.6;color:#5E5E58;border-top:1px solid #EAE8E1">This notice never contains a password. Nobody at Dupedia will ever ask you for your password.</td></tr>
+</table><p style="margin:16px 0 0 0;font-size:12px;color:#5E5E58">Dupedia X FORCE · Serious about play.</p></td></tr></table></body></html>`;
+  return { subject, html, text };
+}

@@ -21,7 +21,7 @@
     get: () => call({ op: "list", path }).then((r) => { let l = r.docs.slice(); if (ord) l.sort((a, b) => { const x = a.data[ord[0]], y = b.data[ord[0]]; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * (ord[1] === "desc" ? -1 : 1); });
       if (lim) l = l.slice(0, lim); return { docs: l.map((d) => snap(d.id, { exists: true, data: d.data })), size: l.length, empty: !l.length }; }) });
   const coll = (path) => Object.assign(query(path), { path, doc: (id) => doc(path + "/" + (id || Math.random().toString(36).slice(2))) });
-  const db = { doc, collection: coll };
+  const db = { doc, collection: coll, page: (path, o) => call(Object.assign({ op: "list", path }, o || {})).then((r) => r.docs.map((d) => ({ id: d.id, data: d.data, at: d.at }))) };   // 1.4.6 chat paging
   let meP = null; const me = () => (meP = meP || api("/api/me"));
   const names = {};
   const prof = (id, isMe) => ({ id, name: names[id] || "", email: null, avatarUrl: "", color: "#888", isMe: !!isMe, guest: false });

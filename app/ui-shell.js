@@ -59,7 +59,7 @@
   /* ---------------- sign-in gate ---------------- */
   const brandBlock = `<div class="gbrand"><img src="brand/logo_primary.png" alt="Dupedia" width="240"><div class="blocks" aria-hidden="true"><i class="sq"></i><i class="qc"></i><i class="hf"></i><i class="ci"></i></div></div>`;
   function gateShell(inner) {
-    $("#app").hidden = true; const g = $("#gate"); g.hidden = false;
+    $("#app").hidden = true; const g = $("#gate"); g.hidden = false; const sp = document.getElementById("xsplash"); if (sp) sp.hidden = true;
     g.innerHTML = `<div class="gwrap"><section class="gcard corner">${brandBlock}<span class="eyebrow">X FORCE 1.1 · Dupedia internal</span>${inner}</section>
       <aside class="gside"><h2>One system to <em>sell</em>, build and run Dupedia.</h2><ul><li>Site plans, quotations and orders from first call to handover</li><li>Engineering, factory and installation with live progress</li><li>Leads, follow-ups, payments, commission and company messaging</li></ul>
       <p class="tiny">For Dupedia employees. Access is granted by an administrator; there is no public registration.</p></aside></div>`;
@@ -155,6 +155,15 @@
     if (root.XFServer) serverFirstLogin().catch(() => {});
     const h = (location.hash || "").slice(1).split("/"), v = h[0];
     if (v && U.VIEWS.includes(v) && !U.PROJECT_VIEWS.includes(v)) U.go(v, h[1] ? { tab: h[1] } : {}); else U.go("dash");
+    splashDone();
+  }
+  /** 1.4.6: fade the sign-in animation out once the first page has really rendered (or after 12 s at the latest). */
+  function splashDone() {
+    const sp = document.getElementById("xsplash"); if (!sp || sp.hidden) return; const t0 = Date.now();
+    const tick = () => { const v = App.view, pg = v && document.querySelector(`#view-${v} .page`);
+      if ((pg && !pg.querySelector(".spinner")) || Date.now() - t0 > 12000 || !$("#gate").hidden) { sp.classList.add("out"); setTimeout(() => { sp.hidden = true; sp.classList.remove("out"); }, 320); }
+      else setTimeout(tick, 120); };
+    tick();
   }
   /** Background work while the app is open: follow-up reminders for everyone; automatic order booking for administrators. */
   function startLoops() {

@@ -17,7 +17,7 @@ import "../app/holidays.js";
 import "../app/jobs13.js";
 import { computeSweep } from "./sweep.js";
 import { researchConfig, runRequestJob, researchTick } from "./research.js";
-import { mailConfigured, sendMail, resetEmail, tempEmail } from "./mail.js";
+import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
 const DOC_MAX = 256 * 1024, BODY_MAX = 4 * 1048576;
@@ -231,7 +231,7 @@ const eqv = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const frozen = (old, next, fields) => fields.find((f) => !eqv(old[f], next[f]));
 const who = (acc) => ({ uid: acc.uid, level: levelOf(acc) });
 // which approved record lets a payout skip the approval step
-const PRE_APPROVED = [["commission", (l) => l.commission && `commissions/${l.commission.uid}/r/${l.commission.oid}`, (d) => ["approved", "paid"].includes(d.status)],
+const PRE_APPROVED = [["commission", (l) => l.commission && `commissions/${l.commission.uid}/r/${l.commission.oid}`, (d) => ["approved", "paid"].includes(d.status) && !(d.payrolls || []).some((x) => !x.paidAt && !x.removedAt)],   // 1.4.6: not while it is in payroll
   ["payroll", (l) => l.payroll && `fin/payroll/r/${l.payroll}`, (d) => ["approved", "partly_paid"].includes(d.status)],
   ["wdue", (l) => l.wdue && `fin/wdue/d/${l.wdue}`, (d) => ["approved", "partly_paid"].includes(d.status)],
   ["purchase", (l) => l.purchase && `fin/purch/p/${l.purchase}`, (d) => ["approved", "received"].includes(d.status)]];
@@ -288,7 +288,13 @@ const GUARDS = [
   { re: /^fin\/payroll\/r\/[^/]+$/, del: (old) => (old && !["prepared", "pending_approval"].includes(old.status) ? "Approved payroll is never deleted." : null),
     check: async (env, acc, p, old, next) => {
       const L = ["approved", "partly_paid", "paid"];
-      if (old && L.includes(old.status)) { const f = frozen(old, next, ["uid", "period", "baseMinor", "allowances", "bonuses", "deductions", "recoveries", "adjustments", "grossMinor", "netMinor", "approvedBy", "approvedAt"]);
+      // 1.4.6 — every commission in a payroll line must match its commission record (no invented or doubled commission)
+      if (!eqv(old && old.commissions, next.commissions)) for (const c of next.commissions || []) {
+        const d = await docOf(env, `commissions/${next.uid}/r/${c.oid}`), e = d && (d.payrolls || []).find((x) => x.line === p.split("/").pop() && !x.removedAt);
+        if (!d || !e || e.amountMinor !== c.amountMinor || d.approvedMinor == null) return `The commission ${c.oid} in this payroll does not match its approved commission record.`;
+        if ((d.payrolls || []).some((x) => x.line !== e.line && !x.paidAt && !x.removedAt)) return `The commission ${c.oid} is already in another unpaid payroll.`;
+      }
+      if (old && L.includes(old.status)) { const f = frozen(old, next, ["uid", "period", "baseMinor", "allowances", "bonuses", "commissions", "commissionsMinor", "deductions", "recoveries", "adjustments", "grossMinor", "netMinor", "approvedBy", "approvedAt"]);
         if (f) return "Approved payroll cannot be changed (" + f + "). Record an adjustment in the next period."; }
       if (L.includes(next.status) && (!old || !L.includes(old.status))) {
         const cfg = await finCfg(env), fin = levelOf(acc) === "finance";
@@ -332,7 +338,21 @@ async function dbOp(env, acc, b) {
     return r ? { raw: `{"exists":true,"data":${r.data},"version":${r.v}}` } : { exists: false };
   }
   if (op === "list") {
-    const rs = (await env.DB.prepare("SELECT path, data FROM docs WHERE parent = ?").bind(p).all()).results || [];
+    // 1.4.6 — optional paging by document id (chat): {after} = newer than, {before} = older than, {limit} = at most n (newest
+    // first when paging backwards or when only a limit is given). Without these the whole collection is returned as before.
+    const lim = Math.max(1, Math.min(500, parseInt(b.limit, 10) || 0)), paged = b.after != null || b.before != null || b.limit != null;
+    let rs;
+    if (b.since != null) {   // {since}: documents written after this server time (any id) — with their write time, for incremental reads
+      rs = (await env.DB.prepare("SELECT path, data, at FROM docs WHERE parent = ? AND at > ? ORDER BY at ASC LIMIT ?").bind(p, String(b.since), lim || 500).all()).results || [];
+      const o2 = rs.filter((r) => can(acc, r.path, "read"));
+      return { raw: `{"docs":[${o2.map((r) => `{"id":${JSON.stringify(r.path.slice(p.length + 1))},"at":${JSON.stringify(r.at)},"data":${r.data}}`).join(",")}],"until":${JSON.stringify(rs.length ? rs[rs.length - 1].at : String(b.since))}}` };
+    }
+    if (paged) {
+      const asc = b.after != null && b.before == null, conds = ["parent = ?"], args = [p];
+      if (b.after != null) { conds.push("path > ?"); args.push(p + "/" + String(b.after)); }
+      if (b.before != null) { conds.push("path < ?"); args.push(p + "/" + String(b.before)); }
+      rs = (await env.DB.prepare(`SELECT path, data FROM docs WHERE ${conds.join(" AND ")} ORDER BY path ${asc ? "ASC" : "DESC"} LIMIT ?`).bind(...args, lim || 200).all()).results || [];
+    } else rs = (await env.DB.prepare("SELECT path, data FROM docs WHERE parent = ?").bind(p).all()).results || [];
     const out = rs.filter((r) => can(acc, r.path, "read")).map((r) => [r.path.slice(p.length + 1), r.data]).sort((a, c) => a[0].localeCompare(c[0]));
     // the stored JSON is passed through as is: no parsing on the hot path (Workers Free allows 10 ms of CPU per request)
     return { raw: `{"docs":[${out.map(([id, d]) => `{"id":${JSON.stringify(id)},"data":${d}}`).join(",")}]}` };
@@ -447,7 +467,27 @@ body.leaving .blk{transition:transform .45s var(--ease);transform:translateY(-12
 @media (max-width:480px){.stage{min-height:150px}.stage .logo{width:130px}form{padding:28px 20px 22px;border-radius:18px}h1{font-size:26px}}
 .fgt{justify-self:center;font-size:13.5px;font-weight:600;color:var(--g2);text-decoration:underline;text-underline-offset:3px;padding:2px 6px;border-radius:6px}.fgt:hover{color:var(--ink)}.fgt:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
 .done{display:grid;gap:12px}.done .ic{width:44px;height:44px;border-radius:0 44px 0 0;background:var(--lime)}.done a.btn{display:block;text-align:center;font-weight:600;padding:13px;border-radius:999px;background:var(--lime);color:var(--ink);text-decoration:none}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* 1.4.6 — "Signing in…": the official logo, revealed while the server checks the password (never before it answers) */
+.sx{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:var(--cream);opacity:0;transition:opacity .25s var(--ease)}
+.sx.on{opacity:1}.sx[hidden]{display:none}
+.sx::before{content:"";position:absolute;inset:0;background:linear-gradient(#E3E0D7 .8px,transparent .8px) 0 0/80px 80px,linear-gradient(90deg,#E3E0D7 .8px,transparent .8px) 0 0/80px 80px;-webkit-mask-image:radial-gradient(70% 60% at 50% 50%,#000,transparent 75%);mask-image:radial-gradient(70% 60% at 50% 50%,#000,transparent 75%);opacity:.7}
+.sx .in{position:relative;display:grid;justify-items:center;gap:16px;padding:24px;text-align:center}
+.sx .lg{position:relative;width:min(340px,72vw)}
+.sx .lg img{display:block;width:100%;height:auto;animation:reveal .9s .05s var(--ease) both}
+.sx .lg::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.85) 50%,transparent 62%) no-repeat;background-size:250% 100%;background-position:120% 0;
+-webkit-mask:url(/brand/logo_primary.png) center/100% 100% no-repeat;mask:url(/brand/logo_primary.png) center/100% 100% no-repeat;animation:sheen 1.8s .9s ease-in-out infinite}
+.sx .bk{position:absolute;right:-18px;top:-14px;width:30px;height:30px;background:var(--lime);border-radius:0 20px 0 30px;animation:pop .5s .55s cubic-bezier(.3,1.6,.5,1) both,bob 1.3s 1.1s ease-in-out infinite alternate}
+.sx .st{margin:6px 0 0;font:600 16px/1.3 "Instrument Sans",Arial,sans-serif;color:var(--ink);animation:rise .5s .35s var(--ease) both}
+.sx .bar{width:200px;max-width:60vw;height:3px;border-radius:3px;background:var(--stone);overflow:hidden;animation:rise .5s .45s var(--ease) both}
+.sx .bar i{display:block;height:100%;width:38%;border-radius:3px;background:var(--ink);animation:load 1.15s ease-in-out infinite}
+.sx.ok .bar i{width:100%;animation:none;background:var(--lime2);transition:width .25s}
+.sx .tag{margin:4px 0 0;font:italic 600 19px/1.2 Fraunces,Georgia,serif;font-variation-settings:"SOFT" 100;color:var(--g2);letter-spacing:-.01em;animation:rise .6s .6s var(--ease) both}
+@keyframes reveal{from{clip-path:inset(0 100% 0 0);transform:scale(.97);filter:blur(3px)}to{clip-path:inset(0 0 0 0);transform:none;filter:none}}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-20% 0}}
+@keyframes pop{from{transform:scale(0) rotate(-30deg)}to{transform:none}}
+@keyframes bob{to{transform:translateY(-5px) rotate(6deg)}}
+@keyframes load{0%{transform:translateX(-110%)}100%{transform:translateX(280%)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.sx .lg::after{display:none}.sx .bar i{width:60%}}
 </style></head><body><main class="wrap">${side ? `<section class="stage"><picture><source media="(max-width:900px)" srcset="/brand/logo_compact.png"><img class="logo" src="/brand/logo_primary.png" alt="Dupedia"></picture>${SCENE}
 <p class="line">Serious about play.<small>Sales, site plans, factory, finance and market intelligence — one system for the whole company.</small></p></section>` : ""}
 <section class="panel">${inner}</section></main></body></html>`;
@@ -458,6 +498,8 @@ const LOGIN = PAGE("Sign in · X FORCE", `<form id="f" novalidate><h1>Welcome to
 <label>Password<span class="fld"><input id="pw" name="password" type="password" autocomplete="current-password" required>${PEEK}</span></label>
 <button>Sign in</button><a class="fgt" href="/forgot">Forgot your password?</a>
 <div class="help"><p class="tiny">Accounts are created by an administrator. Five failed attempts lock the account for 15 minutes.</p></div></form>
+<div class="sx" id="sx" hidden role="status" aria-live="polite"><div class="in"><div class="lg"><img src="/brand/logo_primary.png" alt="Dupedia" width="340" height="120"><span class="bk" aria-hidden="true"></span></div>
+<p class="st" id="sx-t">Signing in…</p><div class="bar" aria-hidden="true"><i></i></div><p class="tag">serious about play</p></div></div>
 <script src="/xf-login.js"></script>`);
 const SETUP = PAGE("Set up · X FORCE", `<form id="f" data-setup="1" novalidate><h1>Set up X FORCE</h1><p class="sub">Create the owner account. This page closes for good afterwards.</p>
 <div class="err" id="e" role="alert"></div>
@@ -500,12 +542,19 @@ var d=Object.fromEntries(new FormData(f));
 if(mode==="forgot"&&!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(d.email.trim()))return bad("Enter a valid e-mail address.",f.querySelector("input[name=email]"));
 if(mode==="reset"||mode==="change"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d=mode==="reset"?{token:tok,password:d.password}:{old:oldpw||d.old,password:d.password};}
 b.disabled=true;b.setAttribute("aria-busy","true");
-var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d)}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server cannot be reached. Check your connection and try again."};});
+var sx=document.getElementById("sx"),signin=!mode&&!f.dataset.setup&&sx;if(signin){sx.classList.remove("ok");document.getElementById("sx-t").textContent="Signing in…";sx.hidden=false;requestAnimationFrame(function(){requestAnimationFrame(function(){sx.classList.add("on");});});}
+var ac=window.AbortController?new AbortController():null,tm=setTimeout(function(){if(ac)ac.abort();},20000);
+var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d),signal:ac?ac.signal:undefined}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server did not answer. Check your connection and try again."};});clearTimeout(tm);
+function unsx(){if(!signin)return;sx.classList.remove("on");setTimeout(function(){sx.hidden=true;},260);}
+if(r.error||(!mode&&r.mustChange))unsx();
 if(r.error){b.disabled=false;b.removeAttribute("aria-busy");if(mode==="change"&&r.error==="old"){if(oldpw){location.href="/login";return;}r.message="The temporary password is not correct.";}var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
 if(!mode&&r.mustChange){b.disabled=false;b.removeAttribute("aria-busy");return change(d.password);}
 if(mode==="forgot")return done("Check your e-mail",r.message,"/login","Back to sign in");
 if(mode==="reset")return done("Password changed","You can now sign in with your new password. Your other sessions were signed out.","/login","Sign in");
-document.body.classList.add("leaving");setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:320);};})();`;
+if(signin){sx.classList.add("ok");document.getElementById("sx-t").textContent="Signed in — opening your dashboard…";try{sessionStorage.setItem("xf.splash","1");}catch(x){}
+setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:220);return;}
+document.body.classList.add("leaving");setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:320);};
+addEventListener("pageshow",function(e){var sx=document.getElementById("sx");if(e.persisted&&sx){sx.classList.remove("on");sx.hidden=true;if(b){b.disabled=false;b.removeAttribute("aria-busy");}}});})();`;
 const setupDone = async (env) => !!(await env.DB.prepare("SELECT v FROM kv WHERE k = 'setup_done'").first()) || !!(await env.DB.prepare("SELECT uid FROM users LIMIT 1").first());
 async function indexHtml(env, req) {
   const r = await env.ASSETS.fetch(new Request(new URL("/index.html", req.url)));
@@ -632,6 +681,19 @@ async function auditSrv(env, by, action, target, detail) {
   const id = now().replace(/[-:.TZ]/g, "").slice(0, 17) + "-" + tokenNew2().slice(0, 6).replace(/[^A-Za-z0-9]/g, "x");
   await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, 'audit', ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind("audit/" + id, JSON.stringify({ action, target, by, at: now(), kind: "security", detail: String(detail || "").slice(0, 300), server: true }), now()).run();
 }
+/** 1.4.6 — any administrator may reset the owner's password (recovery without the owner's approval). The owner is always
+ *  told: an inbox alert (shown as urgent in "Needs your attention") and, when e-mail is set up, an e-mail to their address.
+ *  Neither contains a password. */
+async function ownerAlert(env, req, owner, by, what, { mail = true } = {}) {
+  const when = now(), id = "sec-ownerreset-" + when.replace(/[^0-9]/g, "").slice(0, 14);
+  const n = { id, type: "security", title: "Your password was reset by an administrator", body: `${by.name} (${by.username}) issued ${what} for your owner account on ${when.slice(0, 16).replace("T", " ")} UTC. If you did not arrange this, change your password and review the audit log.`, link: { view: "audit" }, at: when, from: by.uid, read: false, data: { by: by.uid, at: when, kind: "owner-reset" } };
+  await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind(`notif/${owner.uid}/n/${id}`, `notif/${owner.uid}/n`, JSON.stringify(n), when).run();
+  let sent = "not e-mailed";
+  if (mail) { const d = await dirOf(env, owner.uid), to = emailOf(d);
+    if (mailConfigured(env) && to) { const m = securityEmail({ name: (d && (d.firstName || d.displayName)) || owner.name, by: by.name, what, when, origin: appOrigin(env, req) }); const r = await sendMail(env, { to, subject: m.subject, html: m.html, text: m.text }); sent = r.ok ? "owner e-mailed" : "owner e-mail failed: " + r.error; }
+    else sent = !to ? "owner has no e-mail on file" : "e-mail not set up"; }
+  await auditSrv(env, by.uid, "Owner password reset — owner alerted", owner.uid, `${what}; inbox alert created; ${sent}`);
+}
 /** Generate a readable temporary password (letters and digits, no look-alikes). */
 function tempPassword() { const c = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = rand(16); let s = ""; for (const x of r) s += c[x % c.length]; return s.slice(0, 6) + "-" + s.slice(6, 12) + (2 + (r[0] % 8)); }
 
@@ -667,7 +729,9 @@ async function route(req, env, ctx) {
     const a = await env.DB.prepare("SELECT * FROM users WHERE username = ?").bind(un).first();
     if (!a || !a.active || !(await checkPw(b.password, a))) { await failed(env, k1); await failed(env, k2, 30); return json(401, { error: "credentials", message: "Wrong username or password, or the account is deactivated." }); }
     if (a.must_change) { const te = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind("tempexp:" + a.uid).first();
-      if (te && +te.v < Date.now()) return json(401, { error: "expired", message: "Your temporary password has expired. Ask an administrator for a new one, or use “Forgot your password?”." }); }
+      if (te && +te.v < Date.now()) { const x = await env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND kind = 'admin-temp' AND used_at IS NULL RETURNING th").bind("expired " + now(), a.uid).first();
+        if (x) await auditSrv(env, a.uid, "Temporary password expired", a.uid, "Sign-in with an expired temporary password was refused; an administrator must issue a new one");
+        return json(401, { error: "expired", message: "Your temporary password has expired. Ask an administrator for a new one, or use “Forgot your password?”." }); } }
     await env.DB.batch([env.DB.prepare("DELETE FROM fails WHERE k = ?").bind(k1), env.DB.prepare("UPDATE users SET last_login = ? WHERE uid = ?").bind(now(), a.uid)]);
     return json(200, { ok: true, mustChange: !!a.must_change }, { "Set-Cookie": cookie(req, await newSession(env, a.uid), sessionDays(env) * 86400) });
   }
@@ -735,7 +799,8 @@ async function route(req, env, ctx) {
     const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob });
     if (String(b.password) === String(b.old)) return json(400, { error: "password", message: "Choose a password different from the current one." });
     const h = await hashPw(env, b.password), keep = await sha256(cookies(req).xf_s || "");
-    if (acc.must_change) await env.DB.batch([env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND kind = 'admin-temp' AND used_at IS NULL").bind(now(), acc.uid)]);
+    if (acc.must_change) { const u = await env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND kind = 'admin-temp' AND used_at IS NULL RETURNING th").bind(now(), acc.uid).first();
+      await auditSrv(env, acc.uid, "Temporary password used", acc.uid, u ? "Signed in with the temporary password and replaced it with their own; the temporary password no longer works" : "First password replaced with their own"); }
     await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 0 WHERE uid = ?").bind(h.salt, h.hash, h.iter, acc.uid),
       env.DB.prepare("DELETE FROM sessions WHERE uid = ? AND th <> ?").bind(acc.uid, keep), env.DB.prepare("DELETE FROM kv WHERE k = ?").bind("tempexp:" + acc.uid)]);
     return json(200, { ok: true });
@@ -744,7 +809,8 @@ async function route(req, env, ctx) {
   if (!admin) return json(403, { error: "forbidden", message: "Administrators only." });
   if (p === "/api/accounts" && M === "GET") {
     const last = {}; for (const r of ((await env.DB.prepare("SELECT uid, kind, created_at, used_at, mail, exp FROM resets ORDER BY created_at").all()).results || []))
-      last[r.uid] = { kind: r.kind, at: r.created_at, mail: r.mail || null, used: r.used_at && !String(r.used_at).startsWith("superseded") ? r.used_at : null, expired: !r.used_at && r.exp < Date.now() };
+      last[r.uid] = { kind: r.kind, at: r.created_at, mail: r.mail || null, used: r.used_at && !/^(superseded|expired)/.test(String(r.used_at)) ? r.used_at : null, expired: (!r.used_at && r.exp < Date.now()) || String(r.used_at || "").startsWith("expired"), exp: new Date(r.exp).toISOString(),
+        state: !r.used_at ? (r.exp < Date.now() ? "expired" : "active") : String(r.used_at).startsWith("superseded") ? "superseded" : String(r.used_at).startsWith("expired") ? "expired" : "used" };
     const locks = new Set(((await env.DB.prepare("SELECT k FROM fails WHERE k LIKE 'u:%' AND until > ?").bind(Date.now()).all()).results || []).map((r) => r.k.slice(2)));
     return json(200, { mail: mailConfigured(env), accounts: ((await env.DB.prepare("SELECT * FROM users ORDER BY created_at").all()).results || []).map((x) => Object.assign(pubAcc(x), { lastReset: last[x.uid] || null, locked: locks.has(x.username) })) });
   }
@@ -753,11 +819,11 @@ async function route(req, env, ctx) {
     const b = await body(req), a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(mr[1]).first();
     if (!a) return json(404, { error: "not_found", message: "No such account." });
     if (a.uid === acc.uid) { await auditSrv(env, acc.uid, "Password reset refused", a.uid, "Own account — use My Profile → Change password"); return json(400, { error: "self", message: "Change your own password in My Profile → Change password (or use “Forgot your password?” on the sign-in page)." }); }
-    if (a.owner && !acc.owner) { await auditSrv(env, acc.uid, "Password reset refused", a.uid, "Owner account — only the owner may reset it"); return json(403, { error: "owner", message: "Only the owner can reset the owner's password." }); }
     await env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username).run();   // a locked-out person can be helped at once
     if (b.mode === "link") {
       if (!mailConfigured(env)) return json(400, { error: "not_configured", message: "E-mail is not set up yet (RESEND_API_KEY and MAIL_FROM). Use a temporary password instead." });
       const r = await issueLink(env, req, a.uid, "admin-link", acc.uid);
+      if (r.ok && a.owner) await ownerAlert(env, req, a, acc, "a reset link", { mail: false });
       return json(r.ok ? 200 : 400, r.ok ? { ok: true, mode: "link", sentAt: r.sentAt, to: r.to } : { error: "mail", message: r.error });
     }
     if (b.mode === "temp") {
@@ -778,6 +844,7 @@ async function route(req, env, ctx) {
         await env.DB.prepare("UPDATE resets SET mail = ? WHERE uid = ? AND kind = 'admin-temp' AND exp = ?").bind(mail.ok ? "instructions sent " + now() : "instructions NOT sent: " + mail.error, a.uid, exp).run();
       }
       await auditSrv(env, acc.uid, "Temporary password generated", a.uid, `Generated (${a.level === "admin" || a.owner ? "administrator" : a.level} account); sessions ended; must be changed at sign-in; expires in ${hrs} h; e-mail: ${b.notify ? (mail.ok ? "instructions sent" : "not sent — " + mail.error) : "not requested"}`);
+      if (a.owner) await ownerAlert(env, req, a, acc, "a temporary password");
       return json(200, { ok: true, mode: "temp", tempPassword: pw, expiresAt: new Date(exp).toISOString(), hours: hrs, mail }, { "Cache-Control": "no-store" });
     }
     return json(400, { error: "invalid_argument", message: "Choose how to reset: e-mail link or temporary password." });
@@ -801,7 +868,7 @@ async function route(req, env, ctx) {
     if (b.level) a.level = ACC_LEVELS[b.level] || "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
     const st = [];
     if (b.password && a.uid === acc.uid) return json(400, { error: "self", message: "Change your own password in My Profile." });
-    if (b.password && a.owner && !acc.owner) return json(403, { error: "owner", message: "Only the owner can reset the owner's password." });
+    if (b.password && a.owner) await ownerAlert(env, req, a, acc, "a password chosen by the administrator");
     if (b.password) { await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(Date.now() + tempHours(env) * 3600e3)).run(); await auditSrv(env, acc.uid, "Temporary password set by an administrator", a.uid, "Chosen by the administrator; must be changed at sign-in"); }
     if (b.password) { const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob }); const h = await hashPw(env, b.password); Object.assign(a, { salt: h.salt, hash: h.hash, iter: h.iter, must_change: 1 }); }
     st.push(env.DB.prepare("UPDATE users SET level = ?, active = ?, name = ?, salt = ?, hash = ?, iter = ?, must_change = ? WHERE uid = ?").bind(a.level, a.active, a.name, a.salt, a.hash, a.iter, a.must_change, a.uid));

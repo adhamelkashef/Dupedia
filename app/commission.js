@@ -23,6 +23,16 @@
     bands: [{ upTo: 500000, rateBp: 0, below: true }, { upTo: 1000000, rateBp: 300, below: true }, { upTo: 3000000, rateBp: 500, below: true }, { upTo: null, rateBp: 700 }],
     note: "X FORCE 1.0 contiguous bands on the eligible order value (subtotal after discount, excluding VAT, delivery and pass-through charges), whole-order basis.",
   };
+  /* 1.4.6 — rule C3, the owner's approved bands (31 Oct 2026): the upper limit of each band now BELONGS to that band.
+       below EGP 500,000            0%
+       EGP 500,000 – 1,000,000      3%   (1,000,000 exactly → 3%)
+       EGP 1,000,000.01 – 3,000,000 5%   (3,000,000 exactly → 5%)
+       above EGP 3,000,000          7%
+     Same eligible value and whole-order basis as C2. It applies to orders approved from 1.4.6 on; commissions already
+     calculated keep the rule stored on their record (C2) — nothing is recalculated silently. */
+  const RULE_C3 = { id: "C3", label: "Standard sales commission (1.4.6)", method: "whole", currency: "EGP", effectiveFrom: "2026-11-01",
+    bands: [{ upTo: 500000, rateBp: 0, below: true }, { upTo: 1000000, rateBp: 300 }, { upTo: 3000000, rateBp: 500 }, { upTo: null, rateBp: 700 }],
+    note: "1.4.6: 3% from EGP 500,000 up to and including 1,000,000; 5% above 1,000,000 up to and including 3,000,000; 7% above 3,000,000. Eligible order value (subtotal after discount, excluding VAT, delivery and pass-through charges), whole-order basis." };
   const LEGACY_C1 = { id: "C1", label: "Standard sales commission (2.1)", method: "marginal", currency: "EGP", effectiveFrom: "2026-10-25",
     bands: [{ upTo: 500000, rateBp: 0, below: true }, { upTo: 1000000, rateBp: 300 }, { upTo: 3000000, rateBp: 500 }, { upTo: null, rateBp: 700 }] };
   const BASIS_LABEL = { whole: "Whole-order tier (one rate on the whole eligible value)", marginal: "Marginal bands (each rate on its own band)" };
@@ -109,6 +119,7 @@
   }
   const pct = (bp) => (bp / 100).toLocaleString("en-US", { maximumFractionDigits: 3 }) + "%";
 
-  root.DPCommission = { DEFAULT_RULE, LEGACY_C1, BASIS_LABEL, STATUSES, STATUS_LABEL, TRIGGERS, validateRule, calculate, base, total, triggerMet, pct };
+  const sameBands = (a, b) => JSON.stringify((a || []).map((x) => [x.upTo, x.rateBp, !!x.below])) === JSON.stringify((b || []).map((x) => [x.upTo, x.rateBp, !!x.below]));
+  root.DPCommission = { DEFAULT_RULE, RULE_C3, sameBands, LEGACY_C1, BASIS_LABEL, STATUSES, STATUS_LABEL, TRIGGERS, validateRule, calculate, base, total, triggerMet, pct };
   if (typeof module === "object" && module.exports) module.exports = root.DPCommission;
 })(typeof self !== "undefined" ? self : this);
