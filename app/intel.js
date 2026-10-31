@@ -146,6 +146,7 @@
   async function runOnServer(id, onStep) {
     for (let i = 0; i < 8; i++) {
       let r; try { r = await root.XFServer.researchRun(id); } catch (e) { r = { ok: false, error: e.message, code: e.code || "error", stop: true }; }
+      if (r && r.jobError && !r.error) r.error = r.jobError;   // 2.1: a failed job is reported, and the next job still runs
       if (onStep) try { onStep(r); } catch (e) {}
       if (r.finished || r.stop || ["busy", "limit", "not_configured"].includes(r.code) || !r.job) return r;
     }

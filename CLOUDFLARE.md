@@ -135,7 +135,7 @@ npx wrangler dev        # http://localhost:8787 — local D1, nothing touches th
 - Completed / Partially completed / Failed
 
 **Optional settings** (same place, type *Text*):
-- `GEMINI_MODEL` (default `gemini-3.8-flash`; `gemini-3.5-flash-lite` uses less quota)
+- `GEMINI_MODEL` (default `gemini-3.5-flash-lite`, fast on the free tier; `gemini-3.8-flash` reasons more but answered ~40× slower in our test and can time out)
 - `GEMINI_DAILY_CALLS` (default 100; set below the AI Studio daily limit)
 - `TAVILY_MONTHLY_CREDITS` (default 900) and `TAVILY_DAILY_CREDITS` (default 60)
 - `RESEARCH_DAILY_JOBS` (jobs per day for the whole company, default 10)

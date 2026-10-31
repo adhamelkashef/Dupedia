@@ -109,7 +109,9 @@ export function evidenceFilter(job, cands, seen) {
 /** The JSON answer: the last ```json block, else the outermost [...] or {...} in the final text. */
 export function extractJson(text) {
   const fences = [...String(text || "").matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1]);
-  const tries = fences.reverse().concat([String(text || "")]);
+  // 2.1: AI answers sometimes put a raw line break inside a text value, which strict JSON refuses. A control character
+  // replaced by a space is valid JSON anywhere (whitespace between values, a space inside text), so a cleaned copy is tried last.
+  const raw = fences.reverse().concat([String(text || "")]), tries = raw.concat(raw.map((t) => t.replace(/[\u0000-\u001f]+/g, " ")));
   for (const t of tries) {
     try { return JSON.parse(t.trim()); } catch (e) {}
     for (const [o, c] of [["[", "]"], ["{", "}"]]) { const a = t.indexOf(o), b = t.lastIndexOf(c); if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} } }
@@ -222,10 +224,10 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
       } else {
         const shape = jobName === "weekly" ? SHAPES.weekly.replace("plus at most 6 searches about competitor positioning or market activity", "plus the SOURCES below about competitor positioning or market activity") : SHAPES[jobName];
         const a = await askFree(env, jobName, db, { shape, context: contextFor(jobName, db, { publicOnly: true }), extractJson });
-        parsed = a.parsed; seen = a.seen; more = a.notes;
+        parsed = a.parsed; seen = a.seen; more = a.notes; if (parsed === undefined) more = more.concat([`AI answer: ${a.chars || 0} characters, stop reason ${a.finish || "unknown"}`]);
         info = `${a.searches} Tavily search(es), ${a.credits} credit(s), ${a.sources} source(s) · ${a.model}${a.tokens ? ` · ${a.tokens} tokens` : ""}`;
       }
-      if (parsed === undefined) { err = "The AI answer could not be read as JSON — nothing was saved."; }
+      if (parsed === undefined) { err = "The AI answer could not be read as JSON — nothing was saved."; extra = extra.concat(more); }
       else {
         const f = evidenceFilter(jobName, parsed, seen); extra = f.notes.concat(more);
         extra.push(info);

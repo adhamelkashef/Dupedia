@@ -61,7 +61,7 @@ test("opportunities: Tavily searches, Gemini reads only those sources, an invent
   assert.equal(calls.gemini.length, 1);
   const g = calls.gemini[0];
   assert.equal(g.headers["x-goog-api-key"], KEYS.GEMINI_API_KEY); assert.ok(!g.url.includes(KEYS.GEMINI_API_KEY), "key never in the URL");
-  assert.match(g.url, /\/v1beta\/models\/gemini-3\.8-flash:generateContent$/);
+  assert.match(g.url, /\/v1beta\/models\/gemini-3\.5-flash-lite:generateContent$/);
   assert.equal(g.body.generationConfig.responseMimeType, "application/json");
   const prompt = g.body.contents[0].parts[0].text;
   assert.ok(prompt.includes("[S1]") && prompt.includes(U1), "the sources are listed"); assert.ok(!prompt.includes("tvly-test"));
@@ -138,6 +138,29 @@ test("missing secret → the request stays queued with the exact reason (never m
   const req = (await list(e, "mi/req/r"))[0];
   assert.equal(req.status, "queued"); assert.equal(req.progress.opportunities.status, "waiting"); assert.match(req.progress.opportunities.note, /TAVILY_API_KEY and GEMINI_API_KEY/);
   assert.equal(r.finished, false);
+});
+
+test("AI answer with a raw line break inside a text value is still read (seen with real Gemini)", async () => {
+  const e = env(); const item = { headline: "Red Sea freight rates rise", url: U2, source: "Daily News Egypt", sourceType: "media", area: "shipping", publishedAt: "2026-10-28", summary: "Rates rose", whyItMatters: "Import costs", relevantTo: ["imports"], impact: "Higher freight", impactLevel: "medium", nextStep: "Check quotes", needsProfessional: false };
+  const text = JSON.stringify([item]).replace("Rates rose", "Rates rose\nsharply\tthis week");   // a real newline and tab inside a string
+  fake({ gemini: () => reply(200, { candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }], usageMetadata: { totalTokenCount: 10 } }) });
+  const r = await runJob(e, "news");
+  assert.equal(r.ok, true, r.error); assert.equal((await list(e, "mix/news/n")).length, 1);
+});
+
+test("AI answer cut off at the length limit → clear message, nothing saved", async () => {
+  const e = env(); fake({ gemini: () => reply(200, { candidates: [{ content: { parts: [{ text: "[{\"title\": \"New Cairo" }] }, finishReason: "MAX_TOKENS" }], usageMetadata: { totalTokenCount: 32768 } }) });
+  const r = await runJob(e, "opportunities");
+  assert.equal(r.ok, false); assert.match(r.error, /answer was cut off/); assert.equal((await list(e, "mi/opps/o")).length, 0);
+});
+
+test("Gemini is asked for low thinking; a model that refuses the setting is asked again without it", async () => {
+  const e = env(); let n = 0;
+  const calls = fake({ gemini: (b) => (++n === 1 ? reply(400, { error: { code: 400, status: "INVALID_ARGUMENT", message: "thinking_level is not supported for this model" } }) : gem([])) });
+  const r = await runJob(e, "news");
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(calls.gemini[0].body.generationConfig.thinkingConfig, { thinkingLevel: "low" });
+  assert.equal(calls.gemini[1].body.generationConfig.thinkingConfig, undefined);
 });
 
 test("AI answer that is not JSON → nothing saved, clear error", async () => {

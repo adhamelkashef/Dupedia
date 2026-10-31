@@ -107,5 +107,5 @@ export async function askFree(env, job, db, { shape, context, extractJson }) {
   try { a = await geminiJson(env, { system: RULES_FREE, prompt }); }
   catch (e) { await releaseGemini(env).catch(() => {}); if (e instanceof ProviderError && e.code === "quota") e.limit = true; throw e; }
   await countGeminiTokens(env, a.tokens).catch(() => {});
-  return Object.assign(base, { parsed: extractJson(a.text), seen: seenOf(sources.slice(0, blk.n)), model: a.model, tokens: a.tokens });
+  return Object.assign(base, { parsed: extractJson(a.text), seen: seenOf(sources.slice(0, blk.n)), model: a.model, tokens: a.tokens, finish: a.finish, chars: a.text.length });
 }

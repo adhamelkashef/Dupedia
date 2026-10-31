@@ -907,7 +907,9 @@ async function route(req, env, ctx) {
     return json(r.ok ? 200 : r.busy ? 409 : 400, r); }
   if (p === "/api/jobs/research" && M === "POST") return json(200, await researchTick(env, { budgetMs: 2 * 60e3, by: acc.uid }));   // manual: at most 2 minutes of new jobs
   if (p === "/api/research/run" && M === "POST") { const b = await body(req); if (!/^[A-Za-z0-9_\-]{1,80}$/.test(String(b.id || ""))) return json(400, { error: "invalid_argument", message: "Request id missing." });
-    return json(200, await runRequestJob(env, String(b.id), b.job ? String(b.job) : null, acc.uid)); }
+    // 2.1: a job's own failure travels as jobError — the browser bridge treats "error" as a failed call and used to stop the remaining jobs
+    const out = await runRequestJob(env, String(b.id), b.job ? String(b.job) : null, acc.uid);
+    return json(200, Object.assign({}, out, { error: undefined, jobError: out.error || null })); }
   return json(404, { error: "not_found" });
 }
 
