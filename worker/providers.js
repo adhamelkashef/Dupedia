@@ -63,12 +63,14 @@ function defaultDescribe(name, status, j, txt, headers) {
 }
 
 /* ======================= Tavily ======================= */
-export const tavilyConfigured = (env) => !!(env.TAVILY_API_KEY && String(env.TAVILY_API_KEY).length > 10) || String(env.TAVILY_KEYLESS || "") === "1";
+/** A secret as pasted: spaces, line breaks or quotes around it are removed (a copied key often carries them). */
+export const secretOf = (env, name) => String((env && env[name]) == null ? "" : env[name]).trim().replace(/^["'\u201c\u201d]+|["'\u201c\u201d]+$/g, "").trim();
+export const tavilyConfigured = (env) => secretOf(env, "TAVILY_API_KEY").length > 10 || String(env.TAVILY_KEYLESS || "") === "1";
 const tavilyBase = (env) => String(env.TAVILY_BASE_URL || "https://api.tavily.com").replace(/\/+$/, "");
 const tavilyTimeout = (env, d) => { const x = parseInt(env.TAVILY_TIMEOUT_MS, 10); return Number.isFinite(x) && x >= 100 ? Math.min(x, 60000) : d; };
 function tavilyHeaders(env) {
   const h = { "content-type": "application/json" };
-  if (env.TAVILY_API_KEY) h.authorization = "Bearer " + env.TAVILY_API_KEY;
+  if (secretOf(env, "TAVILY_API_KEY")) h.authorization = "Bearer " + secretOf(env, "TAVILY_API_KEY");
   else if (String(env.TAVILY_KEYLESS || "") === "1") h["X-Tavily-Access-Mode"] = "keyless";
   return h;
 }
@@ -122,7 +124,7 @@ export async function tavilyExtract(env, urls, { depth = "basic", maxChars = 600
      GEMINI_TIMEOUT_MS  optional, default 90000
      GEMINI_THINKING    optional, low (default) | medium | high | off — Gemini 3 "thinks" before answering; low is faster and
                         leaves room for the answer (thinking tokens count against maxOutputTokens) */
-export const geminiConfigured = (env) => !!(env.GEMINI_API_KEY && String(env.GEMINI_API_KEY).length > 10);
+export const geminiConfigured = (env) => secretOf(env, "GEMINI_API_KEY").length > 10;
 export const geminiModel = (env) => String(env.GEMINI_MODEL || "gemini-3.5-flash-lite").replace(/[^A-Za-z0-9._-]/g, "");
 function geminiDescribe(name, status, j, txt, headers) {
   const e = (j && j.error) || {}, msg = clip(e.message || txt, 200), reason = JSON.stringify(e.details || "");
@@ -139,7 +141,7 @@ export async function geminiJson(env, { system, prompt, maxOutputTokens = 32768 
   const model = geminiModel(env), base = String(env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
   const t = parseInt(env.GEMINI_TIMEOUT_MS, 10), timeoutMs = Number.isFinite(t) && t >= 100 ? Math.min(t, 120000) : 90000;
   const level = String(env.GEMINI_THINKING || "low").toLowerCase();
-  const call = (thinking) => callJson(`${base}/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+  const call = (thinking) => callJson(`${base}/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": secretOf(env, "GEMINI_API_KEY") },
     body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: Object.assign({ responseMimeType: "application/json", temperature: 0.2, maxOutputTokens }, thinking ? { thinkingConfig: { thinkingLevel: thinking } } : {}) }) },
     { name: "Gemini", timeoutMs, retries: 1, describe: geminiDescribe });

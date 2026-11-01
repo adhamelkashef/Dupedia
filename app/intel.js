@@ -128,7 +128,7 @@
       if (st && st.configured) return { fired: true, why: "", server: true };
       if (st && st.error) return { fired: false, server: true, code: "status_error", why: `Could not check the research connection (${st.error}). The request is saved and stays queued.` };
       const miss = (st && st.missingMessage) || "Research cannot run yet: a research secret is missing in Cloudflare (see CLOUDFLARE.md).";
-      return { fired: false, server: true, code: "not_configured", why: `${miss} The request is saved and stays queued. Once the secret is added, the hourly research job (at minute :28) runs it, or press “Queue again” here to run it now. Requests older than 2 days are only started with “Queue again”.` };
+      return { fired: false, server: true, code: "not_configured", why: `${miss} The request is saved and stays queued. Once the secret is added, the hourly research job (at minute :28) runs it, or press “Cancel” on it in Mission Control → Automation Health and then “Run research now” to start at once. Requests older than 2 days are only started with “Queue again”.` };
     }
     const trig = ((root.DPUI && root.DPUI.App.config.settings.intel) || {}).triggerId || (((await schedule()).tasks || {}).research) || "";
     let fired = false, why = trig ? "" : "No research task is configured (Admin › Settings › Market Intelligence).";

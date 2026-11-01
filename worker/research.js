@@ -30,6 +30,17 @@ export function researchConfig(env) {
     model: provider === "claude" ? String(env.RESEARCH_MODEL || "claude-sonnet-5-5") : geminiModel(env),
     maxSearches: n(env.RESEARCH_MAX_SEARCHES, 8, 1, 20), dailyJobs: n(env.RESEARCH_DAILY_JOBS, 10, 1, 200) };
 }
+/** 2.1 self-check (administrators only, via /api/research/status): which setting NAMES this running Worker can see —
+ *  never a value — and, for each research secret, whether it is there, how long it is, and any near-miss name
+ *  (lower case, a space, a dash…), so a key added in the wrong place or under a slightly different name is obvious. */
+export function secretCheck(env) {
+  const names = Object.keys(env || {}).filter((k) => typeof env[k] === "string").sort();
+  const squash = (s) => String(s).replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const one = (want) => { const v = typeof env[want] === "string" ? env[want] : null;
+    return { name: want, found: v != null, length: v == null ? 0 : v.trim().length, extraSpaces: v != null && v !== v.trim(),
+      similar: names.filter((n) => n !== want && squash(n) === squash(want)) }; };
+  return { names, tavily: one("TAVILY_API_KEY"), gemini: one("GEMINI_API_KEY") };
+}
 /** The exact message when a secret is missing: which secret, and where it goes. */
 export function missingMessage(cfg) {
   if (!cfg.missing.length) return { text: "", names: "" };
