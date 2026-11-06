@@ -89,20 +89,23 @@
 
   /** Commission base from a pricing result (DPPricing.compute):
    *  eligible = (subtotal − pass-through lines) − (discount − the part of the discount that fell on pass-through lines).
-   *  Pass-through = derived delivery lines, and extra charges an administrator flagged as pass-through. Tax is never included. */
+   *  Pass-through = derived delivery lines, and extra charges an administrator flagged as pass-through. Tax is never included.
+   *  New site items (terrain, structures, water play) are left out the same way until an administrator includes them in the price book. */
   function base(pricing, settings = {}) {
     if (!pricing) return null;
     const eligCats = (settings.discountEligible) || {};
-    let pass = 0, passInDiscountable = 0;
+    let pass = 0, passInDiscountable = 0, noCommission = 0;
     for (const l of pricing.lines || []) {
       if (!l.counted) continue;
-      const isPass = (l.derived && /#delivery$/.test(l.key)) || (l.kind === "extra" && l.extra && l.extra.passThrough);
+      const isPass = (l.derived && /#delivery$/.test(l.key)) || (l.kind === "extra" && l.extra && l.extra.passThrough) || l.noCommission;
       if (!isPass) continue;
+      if (l.noCommission) noCommission += l.totalMinor;
       pass += l.totalMinor; if (eligCats[l.cat] !== false) passInDiscountable += l.totalMinor;
     }
     const discountOnPass = pricing.eligible ? Math.round(pricing.discount * passInDiscountable / pricing.eligible) : 0;
     const eligibleMinor = Math.max(0, pricing.subtotal - pass - (pricing.discount - discountOnPass));
-    return { currency: pricing.currency, subtotalMinor: pricing.subtotal, discountMinor: pricing.discount, afterDiscountMinor: pricing.afterDiscount, passThroughMinor: pass, discountOnPassMinor: discountOnPass, taxMinor: pricing.tax, totalMinor: pricing.total, eligibleMinor };
+    const res = { currency: pricing.currency, subtotalMinor: pricing.subtotal, discountMinor: pricing.discount, afterDiscountMinor: pricing.afterDiscount, passThroughMinor: pass, discountOnPassMinor: discountOnPass, taxMinor: pricing.tax, totalMinor: pricing.total, eligibleMinor };
+    if (noCommission) res.noCommissionMinor = noCommission; return res;
   }
 
   /** Commission currently owed on a record: base amount plus documented adjustments (never retroactive edits). */

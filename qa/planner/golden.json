@@ -1,0 +1,5203 @@
+{
+ "empty": {
+  "takeoff": [],
+  "pricing": {
+   "lines": [],
+   "cats": {
+    "equipment": 0,
+    "landscape": 0,
+    "flooring": 0,
+    "installation": 0,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 0,
+   "eligible": 0,
+   "discount": 0,
+   "afterDiscount": 0,
+   "tax": 0,
+   "total": 0,
+   "blocking": false,
+   "issues": [],
+   "margin": {
+    "costMinor": 0,
+    "revenueMinor": 0,
+    "marginMinor": 0,
+    "pct": 0,
+    "missing": 0
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 0,
+    "discountMinor": 0,
+    "afterDiscountMinor": 0,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 0,
+    "totalMinor": 0,
+    "eligibleMinor": 0
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 0,
+   "perimeter": 0,
+   "products": 0,
+   "productTypes": 0,
+   "footArea": 0,
+   "zoneArea": 0,
+   "allocated": null,
+   "usable": null,
+   "blocked": null,
+   "flooring": 0,
+   "objects": 0
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 1
+   },
+   "codes": [
+    "info:no-site"
+   ]
+  },
+  "handover": {
+   "items": [],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 0
+  }
+ },
+ "noSite": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5600000,
+     "total": 5600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 96000,
+     "total": 96000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 5600000,
+    "landscape": 0,
+    "flooring": 0,
+    "installation": 96000,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 5696000,
+   "eligible": 5600000,
+   "discount": 0,
+   "afterDiscount": 5696000,
+   "tax": 797440,
+   "total": 6493440,
+   "blocking": false,
+   "issues": [],
+   "margin": {
+    "costMinor": 3360000,
+    "revenueMinor": 5696000,
+    "marginMinor": 2336000,
+    "pct": 41.011236,
+    "missing": 0
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 5696000,
+    "discountMinor": 0,
+    "afterDiscountMinor": 5696000,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 797440,
+    "totalMinor": 6493440,
+    "eligibleMinor": 5696000
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 0,
+   "perimeter": 0,
+   "products": 1,
+   "productTypes": 1,
+   "footArea": 9.6,
+   "zoneArea": 35,
+   "allocated": null,
+   "usable": null,
+   "blocked": null,
+   "flooring": 0,
+   "objects": 1
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 2
+   },
+   "codes": [
+    "info:no-site",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 1
+  }
+ },
+ "small": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 2,
+    "cat": "equipment",
+    "n": 2
+   },
+   {
+    "key": "el:fence",
+    "kind": "element",
+    "unit": "m",
+    "qty": 48.8,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:tree",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 48,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 2,
+     "unit": 5600000,
+     "total": 11200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 2,
+     "unit": 96000,
+     "total": 192000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:fence",
+     "cat": "landscape",
+     "qty": 48.8,
+     "unit": 32500,
+     "total": 1586000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 37500,
+     "total": 37500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:tree",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 10000,
+     "total": 10000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6000000,
+     "total": 6000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 100000,
+     "total": 100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 48,
+     "unit": 67500,
+     "total": 3240000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 11200000,
+    "landscape": 7633500,
+    "flooring": 3240000,
+    "installation": 292000,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 22365500,
+   "eligible": 22073500,
+   "discount": 0,
+   "afterDiscount": 22365500,
+   "tax": 3131170,
+   "total": 25496670,
+   "blocking": false,
+   "issues": [],
+   "margin": {
+    "costMinor": 10326000,
+    "revenueMinor": 22365500,
+    "marginMinor": 12039500,
+    "pct": 53.830677,
+    "missing": 3
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 22365500,
+    "discountMinor": 0,
+    "afterDiscountMinor": 22365500,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 3131170,
+    "totalMinor": 25496670,
+    "eligibleMinor": 22365500
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 600,
+   "perimeter": 100,
+   "products": 3,
+   "productTypes": 2,
+   "footArea": 20.1,
+   "zoneArea": 73.84,
+   "allocated": 70.518519,
+   "usable": 529.481481,
+   "blocked": 0,
+   "flooring": 48,
+   "objects": 7
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 2
+   },
+   "codes": [
+    "info:surfacing",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 2,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 7
+  }
+ },
+ "discounted": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 2,
+    "cat": "equipment",
+    "n": 2
+   },
+   {
+    "key": "el:fence",
+    "kind": "element",
+    "unit": "m",
+    "qty": 48.8,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:tree",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 48,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 2,
+     "unit": 5600000,
+     "total": 11200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 2,
+     "unit": 96000,
+     "total": 192000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:fence",
+     "cat": "landscape",
+     "qty": 48.8,
+     "unit": 32500,
+     "total": 1586000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 37500,
+     "total": 37500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:tree",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 10000,
+     "total": 10000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6000000,
+     "total": 6000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 100000,
+     "total": 100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 48,
+     "unit": 67500,
+     "total": 3240000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 11200000,
+    "landscape": 7633500,
+    "flooring": 3240000,
+    "installation": 292000,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 22365500,
+   "eligible": 22073500,
+   "discount": 2207350,
+   "afterDiscount": 20158150,
+   "tax": 2822141,
+   "total": 22980291,
+   "blocking": false,
+   "issues": [],
+   "margin": {
+    "costMinor": 10326000,
+    "revenueMinor": 20158150,
+    "marginMinor": 9832150,
+    "pct": 48.775061,
+    "missing": 3
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 22365500,
+    "discountMinor": 2207350,
+    "afterDiscountMinor": 20158150,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 2822141,
+    "totalMinor": 22980291,
+    "eligibleMinor": 20158150
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 600,
+   "perimeter": 100,
+   "products": 3,
+   "productTypes": 2,
+   "footArea": 20.1,
+   "zoneArea": 73.84,
+   "allocated": 70.518519,
+   "usable": 529.481481,
+   "blocked": 0,
+   "flooring": 48,
+   "objects": 7
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 2
+   },
+   "codes": [
+    "info:surfacing",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 2,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 7
+  }
+ },
+ "commercial": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 2,
+    "cat": "equipment",
+    "n": 2
+   },
+   {
+    "key": "el:fence",
+    "kind": "element",
+    "unit": "m",
+    "qty": 48.8,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:path",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 42,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:tree",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "obj:cu",
+    "kind": "custom",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 48,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 2,
+     "unit": 5600000,
+     "total": 11200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 2,
+     "unit": 96000,
+     "total": 192000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:fence",
+     "cat": "landscape",
+     "qty": 48.8,
+     "unit": 32500,
+     "total": 1586000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 37500,
+     "total": 37500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:path",
+     "cat": "landscape",
+     "qty": 42,
+     "unit": 45000,
+     "total": 1890000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:tree",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 10000,
+     "total": 0,
+     "status": "exception",
+     "counted": true
+    },
+    {
+     "key": "obj:cu",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 220000,
+     "total": 220000,
+     "status": "override",
+     "counted": true
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 1500000,
+     "total": 1500000,
+     "status": "override",
+     "counted": true
+    },
+    {
+     "key": "SW-L501#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 100000,
+     "total": 100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 50,
+     "unit": 67500,
+     "total": 3375000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "x:e1",
+     "cat": "services",
+     "qty": 1,
+     "unit": 300000,
+     "total": 300000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "x:e2",
+     "cat": "additional",
+     "qty": 1,
+     "unit": 990425,
+     "total": 990425,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "x:e3",
+     "cat": "additional",
+     "qty": 3,
+     "unit": 10000,
+     "total": 30000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "x:e4",
+     "cat": "additional",
+     "qty": 600,
+     "unit": 200,
+     "total": 120000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "x:e5",
+     "cat": "services",
+     "qty": 1,
+     "unit": 800000,
+     "total": 800000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 11200000,
+    "landscape": 5233500,
+    "flooring": 3375000,
+    "installation": 292000,
+    "services": 1100000,
+    "additional": 1140425
+   },
+   "subtotal": 22340925,
+   "eligible": 20948925,
+   "discount": 1047446,
+   "afterDiscount": 21293479,
+   "tax": 2981087,
+   "total": 24274566,
+   "blocking": false,
+   "issues": [
+    "info:override",
+    "info:override",
+    "warning:qty-diff"
+   ],
+   "margin": {
+    "costMinor": 11460000,
+    "revenueMinor": 21293479,
+    "marginMinor": 9833479,
+    "pct": 46.180706,
+    "missing": 4
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 22340925,
+    "discountMinor": 1047446,
+    "afterDiscountMinor": 21293479,
+    "passThroughMinor": 800000,
+    "discountOnPassMinor": 0,
+    "taxMinor": 2981087,
+    "totalMinor": 24274566,
+    "eligibleMinor": 20493479
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 600,
+   "perimeter": 100,
+   "products": 3,
+   "productTypes": 2,
+   "footArea": 20.1,
+   "zoneArea": 73.84,
+   "allocated": 70.518519,
+   "usable": 529.481481,
+   "blocked": 0,
+   "flooring": 48,
+   "objects": 10
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 2
+   },
+   "codes": [
+    "info:surfacing",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 2,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 10
+  }
+ },
+ "foreignCurrency": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 2,
+    "cat": "equipment",
+    "n": 2
+   },
+   {
+    "key": "el:fence",
+    "kind": "element",
+    "unit": "m",
+    "qty": 48.8,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:tree",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 48,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 2,
+     "unit": 112000,
+     "total": 224000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 2,
+     "unit": 1920,
+     "total": 3840,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:fence",
+     "cat": "landscape",
+     "qty": 48.8,
+     "unit": 650,
+     "total": 31720,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 750,
+     "total": 750,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:tree",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 200,
+     "total": 200,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 120000,
+     "total": 120000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 2000,
+     "total": 2000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 48,
+     "unit": 1350,
+     "total": 64800,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 224000,
+    "landscape": 152670,
+    "flooring": 64800,
+    "installation": 5840,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 447310,
+   "eligible": 441470,
+   "discount": 0,
+   "afterDiscount": 447310,
+   "tax": 62623,
+   "total": 509933,
+   "blocking": false,
+   "issues": [],
+   "margin": {
+    "costMinor": 206520,
+    "revenueMinor": 447310,
+    "marginMinor": 240790,
+    "pct": 53.830677,
+    "missing": 3
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "USD",
+    "subtotalMinor": 447310,
+    "discountMinor": 0,
+    "afterDiscountMinor": 447310,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 62623,
+    "totalMinor": 509933,
+    "eligibleMinor": 447310
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 600,
+   "perimeter": 100,
+   "products": 3,
+   "productTypes": 2,
+   "footArea": 20.1,
+   "zoneArea": 73.84,
+   "allocated": 70.518519,
+   "usable": 529.481481,
+   "blocked": 0,
+   "flooring": 48,
+   "objects": 7
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 2
+   },
+   "codes": [
+    "info:surfacing",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 2,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 7
+  }
+ },
+ "missingFx": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 2,
+    "cat": "equipment",
+    "n": 2
+   },
+   {
+    "key": "el:fence",
+    "kind": "element",
+    "unit": "m",
+    "qty": 48.8,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:tree",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 48,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 2,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "el:fence",
+     "cat": "landscape",
+     "qty": 48.8,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "el:gate",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "el:tree",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 48,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    }
+   ],
+   "cats": {
+    "equipment": 0,
+    "landscape": 0,
+    "flooring": 0,
+    "installation": 0,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 0,
+   "eligible": 0,
+   "discount": 0,
+   "afterDiscount": 0,
+   "tax": 0,
+   "total": 0,
+   "blocking": true,
+   "issues": [
+    "error:unpriced",
+    "error:unpriced",
+    "error:unpriced",
+    "error:unpriced",
+    "error:unpriced",
+    "error:unpriced",
+    "error:fx"
+   ],
+   "margin": {
+    "costMinor": 0,
+    "revenueMinor": 0,
+    "marginMinor": 0,
+    "pct": 0,
+    "missing": 0
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "USD",
+    "subtotalMinor": 0,
+    "discountMinor": 0,
+    "afterDiscountMinor": 0,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 0,
+    "totalMinor": 0,
+    "eligibleMinor": 0
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 600,
+   "perimeter": 100,
+   "products": 3,
+   "productTypes": 2,
+   "footArea": 20.1,
+   "zoneArea": 73.84,
+   "allocated": 70.518519,
+   "usable": 529.481481,
+   "blocked": 0,
+   "flooring": 48,
+   "objects": 7
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 2
+   },
+   "codes": [
+    "info:surfacing",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 2,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 7
+  }
+ },
+ "taxOff": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 2,
+    "cat": "equipment",
+    "n": 2
+   },
+   {
+    "key": "el:fence",
+    "kind": "element",
+    "unit": "m",
+    "qty": 48.8,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:tree",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 48,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 2,
+     "unit": 5600000,
+     "total": 11200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 2,
+     "unit": 96000,
+     "total": 192000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:fence",
+     "cat": "landscape",
+     "qty": 48.8,
+     "unit": 32500,
+     "total": 1586000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 37500,
+     "total": 37500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:tree",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 10000,
+     "total": 10000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6000000,
+     "total": 6000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 100000,
+     "total": 100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 48,
+     "unit": 67500,
+     "total": 3240000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 11200000,
+    "landscape": 7633500,
+    "flooring": 3240000,
+    "installation": 292000,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 22365500,
+   "eligible": 22073500,
+   "discount": 0,
+   "afterDiscount": 22365500,
+   "tax": 0,
+   "total": 22365500,
+   "blocking": false,
+   "issues": [],
+   "margin": {
+    "costMinor": 10326000,
+    "revenueMinor": 22365500,
+    "marginMinor": 12039500,
+    "pct": 53.830677,
+    "missing": 3
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 22365500,
+    "discountMinor": 0,
+    "afterDiscountMinor": 22365500,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 0,
+    "totalMinor": 22365500,
+    "eligibleMinor": 22365500
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 600,
+   "perimeter": 100,
+   "products": 3,
+   "productTypes": 2,
+   "footArea": 20.1,
+   "zoneArea": 73.84,
+   "allocated": 70.518519,
+   "usable": 529.481481,
+   "blocked": 0,
+   "flooring": 48,
+   "objects": 7
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 2
+   },
+   "codes": [
+    "info:surfacing",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 2,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 7
+  }
+ },
+ "conflicts": {
+  "takeoff": [
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E101",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E103",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-NOPE",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:pergola",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:wall",
+    "kind": "element",
+    "unit": "m",
+    "qty": 30,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5600000,
+     "total": 5600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 96000,
+     "total": 96000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E101",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1000000,
+     "total": 1000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E101#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 50000,
+     "total": 50000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E101#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E103",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1200000,
+     "total": 1200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E103#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 52000,
+     "total": 52000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-NOPE",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "el:pergola",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 57500,
+     "total": 57500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:wall",
+     "cat": "landscape",
+     "qty": 30,
+     "unit": 35000,
+     "total": 1050000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6000000,
+     "total": 6000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 100000,
+     "total": 100000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 7800000,
+    "landscape": 7107500,
+    "flooring": 0,
+    "installation": 298000,
+    "services": 25000,
+    "additional": 0
+   },
+   "subtotal": 15230500,
+   "eligible": 14907500,
+   "discount": 0,
+   "afterDiscount": 15230500,
+   "tax": 2132270,
+   "total": 17362770,
+   "blocking": true,
+   "issues": [
+    "error:unpriced"
+   ],
+   "margin": {
+    "costMinor": 8910000,
+    "revenueMinor": 15230500,
+    "marginMinor": 6320500,
+    "pct": 41.498966,
+    "missing": 1
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 15230500,
+    "discountMinor": 0,
+    "afterDiscountMinor": 15230500,
+    "passThroughMinor": 25000,
+    "discountOnPassMinor": 0,
+    "taxMinor": 2132270,
+    "totalMinor": 17362770,
+    "eligibleMinor": 15205500
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 1200,
+   "perimeter": 140,
+   "products": 5,
+   "productTypes": 5,
+   "footArea": 124.1,
+   "zoneArea": 323.84,
+   "allocated": 215.111111,
+   "usable": 924.444444,
+   "blocked": 64,
+   "flooring": 0,
+   "objects": 9
+  },
+  "validation": {
+   "counts": {
+    "error": 7,
+    "warning": 0,
+    "info": 6
+   },
+   "codes": [
+    "error:area-foot",
+    "error:foot-foot",
+    "error:foot-outside",
+    "error:line-foot",
+    "error:line-foot",
+    "error:unknown",
+    "error:unknown",
+    "info:overhead",
+    "info:overhead",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E101",
+     "code": "SW-E101",
+     "name": "Forest House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E103",
+     "code": "SW-E103",
+     "name": "Tower House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-NOPE",
+     "code": "SW-NOPE",
+     "name": "SW-NOPE",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 9
+  }
+ },
+ "allElements": {
+  "takeoff": [
+   {
+    "key": "el:g-basket",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:g-roundabout",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:g-seesaw",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:g-slide",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:g-spinner",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:g-spring",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:g-swing",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:g-trampoline",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "el:bed",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:bench",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:bin",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:bollard",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:fence",
+    "kind": "element",
+    "unit": "m",
+    "qty": 15,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate-double",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gate-exit",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:grass",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:gravel",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:hedge",
+    "kind": "element",
+    "unit": "m",
+    "qty": 15,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:light",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:palm",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:path",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 22.5,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:path-accessible",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 27,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:pergola",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:picnic",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:planter",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:planting",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:ramp",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:shade",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:shrub",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:tree",
+    "kind": "element",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:wall",
+    "kind": "element",
+    "unit": "m",
+    "qty": 15,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "obj:el42",
+    "kind": "custom",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "obj:el43",
+    "kind": "custom",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "obj:el44",
+    "kind": "custom",
+    "unit": "m",
+    "qty": 15,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "flooring",
+    "n": 1
+   },
+   {
+    "key": "el:safety-floor",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "flooring",
+    "n": 1
+   },
+   {
+    "key": "el:sand",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "flooring",
+    "n": 1
+   },
+   {
+    "key": "el:turf",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 60,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "el:g-basket",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 92500,
+     "total": 92500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:g-roundabout",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 80000,
+     "total": 80000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:g-seesaw",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 87500,
+     "total": 87500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:g-slide",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 95000,
+     "total": 95000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:g-spinner",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 97500,
+     "total": 97500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:g-spring",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 82500,
+     "total": 82500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:g-swing",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 90000,
+     "total": 90000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:g-trampoline",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 85000,
+     "total": 85000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:bed",
+     "cat": "landscape",
+     "qty": 60,
+     "unit": 25000,
+     "total": 1500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:bench",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 50000,
+     "total": 50000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:bin",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 55000,
+     "total": 55000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:bollard",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 65000,
+     "total": 65000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:fence",
+     "cat": "landscape",
+     "qty": 15,
+     "unit": 32500,
+     "total": 487500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 37500,
+     "total": 37500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate-double",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 42500,
+     "total": 42500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gate-exit",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 40000,
+     "total": 40000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:grass",
+     "cat": "landscape",
+     "qty": 60,
+     "unit": 20000,
+     "total": 1200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:gravel",
+     "cat": "landscape",
+     "qty": 60,
+     "unit": 27500,
+     "total": 1650000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:hedge",
+     "cat": "landscape",
+     "qty": 15,
+     "unit": 30000,
+     "total": 450000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:light",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 62500,
+     "total": 62500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:palm",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 12500,
+     "total": 12500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:path",
+     "cat": "landscape",
+     "qty": 22.5,
+     "unit": 45000,
+     "total": 1012500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:path-accessible",
+     "cat": "landscape",
+     "qty": 27,
+     "unit": 77500,
+     "total": 2092500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:pergola",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 57500,
+     "total": 57500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:picnic",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 52500,
+     "total": 52500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:planter",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 17500,
+     "total": 17500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:planting",
+     "cat": "landscape",
+     "qty": 60,
+     "unit": 22500,
+     "total": 1350000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:ramp",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 47500,
+     "total": 47500,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:shade",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 60000,
+     "total": 60000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:shrub",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 15000,
+     "total": 15000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:tree",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 10000,
+     "total": 10000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:wall",
+     "cat": "landscape",
+     "qty": 15,
+     "unit": 35000,
+     "total": 525000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "obj:el42",
+     "cat": "landscape",
+     "qty": 60,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "obj:el43",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "obj:el44",
+     "cat": "landscape",
+     "qty": 15,
+     "unit": null,
+     "total": 0,
+     "status": "unpriced",
+     "counted": false
+    },
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 60,
+     "unit": 67500,
+     "total": 4050000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:safety-floor",
+     "cat": "flooring",
+     "qty": 60,
+     "unit": 75000,
+     "total": 4500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:sand",
+     "cat": "flooring",
+     "qty": 60,
+     "unit": 72500,
+     "total": 4350000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "el:turf",
+     "cat": "flooring",
+     "qty": 60,
+     "unit": 70000,
+     "total": 4200000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 710000,
+    "landscape": 10892500,
+    "flooring": 17100000,
+    "installation": 0,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 28702500,
+   "eligible": 28702500,
+   "discount": 0,
+   "afterDiscount": 28702500,
+   "tax": 4018350,
+   "total": 32720850,
+   "blocking": true,
+   "issues": [
+    "error:unpriced",
+    "error:unpriced",
+    "error:unpriced"
+   ],
+   "margin": {
+    "costMinor": 8419500,
+    "revenueMinor": 28702500,
+    "marginMinor": 20283000,
+    "pct": 70.666318,
+    "missing": 18
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 28702500,
+    "discountMinor": 0,
+    "afterDiscountMinor": 28702500,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 4018350,
+    "totalMinor": 32720850,
+    "eligibleMinor": 28702500
+   },
+   "rules": {
+    "C2": 0,
+    "C3": 0
+   }
+  },
+  "metrics": {
+   "siteArea": 40000,
+   "perimeter": 800,
+   "products": 0,
+   "productTypes": 0,
+   "footArea": 0,
+   "zoneArea": 0,
+   "allocated": 0,
+   "usable": 39851.851852,
+   "blocked": 148.148148,
+   "flooring": 240,
+   "objects": 47
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 12
+   },
+   "codes": [
+    "info:gate-free",
+    "info:gate-free",
+    "info:gate-free",
+    "info:gate-free",
+    "info:generic",
+    "info:generic",
+    "info:generic",
+    "info:generic",
+    "info:generic",
+    "info:generic",
+    "info:generic",
+    "info:generic"
+   ]
+  },
+  "handover": {
+   "items": [],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 47
+  }
+ },
+ "allProducts": {
+  "takeoff": [
+   {
+    "key": "SW-A401",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A402",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A403",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A404",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A405",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A406",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A407",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A408",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A409",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A410",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A411",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-A412",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E101",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E102",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E103",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E104",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E105",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E106",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E107",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E108",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E109",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E111",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-E112",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T201",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T202",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T203",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T204",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T205",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T206",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T207",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T208",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T209",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T210",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T211",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-T212",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y301",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y302",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y303",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y304",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y305",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y306",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y307",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y308",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y309",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y310",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y311",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y312",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y313",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-Y314",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "equipment",
+    "n": 1
+   },
+   {
+    "key": "SW-L501",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L502",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L503",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L504",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L505",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L506",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L507",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L508",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   },
+   {
+    "key": "SW-L509",
+    "kind": "product",
+    "unit": "each",
+    "qty": 1,
+    "cat": "landscape",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "SW-A401",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4800000,
+     "total": 4800000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A401#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 88000,
+     "total": 88000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A402",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4900000,
+     "total": 4900000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A402#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 89000,
+     "total": 89000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A402#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A403",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5000000,
+     "total": 5000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A403#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 90000,
+     "total": 90000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A404",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5100000,
+     "total": 5100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A404#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 91000,
+     "total": 91000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A405",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5200000,
+     "total": 5200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A405#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 92000,
+     "total": 92000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A405#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A406",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5300000,
+     "total": 5300000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A406#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 93000,
+     "total": 93000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A407",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5400000,
+     "total": 5400000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A407#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 94000,
+     "total": 94000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A408",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5500000,
+     "total": 5500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A408#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 95000,
+     "total": 95000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A408#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5600000,
+     "total": 5600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A409#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 96000,
+     "total": 96000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A410",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5700000,
+     "total": 5700000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A410#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 97000,
+     "total": 97000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A411",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5800000,
+     "total": 5800000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A411#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 98000,
+     "total": 98000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A411#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A412",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 5900000,
+     "total": 5900000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-A412#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 99000,
+     "total": 99000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E101",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1000000,
+     "total": 1000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E101#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 50000,
+     "total": 50000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E101#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E102",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1100000,
+     "total": 1100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E102#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 51000,
+     "total": 51000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E103",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1200000,
+     "total": 1200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E103#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 52000,
+     "total": 52000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E104",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1300000,
+     "total": 1300000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E104#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 53000,
+     "total": 53000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E104#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E105",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1400000,
+     "total": 1400000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E105#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 54000,
+     "total": 54000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E106",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1500000,
+     "total": 1500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E106#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 55000,
+     "total": 55000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E107",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1600000,
+     "total": 1600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E107#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 56000,
+     "total": 56000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E107#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E108",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1700000,
+     "total": 1700000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E108#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 57000,
+     "total": 57000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E109",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 1800000,
+     "total": 1800000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E109#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 58000,
+     "total": 58000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E111",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2000000,
+     "total": 2000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E111#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 60000,
+     "total": 60000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E112",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2100000,
+     "total": 2100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-E112#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 61000,
+     "total": 61000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T201",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2200000,
+     "total": 2200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T201#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 62000,
+     "total": 62000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T201#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T202",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2300000,
+     "total": 2300000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T202#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 63000,
+     "total": 63000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T203",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2400000,
+     "total": 2400000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T203#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 64000,
+     "total": 64000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T204",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2500000,
+     "total": 2500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T204#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 65000,
+     "total": 65000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T204#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T205",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2600000,
+     "total": 2600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T205#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 66000,
+     "total": 66000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T206",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2700000,
+     "total": 2700000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T206#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 67000,
+     "total": 67000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T207",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2800000,
+     "total": 2800000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T207#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 68000,
+     "total": 68000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T207#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T208",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 2900000,
+     "total": 2900000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T208#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 69000,
+     "total": 69000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T209",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3000000,
+     "total": 3000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T209#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 70000,
+     "total": 70000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T210",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3100000,
+     "total": 3100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T210#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 71000,
+     "total": 71000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T210#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T211",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3200000,
+     "total": 3200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T211#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 72000,
+     "total": 72000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T212",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3300000,
+     "total": 3300000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-T212#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 73000,
+     "total": 73000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y301",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3400000,
+     "total": 3400000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y301#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 74000,
+     "total": 74000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y301#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y302",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3500000,
+     "total": 3500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y302#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 75000,
+     "total": 75000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y303",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3600000,
+     "total": 3600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y303#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 76000,
+     "total": 76000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y304",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3700000,
+     "total": 3700000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y304#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 77000,
+     "total": 77000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y304#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y305",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3800000,
+     "total": 3800000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y305#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 78000,
+     "total": 78000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y306",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 3900000,
+     "total": 3900000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y306#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 79000,
+     "total": 79000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y307",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4000000,
+     "total": 4000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y307#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 80000,
+     "total": 80000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y307#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y308",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4100000,
+     "total": 4100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y308#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 81000,
+     "total": 81000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y309",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4200000,
+     "total": 4200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y309#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 82000,
+     "total": 82000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y310",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4300000,
+     "total": 4300000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y310#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 83000,
+     "total": 83000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y310#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y311",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4400000,
+     "total": 4400000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y311#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 84000,
+     "total": 84000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y312",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4500000,
+     "total": 4500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y312#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 85000,
+     "total": 85000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y313",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4600000,
+     "total": 4600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y313#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 86000,
+     "total": 86000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y313#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y314",
+     "cat": "equipment",
+     "qty": 1,
+     "unit": 4700000,
+     "total": 4700000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-Y314#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 87000,
+     "total": 87000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6000000,
+     "total": 6000000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L501#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 100000,
+     "total": 100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L502",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6100000,
+     "total": 6100000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L502#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 101000,
+     "total": 101000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L502#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L503",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6200000,
+     "total": 6200000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L503#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 102000,
+     "total": 102000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L504",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6300000,
+     "total": 6300000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L504#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 103000,
+     "total": 103000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L505",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6400000,
+     "total": 6400000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L505#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 104000,
+     "total": 104000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L505#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L506",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6500000,
+     "total": 6500000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L506#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 105000,
+     "total": 105000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L507",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6600000,
+     "total": 6600000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L507#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 106000,
+     "total": 106000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L508",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6700000,
+     "total": 6700000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L508#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 107000,
+     "total": 107000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L508#delivery",
+     "cat": "services",
+     "qty": 1,
+     "unit": 25000,
+     "total": 25000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L509",
+     "cat": "landscape",
+     "qty": 1,
+     "unit": 6800000,
+     "total": 6800000,
+     "status": "priced",
+     "counted": true
+    },
+    {
+     "key": "SW-L509#install",
+     "cat": "installation",
+     "qty": 1,
+     "unit": 108000,
+     "total": 108000,
+     "status": "priced",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 170600000,
+    "landscape": 57600000,
+    "flooring": 0,
+    "installation": 4602000,
+    "services": 475000,
+    "additional": 0
+   },
+   "subtotal": 233277000,
+   "eligible": 228200000,
+   "discount": 0,
+   "afterDiscount": 233277000,
+   "tax": 32658780,
+   "total": 265935780,
+   "blocking": false,
+   "issues": [],
+   "margin": {
+    "costMinor": 136920000,
+    "revenueMinor": 233277000,
+    "marginMinor": 96357000,
+    "pct": 41.30583,
+    "missing": 0
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 233277000,
+    "discountMinor": 0,
+    "afterDiscountMinor": 233277000,
+    "passThroughMinor": 475000,
+    "discountOnPassMinor": 0,
+    "taxMinor": 32658780,
+    "totalMinor": 265935780,
+    "eligibleMinor": 232802000
+   },
+   "rules": {
+    "C2": 11640100,
+    "C3": 11640100
+   }
+  },
+  "metrics": {
+   "siteArea": 160000,
+   "perimeter": 1600,
+   "products": 58,
+   "productTypes": 58,
+   "footArea": 713.94228,
+   "zoneArea": 1773.6287,
+   "allocated": 1995.061728,
+   "usable": 158004.938272,
+   "blocked": 0,
+   "flooring": 0,
+   "objects": 58
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 69
+   },
+   "codes": [
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:data-flag",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:surfacing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing",
+    "info:zone-missing"
+   ]
+  },
+  "handover": {
+   "items": [
+    {
+     "key": "SW-A401",
+     "code": "SW-A401",
+     "name": "Zipline 30 m",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A402",
+     "code": "SW-A402",
+     "name": "A-Frame Climbing Wall",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A403",
+     "code": "SW-A403",
+     "name": "Hexa Climb",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A404",
+     "code": "SW-A404",
+     "name": "Climbing Set",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A405",
+     "code": "SW-A405",
+     "name": "Palm Grove Agility Set",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A406",
+     "code": "SW-A406",
+     "name": "Discovery Trail",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A407",
+     "code": "SW-A407",
+     "name": "Balance Bridge",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A408",
+     "code": "SW-A408",
+     "name": "See Saw",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A409",
+     "code": "SW-A409",
+     "name": "Classic Swing",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A410",
+     "code": "SW-A410",
+     "name": "Tic-Tac-Toe Stand",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A411",
+     "code": "SW-A411",
+     "name": "Corn Climbing Pavilion",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-A412",
+     "code": "SW-A412",
+     "name": "Balance Suspension Bridge",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E101",
+     "code": "SW-E101",
+     "name": "Forest House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E102",
+     "code": "SW-E102",
+     "name": "Jungle City",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E103",
+     "code": "SW-E103",
+     "name": "Tower House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E104",
+     "code": "SW-E104",
+     "name": "Bridge House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E105",
+     "code": "SW-E105",
+     "name": "Swing House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E106",
+     "code": "SW-E106",
+     "name": "Dream House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E107",
+     "code": "SW-E107",
+     "name": "Pirate Ship Fort",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E108",
+     "code": "SW-E108",
+     "name": "Trampoline & Play Tower System",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E109",
+     "code": "SW-E109",
+     "name": "Wooden Bridge Fort",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E111",
+     "code": "SW-E111",
+     "name": "Multi-Block Slide Pavilion",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-E112",
+     "code": "SW-E112",
+     "name": "Double Trampoline & Swing Combo",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T201",
+     "code": "SW-T201",
+     "name": "Knight's Castle Oakfort",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T202",
+     "code": "SW-T202",
+     "name": "Play Tower Castle",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T203",
+     "code": "SW-T203",
+     "name": "Marvel Play Tower",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T204",
+     "code": "SW-T204",
+     "name": "Storm Flyer",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T205",
+     "code": "SW-T205",
+     "name": "Smart Zone with SurfSwing",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T206",
+     "code": "SW-T206",
+     "name": "Rebo Modular Climbing Frame",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T207",
+     "code": "SW-T207",
+     "name": "Wooden Play Tower System",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T208",
+     "code": "SW-T208",
+     "name": "Wooden Cottage Play Tower",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T209",
+     "code": "SW-T209",
+     "name": "Mini House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T210",
+     "code": "SW-T210",
+     "name": "Little House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T211",
+     "code": "SW-T211",
+     "name": "Playtower with Slide",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-T212",
+     "code": "SW-T212",
+     "name": "Garden Swing Set with Slide",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y301",
+     "code": "SW-Y301",
+     "name": "My First Playground",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y302",
+     "code": "SW-Y302",
+     "name": "Toddler House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y303",
+     "code": "SW-Y303",
+     "name": "Cooper Climb & 1.8 m Slide",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y304",
+     "code": "SW-Y304",
+     "name": "Climbing Pyramid Adventure",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y305",
+     "code": "SW-Y305",
+     "name": "Forest Cabin Playhouse",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y306",
+     "code": "SW-Y306",
+     "name": "Playhouse Cottage & Slide",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y307",
+     "code": "SW-Y307",
+     "name": "Elevated Play House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y308",
+     "code": "SW-Y308",
+     "name": "School Giant Playhouse",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y309",
+     "code": "SW-Y309",
+     "name": "Wooden Toddlers House",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y310",
+     "code": "SW-Y310",
+     "name": "Playhouse & Sandbox",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y311",
+     "code": "SW-Y311",
+     "name": "Sand Box Pavilion",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y312",
+     "code": "SW-Y312",
+     "name": "Picnic & Sand Activity Table",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y313",
+     "code": "SW-Y313",
+     "name": "Round Picnic Table",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-Y314",
+     "code": "SW-Y314",
+     "name": "Garden Picnic Table",
+     "qty": 1,
+     "unit": "each",
+     "cat": "equipment"
+    },
+    {
+     "key": "SW-L501",
+     "code": "SW-L501",
+     "name": "Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L502",
+     "code": "SW-L502",
+     "name": "Heritage Park Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L503",
+     "code": "SW-L503",
+     "name": "The Orbit Curved Bench",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L504",
+     "code": "SW-L504",
+     "name": "Courtyard Loop Bench, Backless",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L505",
+     "code": "SW-L505",
+     "name": "Garden Bench with Back",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L506",
+     "code": "SW-L506",
+     "name": "Conservatory Bench, Backless",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L507",
+     "code": "SW-L507",
+     "name": "Promenade Rail Bench, 4.4 m",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L508",
+     "code": "SW-L508",
+     "name": "Hoop Bench, Noir",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    },
+    {
+     "key": "SW-L509",
+     "code": "SW-L509",
+     "name": "Arc Bench, Signature Yellow",
+     "qty": 1,
+     "unit": "each",
+     "cat": "landscape"
+    }
+   ],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 58
+  }
+ },
+ "commissionBands": {
+  "takeoff": [
+   {
+    "key": "el:rubber",
+    "kind": "element",
+    "unit": "m2",
+    "qty": 100,
+    "cat": "flooring",
+    "n": 1
+   }
+  ],
+  "pricing": {
+   "lines": [
+    {
+     "key": "el:rubber",
+     "cat": "flooring",
+     "qty": 100,
+     "unit": 999000,
+     "total": 99900000,
+     "status": "override",
+     "counted": true
+    }
+   ],
+   "cats": {
+    "equipment": 0,
+    "landscape": 0,
+    "flooring": 99900000,
+    "installation": 0,
+    "services": 0,
+    "additional": 0
+   },
+   "subtotal": 99900000,
+   "eligible": 99900000,
+   "discount": 0,
+   "afterDiscount": 99900000,
+   "tax": 13986000,
+   "total": 113886000,
+   "blocking": false,
+   "issues": [
+    "info:override"
+   ],
+   "margin": {
+    "costMinor": 0,
+    "revenueMinor": 99900000,
+    "marginMinor": 99900000,
+    "pct": 100,
+    "missing": 1
+   }
+  },
+  "commission": {
+   "base": {
+    "currency": "EGP",
+    "subtotalMinor": 99900000,
+    "discountMinor": 0,
+    "afterDiscountMinor": 99900000,
+    "passThroughMinor": 0,
+    "discountOnPassMinor": 0,
+    "taxMinor": 13986000,
+    "totalMinor": 113886000,
+    "eligibleMinor": 99900000
+   },
+   "rules": {
+    "C2": 2997000,
+    "C3": 2997000
+   }
+  },
+  "metrics": {
+   "siteArea": 10000,
+   "perimeter": 400,
+   "products": 0,
+   "productTypes": 0,
+   "footArea": 0,
+   "zoneArea": 0,
+   "allocated": 0,
+   "usable": 10000,
+   "blocked": 0,
+   "flooring": 100,
+   "objects": 1
+  },
+  "validation": {
+   "counts": {
+    "error": 0,
+    "warning": 0,
+    "info": 0
+   },
+   "codes": []
+  },
+  "handover": {
+   "items": [],
+   "keys": [
+    "client",
+    "items",
+    "location",
+    "name",
+    "oid",
+    "project",
+    "ref",
+    "type"
+   ],
+   "projectKeys": [
+    "cad",
+    "format",
+    "meta",
+    "objects",
+    "proposal",
+    "ref",
+    "site",
+    "v"
+   ],
+   "objects": 1
+  }
+ }
+}

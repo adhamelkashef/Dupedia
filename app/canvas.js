@@ -32,7 +32,7 @@
     const k = C.v.scale; // px per metre for LOD (CSS px)
     // pen.k returns device units (×dpr); text sizes are in device units on canvas — scale them by dpr
     DPPlan.draw(P, { project: S.project, cadData: S.cadData, refImg: C.refImg, mode: C.displayMode, show: C.show, per: C.validation.per, selection: S.selection, ts: d,
-      view: { x0: w0[0], y0: w0[1], x1: w1[0], y1: w1[1] }, hiddenIds: null });
+      view: { x0: w0[0], y0: w0[1], x1: w1[0], y1: w1[1] }, hiddenIds: null, heights: !!(root.DPUI && root.DPUI.planner3dOn && root.DPUI.planner3dOn()) });
     overlays(P, ctx, d, k);
   }
   function overlays(P, ctx, d) {
@@ -166,9 +166,9 @@
     return { p: w, kind: null };
   }
   const orth = (a, w) => (Math.abs(w[0] - a[0]) > Math.abs(w[1] - a[1]) ? [w[0], a[1]] : [a[0], w[1]]);
-  function alignSnap(lead, nx, ny, skip) {
+  function alignSnap(lead, nx, ny, skip, tol = 7 / C.v.scale) {
     const tmp = Object.assign({}, lead, { x: nx, y: ny }), b = G.bbox(M.outline(tmp).flat());
-    const mine = { x: [b.x0, nx, b.x1], y: [b.y0, ny, b.y1] }, tol = 7 / C.v.scale, targets = { x: [], y: [] };
+    const mine = { x: [b.x0, nx, b.x1], y: [b.y0, ny, b.y1] }, targets = { x: [], y: [] };
     if (C.guides) {
       for (const o of S.project.objects) { if (skip.has(o.id) || o.hidden || !(o.kind === "product" || o.kind === "point")) continue; const ob = M.bounds(o); if (!ob) continue; targets.x.push(ob.x0, o.x, ob.x1); targets.y.push(ob.y0, o.y, ob.y1); }
       if (S.project.site && S.project.site.poly) for (const p of S.project.site.poly) { targets.x.push(p[0]); targets.y.push(p[1]); }
@@ -179,6 +179,24 @@
       if (best) { if (ax === "x") x += best.d; else y += best.d; guides.push({ axis: ax, v: best.t }); }
       else if (C.snap) { if (ax === "x") x = G.snap(nx, C.step); else y = G.snap(ny, C.step); } }
     return { x, y, guides };
+  }
+
+  /* ---------------- edit calculations, shared by the 2D plan and the 3D view ---------------- */
+  function moveStart(lead, movers) { return { lead, start: movers.map((o) => ({ o, snap: JSON.stringify({ x: o.x, y: o.y, pts: o.pts, poly: o.poly }) })) }; }
+  function moveTo(d, w0, w, { free = false, axis = false, tol } = {}) {
+    let dx = w[0] - w0[0], dy = w[1] - w0[1];
+    for (const s of d.start) { const o0 = JSON.parse(s.snap); s.o.x = o0.x; s.o.y = o0.y; if (o0.pts) s.o.pts = o0.pts; if (o0.poly) s.o.poly = o0.poly; }
+    if (axis) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+    const lead = d.lead;
+    if ((lead.kind === "product" || lead.kind === "point") && !lead.locked && !free) { const g = alignSnap(lead, lead.x + dx, lead.y + dy, new Set(d.start.map((s) => s.o.id)), tol); dx = g.x - lead.x; dy = g.y - lead.y; C.guidesNow = g.guides; }
+    else if (C.snap && !free) { dx = G.snap(dx, C.step); dy = G.snap(dy, C.step); }
+    for (const s of d.start) M.translateObj(s.o, dx, dy);
+  }
+  function rotateTo(o, w, free) { let a = Math.atan2(w[1] - o.y, w[0] - o.x) * 180 / Math.PI; if (!free) a = Math.round(a / C.angle) * C.angle; o.rot = G.normAngle(a); }
+  function resizeTo(o, w, free) {
+    const a = -(o.rot || 0) * Math.PI / 180, dx = w[0] - o.x, dy = w[1] - o.y, lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
+    const snapv = (v) => (C.snap && !free ? Math.max(C.step / 2, G.snap(v, Math.min(C.step, 0.1))) : Math.max(0.05, v));
+    if (DPCat.EL[o.type].shape === "circle") { const d2 = snapv(Math.hypot(lx, ly) * 2 / Math.SQRT2); o.l = o.w = Math.max(0.1, d2); } else { o.l = Math.max(0.05, snapv(Math.abs(lx) * 2)); o.w = Math.max(0.05, snapv(Math.abs(ly) * 2)); }
   }
 
   /* ---------------- interaction ---------------- */
@@ -204,7 +222,7 @@
       else if (!S.selection.has(hit.id)) { S.selection.clear(); S.selection.add(hit.id); }
       if (C.editVerts && C.editVerts !== hit.id && C.editVerts !== "site") { C.editVerts = null; C.selVertex = -1; }
       const movers = M.selected().filter((o) => !o.locked);
-      drag = { kind: "move", w0: w, lead: hit, start: movers.map((o) => ({ o, snap: JSON.stringify({ x: o.x, y: o.y, pts: o.pts, poly: o.poly }) })), moved: false };
+      drag = Object.assign({ kind: "move", w0: w, moved: false }, moveStart(hit, movers));
       M.emit("select"); req(); return;
     }
     if (!(e.shiftKey || e.ctrlKey || e.metaKey) && S.selection.size) { S.selection.clear(); M.emit("select"); }
@@ -223,21 +241,12 @@
     if (drag.kind === "vertex") { const t = editTarget(); if (!t) return; let p = cadSnap(w) || (C.snap ? [G.snap(w[0], C.step), G.snap(w[1], C.step)] : w);
       if (e.shiftKey) { const n = t.pts.length; p = orth(t.pts[(drag.i - 1 + n) % n], w); }
       t.pts[drag.i] = p; drag.moved = true; if (C.editVerts === "site") { S.project.site.source = S.project.site.source === "cad" ? "cad-edited" : S.project.site.source; S.project.site.cadPath = null; } M.emit("live"); req(); return; }
-    if (drag.kind === "rotate") { const o = drag.o; let a = Math.atan2(w[1] - o.y, w[0] - o.x) * 180 / Math.PI; if (!e.altKey) a = Math.round(a / C.angle) * C.angle; o.rot = G.normAngle(a); drag.moved = true; M.emit("live"); req(); return; }
-    if (drag.kind === "resize") { const o = drag.o, a = -(o.rot || 0) * Math.PI / 180, dx = w[0] - o.x, dy = w[1] - o.y, lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
-      const snapv = (v) => (C.snap && !e.altKey ? Math.max(C.step / 2, G.snap(v, Math.min(C.step, 0.1))) : Math.max(0.05, v));
-      if (DPCat.EL[o.type].shape === "circle") { const d2 = snapv(Math.hypot(lx, ly) * 2 / Math.SQRT2); o.l = o.w = Math.max(0.1, d2); } else { o.l = Math.max(0.05, snapv(Math.abs(lx) * 2)); o.w = Math.max(0.05, snapv(Math.abs(ly) * 2)); }
-      drag.moved = true; M.emit("live"); req(); return; }
+    if (drag.kind === "rotate") { rotateTo(drag.o, w, e.altKey); drag.moved = true; M.emit("live"); req(); return; }
+    if (drag.kind === "resize") { resizeTo(drag.o, w, e.altKey); drag.moved = true; M.emit("live"); req(); return; }
     if (drag.kind === "move") {
-      let dx = w[0] - drag.w0[0], dy = w[1] - drag.w0[1];
-      if (!drag.moved && Math.hypot(dx, dy) * C.v.scale < 3) return;
+      if (!drag.moved && Math.hypot(w[0] - drag.w0[0], w[1] - drag.w0[1]) * C.v.scale < 3) return;
       if (!drag.start.length) return; drag.moved = true;
-      for (const s of drag.start) { const o0 = JSON.parse(s.snap); s.o.x = o0.x; s.o.y = o0.y; if (o0.pts) s.o.pts = o0.pts; if (o0.poly) s.o.poly = o0.poly; }
-      if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
-      const lead = drag.lead;
-      if ((lead.kind === "product" || lead.kind === "point") && !lead.locked && !e.altKey) { const g = alignSnap(lead, lead.x + dx, lead.y + dy, new Set(drag.start.map((s) => s.o.id))); dx = g.x - lead.x; dy = g.y - lead.y; C.guidesNow = g.guides; }
-      else if (C.snap && !e.altKey) { dx = G.snap(dx, C.step); dy = G.snap(dy, C.step); }
-      for (const s of drag.start) M.translateObj(s.o, dx, dy);
+      moveTo(drag, drag.w0, w, { free: e.altKey, axis: e.shiftKey });
       M.emit("live"); req(); return;
     }
     if (drag.kind === "marquee") {
@@ -366,6 +375,6 @@
     M.on("loaded", () => { C.editVerts = null; C.selVertex = -1; C.validation = M.validate(); req(); });
   }
 
-  Object.assign(C, { init, req, fit, zoomAt, centerOn, toS, toW, setMode, endMode, contentBox, cadPathWorld, snapPoint, render: () => render() });
+  Object.assign(C, { init, req, fit, zoomAt, centerOn, toS, toW, setMode, endMode, contentBox, cadPathWorld, snapPoint, render: () => render(), editOps: { moveStart, moveTo, rotateTo, resizeTo, resizeHandle } });
   root.DPCanvas = C;
 })(typeof self !== "undefined" ? self : this);

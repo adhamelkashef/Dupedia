@@ -7,20 +7,22 @@
 
   function renderAdmin(opts = {}) {
     if (!U.isAdmin()) { U.go("dash"); return; }
-    if (opts && opts.tab && ["prices", "catalog", "commercial", "access"].includes(opts.tab)) { A.tab = opts.tab; opts.tab = null; }
-    $("#view-admin").innerHTML = `<div class="page"><div class="phead"><div><span class="eyebrow">Administration</span><h1>${A.tab === "prices" ? "Product pricing" : A.tab === "catalog" ? "Catalogue" : "Settings"}</h1><p class="lead small">${DPStore.st.mode === "cloud" ? "Changes apply to every employee immediately. Cost prices are stored separately and only administrators can read them." : "Local mode: settings are stored in this browser."}</p></div>
+    if (opts && opts.tab && ["prices", "catalog", "library3d", "limits3d", "commercial", "access"].includes(opts.tab)) { A.tab = opts.tab; opts.tab = null; }
+    if ((A.tab === "library3d" || A.tab === "limits3d") && !U.planner3dOn()) A.tab = "catalog";
+    $("#view-admin").innerHTML = `<div class="page"><div class="phead"><div><span class="eyebrow">Administration</span><h1>${A.tab === "prices" ? "Product pricing" : A.tab === "catalog" ? "Catalogue" : A.tab === "library3d" ? "3D library" : A.tab === "limits3d" ? "Engineering limits" : "Settings"}</h1><p class="lead small">${DPStore.st.mode === "cloud" ? "Changes apply to every employee immediately. Cost prices are stored separately and only administrators can read them." : "Local mode: settings are stored in this browser."}</p></div>
       <div class="row"><button class="btn ghost" id="ad-close">Close</button></div></div>
-      <div class="atabs seg">${[["prices", "Price book"], ["catalog", "Catalogue"], ["commercial", "Commercial & terms"], ["access", "Access & backup"]].map(([k, l]) => `<button type="button" data-at="${k}" class="${A.tab === k ? "is-on" : ""}">${l}</button>`).join("")}</div><div id="ad-body"></div></div>`;
+      <div class="atabs seg">${[["prices", "Price book"], ["catalog", "Catalogue"]].concat(U.planner3dOn() ? [["library3d", "3D library"], ["limits3d", "Engineering limits"]] : [], [["commercial", "Commercial & terms"], ["access", "Access & backup"]]).map(([k, l]) => `<button type="button" data-at="${k}" class="${A.tab === k ? "is-on" : ""}">${l}</button>`).join("")}</div><div id="ad-body"></div></div>`;
     $("#ad-close").onclick = () => U.go(App.open ? "plan" : "dash");
     $$("[data-at]").forEach((b) => (b.onclick = () => { if (Object.keys(A.dirty).length || Object.keys(A.costDirty).length) { if (!confirmLeave()) return; } A.tab = b.dataset.at; App.viewOpts = { tab: A.tab }; if (root.DPShell) root.DPShell.rail(); renderAdmin(); }));
-    ({ prices, catalog, commercial, access })[A.tab]($("#ad-body"));
+    ({ prices, catalog, library3d, limits3d, commercial, access })[A.tab]($("#ad-body"));
   }
   function confirmLeave() { U.toast("Save or discard the price book changes first.", { err: true }); return false; }
 
   /* ---------------- price book ---------------- */
   function pbRows() {
     const rows = DPCat.PRODUCTS.map((p) => ({ key: p.code, code: p.displayCode || p.code, name: p.name, group: p.collectionName || "Products", unit: "each", cat: DPCat.productCat(p) }));
-    for (const e of DPCat.ELEMENTS) if (e.costable && e.group !== "custom") rows.push({ key: "el:" + e.id, code: "", name: e.name, group: (DPCat.GROUPS.find((g) => g.key === e.group) || {}).label, unit: e.kind === "area" ? "m2" : e.kind === "line" ? (e.unit === "m2" ? "m2" : "m") : "each", cat: e.cat });
+    for (const e of DPCat.ELEMENTS) if (e.costable && e.group !== "custom" && (!e.added3d || U.planner3dOn())) rows.push({ key: "el:" + e.id, code: "", name: e.name, group: (DPCat.GROUPS.find((g) => g.key === e.group) || {}).label, unit: e.kind === "area" ? "m2" : e.kind === "line" ? (e.unit === "m2" ? "m2" : "m") : "each", cat: e.cat, added: !!e.added3d });
+    if (U.planner3dOn()) for (const e of DPCat.ELEMENTS) for (const r of e.priced3d || []) rows.push({ key: r.key, code: "", name: r.name, group: (DPCat.GROUPS.find((g) => g.key === e.group) || {}).label || "Terrain", unit: r.unit, cat: e.cat, added: true });
     return rows;
   }
   function prices(B) {
@@ -33,16 +35,17 @@
         <label class="field" style="flex-direction:row;align-items:center;gap:6px"><span>Currency</span><select class="in sm" id="pb-cur" style="width:auto">${["EGP", "USD", "EUR", "SAR", "AED"].map((c) => `<option${c === pb.currency ? " selected" : ""}>${c}</option>`).join("")}</select></label>
         <span class="small muted">${priced} of ${pbRows().length} items priced</span></div>
         <div class="row"><button class="btn ghost sm" id="pb-exp">Export CSV</button><button class="btn ghost sm" id="pb-imp">Import CSV…</button><button class="btn ghost sm" id="pb-discard" ${Object.keys(A.dirty).length || Object.keys(A.costDirty).length ? "" : "disabled"}>Discard</button><button class="btn lime sm" id="pb-save" ${Object.keys(A.dirty).length || Object.keys(A.costDirty).length ? "" : "disabled"}>Save price book</button></div></div>
-      <p class="tiny muted">Selling, installation and delivery prices are per unit, excluding tax, in ${esc(pb.currency)}. Leave a price empty when it is not set: the quotation flags it instead of using zero. Cost prices are never shown to employees or printed.</p>
-      <div class="pbwrap"><table class="pbtable"><thead><tr><th>Code</th><th>Item</th><th>Group</th><th>Category</th><th>Unit</th><th>Selling price</th><th>Install / unit</th><th>Delivery / unit</th><th>Cost (restricted)</th></tr></thead><tbody>
+      <p class="tiny muted">Selling, installation and delivery prices are per unit, excluding tax, in ${esc(pb.currency)}. Leave a price empty when it is not set: the quotation flags it instead of using zero. Cost prices are never shown to employees or printed. Installation and delivery costs feed the margin figure: leave them empty if unknown and the margin says so.${U.planner3dOn() ? " New site items stay out of the commission value until you tick Commission." : ""}</p>
+      <div class="pbwrap"><table class="pbtable"><thead><tr><th>Code</th><th>Item</th><th>Group</th><th>Category</th><th>Unit</th><th>Selling price</th><th>Install / unit</th><th>Delivery / unit</th><th>Cost (restricted)</th><th>Install cost (restricted)</th><th>Delivery cost (restricted)</th>${U.planner3dOn() ? "<th>Commission</th>" : ""}</tr></thead><tbody>
       ${rows.map((r) => `<tr class="${A.dirty[r.key] || r.key in A.costDirty ? "dirty" : ""}"><td class="num"><b>${esc(r.code)}</b></td><td>${esc(r.name)}</td><td class="small muted">${esc(r.group || "")}</td>
         <td><select class="in sm" data-k="${esc(r.key)}" data-f="cat">${PR.CAT_ORDER.filter((c) => c !== "additional").map((c) => `<option value="${c}"${(v(r.key, "cat") || r.cat) === c ? " selected" : ""}>${esc(PR.CAT_LABEL[c])}</option>`).join("")}</select></td>
         <td class="small">${esc(PR.UNIT_LABEL[r.unit])}</td>${["sell", "install", "delivery"].map((f) => `<td><input class="in num" type="number" min="0" step="0.01" data-k="${esc(r.key)}" data-f="${f}" value="${esc(v(r.key, f))}" aria-label="${f} ${esc(r.name)}"></td>`).join("")}
-        <td><input class="in num" type="number" min="0" step="0.01" data-cost="${esc(r.key)}" value="${esc(cv(r.key))}" aria-label="cost ${esc(r.name)}"></td></tr>`).join("")}</tbody></table></div>
+        <td><input class="in num" type="number" min="0" step="0.01" data-cost="${esc(r.key)}" value="${esc(cv(r.key))}" aria-label="cost ${esc(r.name)}"></td>${[["install", "installation"], ["delivery", "delivery"]].map(([f, w]) => `<td><input class="in num" type="number" min="0" step="0.01" data-cost="${esc(r.key)}#${f}" value="${esc(cv(r.key + "#" + f))}" aria-label="${w} cost ${esc(r.name)}"></td>`).join("")}${U.planner3dOn() ? `<td>${r.added ? `<label class="check small"><input type="checkbox" data-comm="${esc(r.key)}" ${v(r.key, "commission") === true ? "checked" : ""} aria-label="Count ${esc(r.name)} towards commission"> Count</label>` : '<span class="tiny muted">Counts</span>'}</td>` : ""}</tr>`).join("")}</tbody></table></div>
       <details><summary class="small"><b>Price book change log</b></summary><div class="tablewrap" style="max-height:240px">${(pb.log || []).slice().reverse().slice(0, 100).map((l) => `<div class="small" style="padding:4px 0;border-bottom:1px solid var(--line)"><b>${esc(new Date(l.at).toLocaleString())}</b> · ${esc(l.by || "")} · ${esc(l.detail)}</div>`).join("") || `<p class="small muted">No changes yet.</p>`}</div></details></div>`;
     $("#pb-q", B).oninput = (e) => { A.q = e.target.value; const pos = e.target.selectionStart; prices(B); const i = $("#pb-q", B); i.focus(); i.setSelectionRange(pos, pos); };
     $("#pb-cur", B).onchange = (e) => { A.dirty.__currency = e.target.value; prices(B); };
     $$("[data-k]", B).forEach((inp) => (inp.onchange = () => { const k = inp.dataset.k, f = inp.dataset.f; const d = A.dirty[k] = A.dirty[k] || {}; d[f] = inp.tagName === "SELECT" ? inp.value : inp.value === "" ? null : +inp.value; if (f !== "cat" && d[f] != null && !(d[f] >= 0)) { U.toast("Prices must be zero or more.", { err: true }); delete d[f]; } inp.closest("tr").classList.add("dirty"); $("#pb-save", B).disabled = false; $("#pb-discard", B).disabled = false; }));
+    $$("[data-comm]", B).forEach((inp) => (inp.onchange = () => { const d = A.dirty[inp.dataset.comm] = A.dirty[inp.dataset.comm] || {}; d.commission = inp.checked ? true : null; inp.closest("tr").classList.add("dirty"); $("#pb-save", B).disabled = false; $("#pb-discard", B).disabled = false; }));
     $$("[data-cost]", B).forEach((inp) => (inp.onchange = () => { A.costDirty[inp.dataset.cost] = inp.value === "" ? null : +inp.value; inp.closest("tr").classList.add("dirty"); $("#pb-save", B).disabled = false; $("#pb-discard", B).disabled = false; }));
     $("#pb-discard", B).onclick = () => { A.dirty = {}; A.costDirty = {}; prices(B); };
     $("#pb-save", B).onclick = () => savePB(B);
@@ -65,18 +68,21 @@
   function csvParse(text) { const rows = []; let row = [], f = "", q = false; for (let i = 0; i < text.length; i++) { const c = text[i]; if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; } else if (c === '"') q = true; else if (c === ",") { row.push(f); f = ""; } else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; } else f += c; } if (f || row.length) { row.push(f); rows.push(row); } return rows.filter((r) => r.some((x) => x !== "")); }
   function exportPB() {
     const pb = App.config.pricebook, costs = App.costs || {}, q = (v) => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const lines = [["key", "code", "item", "unit", "category", "sell", "install", "delivery", "cost"].join(",")];
-    for (const r of pbRows()) { const it = pb.items[r.key] || {}; lines.push([r.key, r.code, r.name, r.unit, it.cat || r.cat, it.sell, it.install, it.delivery, costs[r.key]].map(q).join(",")); }
+    const lines = [["key", "code", "item", "unit", "category", "sell", "install", "delivery", "cost", "cost_install", "cost_delivery", "commission"].join(",")];
+    for (const r of pbRows()) { const it = pb.items[r.key] || {}; lines.push([r.key, r.code, r.name, r.unit, it.cat || r.cat, it.sell, it.install, it.delivery, costs[r.key], costs[r.key + "#install"], costs[r.key + "#delivery"], r.added ? (it.commission === true ? "yes" : "no") : ""].map(q).join(",")); }
     U.downloadOut({ blob: new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv" }), filename: `dupedia-price-book_${pb.currency}_${DPIO.stamp()}.csv` }, "Price book (includes cost prices — keep internal)");
   }
   async function importPB(file, B) {
     try { const rows = csvParse((await file.text()).replace(/^﻿/, "")); const head = rows.shift().map((h) => h.trim().toLowerCase()); const ix = (n) => head.indexOf(n);
       if (ix("key") < 0 || ix("sell") < 0) throw new Error("The CSV needs at least the columns key and sell (export the price book to get the template).");
-      const keys = new Set(pbRows().map((r) => r.key)); let n = 0, skipped = 0;
+      const rowsNow = pbRows(), keys = new Set(rowsNow.map((r) => r.key)), added = new Set(rowsNow.filter((r) => r.added).map((r) => r.key)); let n = 0, skipped = 0;
       for (const r of rows) { const k = (r[ix("key")] || "").trim(); if (!keys.has(k)) { skipped++; continue; } const d = A.dirty[k] = A.dirty[k] || {};
         for (const f of ["sell", "install", "delivery"]) if (ix(f) >= 0) { const s = (r[ix(f)] || "").trim().replace(/,/g, ""); d[f] = s === "" ? null : +s; if (d[f] != null && !(d[f] >= 0)) throw new Error(`Row ${k}: ${f} is not a valid number.`); }
         if (ix("category") >= 0 && PR.CAT_ORDER.includes((r[ix("category")] || "").trim())) d.cat = r[ix("category")].trim();
-        if (ix("cost") >= 0) { const s = (r[ix("cost")] || "").trim().replace(/,/g, ""); A.costDirty[k] = s === "" ? null : +s; } n++; }
+        if (ix("cost") >= 0) { const s = (r[ix("cost")] || "").trim().replace(/,/g, ""); A.costDirty[k] = s === "" ? null : +s; }
+        for (const [col, suffix] of [["cost_install", "#install"], ["cost_delivery", "#delivery"]]) if (ix(col) >= 0) { const s = (r[ix(col)] || "").trim().replace(/,/g, ""), val = s === "" ? null : +s; if (val != null && !(val >= 0)) throw new Error(`Row ${k}: ${col} is not a valid number.`); A.costDirty[k + suffix] = val; }
+        if (ix("commission") >= 0 && added.has(k)) { const s = (r[ix("commission")] || "").trim().toLowerCase(); if (s === "yes") d.commission = true; else if (s === "no" || s === "") d.commission = null; else throw new Error(`Row ${k}: commission must be yes or no.`); }
+        n++; }
       prices(B); U.toast(`${n} rows loaded${skipped ? `, ${skipped} unknown keys skipped` : ""}. Review the highlighted rows, then save.`, { ms: 7000 });
     } catch (e) { U.toast(e.message, { err: true, ms: 8000 }); }
   }
@@ -105,7 +111,7 @@
     $("#ct-discard", B).onclick = () => { A.cat = null; catalog(B); };
     $("#ct-save", B).onclick = async () => {
       for (const [code, o] of Object.entries(cfg.overrides)) { if (o.dims && !(o.dims.l > 0 && o.dims.w > 0)) return U.toast(`${code}: enter both length and width, or neither.`, { err: true }); if (o.zone && !(o.zone.l > 0 && o.zone.w > 0)) return U.toast(`${code}: enter both zone length and width, or neither.`, { err: true }); }
-      try { cfg.updatedAt = new Date().toISOString(); cfg.updatedBy = U.userInfo().name || "administrator"; await DPStore.setConfig("catalog", cfg); App.config.catalog = cfg; DPCat.setCatalogConfig(cfg); A.cat = null; U.toast("Catalogue saved."); catalog(B); }
+      try { cfg.updatedAt = new Date().toISOString(); cfg.updatedBy = U.userInfo().name || "administrator"; if ((App.config.catalog || {}).models) cfg.models = App.config.catalog.models; await DPStore.setConfig("catalog", cfg); App.config.catalog = cfg; DPCat.setCatalogConfig(cfg); A.cat = null; U.toast("Catalogue saved."); catalog(B); }
       catch (e) { U.toast("The catalogue could not be saved: " + (e.message || e.code), { err: true }); }
     };
     $$("[data-cdel]", B).forEach((b) => (b.onclick = () => { cfg.custom.splice(+b.dataset.cdel, 1); catalog(B); }));
@@ -121,6 +127,28 @@
     };
   }
 
+  /* ---------------- 3D library (its code loads only when this tab is opened) ---------------- */
+  async function library3d(B) {
+    B.innerHTML = `<div class="card"><p class="small muted">Loading the 3D library…</p></div>`;
+    try {
+      if (!root.DPScene3D) await DPProposal.loadScript("app/scene3d.js");
+      if (!root.DP_MODELS) await DPProposal.loadScript("models/manifest.js").catch(() => { root.DP_MODELS = {}; });
+      if (!root.DPAdmin3D) await DPProposal.loadScript("app/admin3d.js");
+      root.DPAdmin3D.render(B);
+    } catch (e) { B.innerHTML = `<div class="note err">The 3D library could not load. Check the connection and try again.</div>`; }
+  }
+
+  async function limits3d(B) {
+    B.innerHTML = `<div class="card"><p class="small muted">Loading…</p></div>`;
+    try {
+      if (!root.DPChecks3D) await DPProposal.loadScript("app/checks3d.js");
+      if (!root.DPScene3D) await DPProposal.loadScript("app/scene3d.js");
+      if (!root.DP_MODELS) await DPProposal.loadScript("models/manifest.js").catch(() => { root.DP_MODELS = {}; });
+      if (!root.DPAdmin3D) await DPProposal.loadScript("app/admin3d.js");
+      root.DPAdmin3D.renderLimits(B);
+    } catch (e) { B.innerHTML = `<div class="note err">This page could not load. Check the connection and try again.</div>`; }
+  }
+
   /* ---------------- commercial ---------------- */
   function commercial(B) {
     const s = JSON.parse(JSON.stringify(App.config.settings));
@@ -131,6 +159,7 @@
       <div class="grid3"><label class="field"><span>5% discount may be applied by</span><select class="in" id="cm-d5"><option value="employee"${s.discountRoles[5] === "employee" ? " selected" : ""}>Employees and administrators</option><option value="admin"${s.discountRoles[5] === "admin" ? " selected" : ""}>Administrators only</option></select></label>
         <label class="field"><span>10% discount may be applied by</span><select class="in" id="cm-d10"><option value="employee"${s.discountRoles[10] === "employee" ? " selected" : ""}>Employees and administrators</option><option value="admin"${s.discountRoles[10] === "admin" ? " selected" : ""}>Administrators only</option></select></label>
         <label class="check" style="align-self:end"><input type="checkbox" id="cm-ov" ${s.employeeOverrides ? "checked" : ""}> Employees may enter manual prices, quantities and custom charges</label></div>
+      <label class="check"><input type="checkbox" id="cm-3d" ${s.planner3d && s.planner3d.enabled === true ? "checked" : ""}> Turn on the 3D planner: 3D view, terrain, structures, new design items, engineering prompts and 3D pages in proposals</label>
       <div class="field"><span class="lbl">Categories the discount applies to</span><div class="row">${PR.CAT_ORDER.map((c) => `<label class="check small"><input type="checkbox" data-elig="${c}" ${s.discountEligible[c] !== false ? "checked" : ""}> ${esc(PR.CAT_LABEL[c])}</label>`).join("")}</div></div>
       <p class="tiny muted">${DPStore.st.mode === "cloud" ? "Discount and override permissions are enforced by the app; every change is logged with the employee's name. Prices, settings and cost data are protected by the shared database's access rules." : "Local mode: permissions are not enforced on this device."}</p></div>
       <div class="card stack"><h3>Sales targets and Lead Mine</h3><div class="grid3"><label class="field"><span>Default monthly target per employee</span><div class="unit"><input class="in num" id="cm-tgt" type="number" min="0" step="1000" value="${esc((s.sales || {}).monthlyTarget || 500000)}"><em>EGP</em></div><small>Commission value of approved orders. Individual targets are set in Employees.</small></label>
@@ -201,6 +230,7 @@
         askCeo: { ceo: $("#cm-ceo", B).value || null, readers: $$("[data-ceor]", B).filter((c) => c.checked).map((c) => c.dataset.ceor) },
         intel: Object.assign({}, s.intel || {}, { triggerId: $("#cm-trig", B).value.trim(), fxStaleHours: Math.max(6, +$("#cm-fxs", B).value || 36), materialStaleDays: Math.max(1, +$("#cm-mts", B).value || 45) }) });
       Object.assign(s, { timezone: tz, followUps: { advanceMin: Math.max(0, +$("#cm-fa", B).value || 0), overdueHours: Math.max(1, +$("#cm-fo", B).value || 2) }, paymentMethods: pms, ceo: { largeQuote: Math.max(0, +$("#cm-big", B).value || 0) }, wall: { systemPosts: $("#cm-wall", B).checked } });
+      s.planner3d = { enabled: $("#cm-3d", B).checked };
       const ns = Object.assign(s, { leadTimer: { hours: lt, dataEntryCounts: $("#cm-ltde", B).checked }, dataEntry: { monthlyTarget: Math.max(0, +$("#cm-det", B).value || 0) }, leadComplete: lc, sales: Object.assign({}, s.sales, { monthlyTarget: tgt }), leadPriority: { high: ph, medium: pm }, taxPct: tax, taxLabel: $("#cm-taxl", B).value.trim() || "VAT", refPrefix: $("#cm-ref", B).value.trim() || "DUP", discountRoles: { 5: $("#cm-d5", B).value, 10: $("#cm-d10", B).value }, employeeOverrides: $("#cm-ov", B).checked, charges,
         discountEligible: Object.fromEntries($$("[data-elig]", B).map((c) => [c.dataset.elig, c.checked])), terms: Object.fromEntries($$("[data-term]", B).map((t) => [t.dataset.term, t.value.trim()])), company: Object.fromEntries($$("[data-co]", B).map((t) => [t.dataset.co, t.value.trim()])),
         updatedAt: new Date().toISOString(), updatedBy: U.userInfo().name || "administrator" });

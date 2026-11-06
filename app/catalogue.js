@@ -25,6 +25,8 @@
     { key: "surfaces", label: "Safety & circulation" },
     { key: "generic", label: "Generic equipment" },
     { key: "custom", label: "Custom & annotation" },
+    { key: "terrain", label: "Terrain" },
+    { key: "play", label: "Water & play" },
   ];
   const E = (o) => Object.assign({ costable: true, blocks: true, unit: "each", cat: "landscape", resizable: true }, o);
   const ELEMENTS = [
@@ -47,7 +49,7 @@
     E({ id: "gate-double", name: "Double / maintenance gate", group: "infrastructure", kind: "point", shape: "rect", l: 3.0, w: 0.12, sym: "gateDouble", gate: true, blocks: false }),
     E({ id: "opening", name: "Pedestrian entrance (opening)", group: "infrastructure", kind: "point", shape: "rect", l: 1.5, w: 0.12, sym: "opening", gate: true, costable: false, blocks: false }),
     E({ id: "path", name: "Pathway", group: "infrastructure", kind: "line", width: 1.5, unit: "m2", sym: "path", blocks: false, note: "Priced by area (length × width)." }),
-    E({ id: "ramp", name: "Ramp", group: "infrastructure", kind: "point", shape: "rect", l: 3, w: 1.5, sym: "ramp" }),
+    E({ id: "ramp", name: "Ramp", group: "infrastructure", kind: "point", shape: "rect", l: 3, w: 1.5, sym: "ramp", structure: "ramp", structureDefaults: { rise: 0 } }),
     E({ id: "bench", name: "Bench (generic)", group: "infrastructure", kind: "point", shape: "rect", l: 1.8, w: 0.6, sym: "benchGeneric" }),
     E({ id: "picnic", name: "Picnic table (generic)", group: "infrastructure", kind: "point", shape: "rect", l: 1.8, w: 1.6, sym: "picnicGeneric" }),
     E({ id: "bin", name: "Waste bin", group: "infrastructure", kind: "point", shape: "circle", d: 0.6, sym: "bin" }),
@@ -76,10 +78,27 @@
     E({ id: "g-spinner", name: "Spinner", group: "generic", kind: "point", shape: "circle", d: 1.0, sym: "spinner", cat: "equipment", generic: true }),
     // custom
     E({ id: "custom-area", name: "Custom area", group: "custom", kind: "area", unit: "m2", sym: "customArea", blocks: false }),
-    E({ id: "custom-object", name: "Custom object", group: "custom", kind: "point", shape: "rect", l: 1, w: 1, sym: "customObject" }),
+    E({ id: "custom-object", name: "Custom object", group: "custom", kind: "point", shape: "rect", l: 1, w: 1, sym: "customObject", structure: "custom", structureDefaults: { height: 1 } }),
     E({ id: "custom-line", name: "Custom line", group: "custom", kind: "line", width: 0.1, unit: "m", sym: "customLine", blocks: false }),
     E({ id: "label", name: "Text label", group: "custom", kind: "point", shape: "rect", l: 2, w: 0.6, sym: "label", costable: false, blocks: false, annotation: true, resizable: false }),
     E({ id: "dimension", name: "Dimension line", group: "custom", kind: "line", width: 0.02, unit: "m", sym: "dimension", costable: false, blocks: false, annotation: true }),
+    // terrain (dimensions are set per object; heights and slopes are calculated by app/terrain.js)
+    E({ id: "stairs", name: "Stairs", group: "terrain", kind: "point", shape: "rect", l: 2.4, w: 1.2, sym: "stairs", costable: false, priced3d: [{ key: "el:stairs", name: "Stairs (per step)", unit: "each" }], structure: "stairs", structureDefaults: { rise: 0.9, steps: 5 }, note: "Rises in the direction it points. Turn it to change which way it climbs." }),
+    E({ id: "retaining-wall", name: "Retaining wall", group: "terrain", kind: "line", width: 0.25, unit: "m", sym: "retaining", costable: false, priced3d: [{ key: "el:retaining-wall", name: "Retaining wall (m² of face)", unit: "m2", basis: "Approximate, from the drawn height" }], structure: "retaining", structureDefaults: { height: 1 }, note: "Level along its top, measured from the lowest ground it stands on." }),
+    E({ id: "tunnel", name: "Tunnel", group: "terrain", kind: "line", width: 1.4, unit: "m", sym: "tunnel", costable: false, priced3d: [{ key: "el:tunnel", name: "Tunnel (per metre)", unit: "m", basis: "Measured along the drawn line" }], blocks: false, structure: "tunnel", structureDefaults: { clear: 1.2 }, note: "Draw it right through a hill. Its floor runs straight from one end to the other." }),
+    E({ id: "umbrella", name: "Umbrella", group: "infrastructure", kind: "point", shape: "circle", d: 3, sym: "umbrella", blocks: false, overhead: true, added3d: true, generic: true, note: "Generic item. Confirm its size with the supplier." }),
+    E({ id: "epdm", name: "EPDM rubber surface", group: "surfaces", kind: "area", unit: "m2", cat: "flooring", sym: "epdm", blocks: false, surface: true, added3d: true }),
+    E({ id: "splash-pad", name: "Splash pad", group: "play", kind: "area", unit: "m2", cat: "equipment", sym: "water", blocks: false, added3d: true, note: "Water play area. Pumps, drainage and water treatment aren't included." }),
+    E({ id: "water-jet", name: "Water jet", group: "play", kind: "point", shape: "circle", d: 0.8, sym: "waterJet", cat: "equipment", added3d: true, generic: true, blocks: false }),
+    E({ id: "water-table", name: "Water play table", group: "play", kind: "point", shape: "rect", l: 1.6, w: 0.8, sym: "waterTable", cat: "equipment", added3d: true, generic: true }),
+    E({ id: "climb-wall", name: "Climbing wall", group: "play", kind: "point", shape: "rect", l: 3, w: 0.5, sym: "climbWall", cat: "equipment", added3d: true, generic: true }),
+    E({ id: "climb-net", name: "Climbing net frame", group: "play", kind: "point", shape: "rect", l: 3, w: 2, sym: "climbNet", cat: "equipment", added3d: true, generic: true }),
+    E({ id: "boulder", name: "Play boulder", group: "play", kind: "point", shape: "circle", d: 1.5, sym: "boulder", cat: "equipment", added3d: true, generic: true }),
+    E({ id: "bridge", name: "Bridge", group: "play", kind: "line", width: 1.2, unit: "m", cat: "equipment", sym: "bridge", blocks: false, added3d: true, structure: "bridge", structureDefaults: { lift: 0 }, note: "Runs straight from the ground at one end to the ground at the other. Draw it from level to level." }),
+    E({ id: "custom-structure", name: "Custom structure", group: "custom", kind: "area", unit: "m2", sym: "customStructure", added3d: true, structure: "custom", structureDefaults: { height: 2 }, note: "Any outline, built up to the height you set." }),
+    E({ id: "hill", name: "Hill", group: "terrain", kind: "area", unit: "m2", sym: "terrainHill", costable: false, priced3d: [{ key: "el:hill", name: "Hill (earth volume)", unit: "m3", basis: "Approximate, from the drawn shape" }], blocks: false, terrain: "hill", terrainDefaults: { height: 2, run: null, profile: "round", surface: "grass" }, note: "Draw its outline. It rises from the outline to its height." }),
+    E({ id: "level", name: "Raised or sunken level", group: "terrain", kind: "area", unit: "m2", sym: "terrainLevel", costable: false, priced3d: [{ key: "el:level", name: "Raised level (earth volume)", unit: "m3", basis: "Approximate, from the drawn shape" }, { key: "el:level-cut", name: "Sunken level (excavation volume)", unit: "m3", basis: "Approximate, from the drawn shape" }], blocks: false, terrain: "level", terrainDefaults: { height: 1, surface: "grass" }, note: "Flat top with sloping sides, inside its outline. Use a negative height to sink it." }),
+    E({ id: "platform", name: "Raised platform", group: "terrain", kind: "area", unit: "m2", sym: "terrainPlatform", costable: false, priced3d: [{ key: "el:platform", name: "Raised platform (volume)", unit: "m3", basis: "Plan area × height" }], blocks: false, terrain: "platform", terrainDefaults: { height: 0.6, surface: "timber" }, note: "Flat top with vertical sides." }),
   ];
   const EL = Object.fromEntries(ELEMENTS.map((e) => [e.id, e]));
 

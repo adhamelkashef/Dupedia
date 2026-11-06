@@ -391,6 +391,14 @@
       C.post(P, 0.03, W / 2, 0.12); C.post(P, L - 0.03, W / 2, 0.12); },
     opening: (P, L, W) => { C.post(P, 0.04, W / 2, 0.12); C.post(P, L - 0.04, W / 2, 0.12); P.begin().line(0.1, W / 2, L - 0.1, W / 2).stroke(PAL.pebble, LW.det, { dash: [0.1, 0.08] });
       P.begin().moveTo(L / 2 - 0.15, W / 2 - 0.35).lineTo(L / 2, W / 2 - 0.12).lineTo(L / 2 + 0.15, W / 2 - 0.35).stroke(PAL.limeInk, 0.05, { cap: "round", join: "round" }); },
+    umbrella: (P, L, W) => { const r = Math.min(L, W) / 2; P.begin().circle(L / 2, W / 2, r).paint({ fill: PAL.limeTint, stroke: PAL.ink, width: LW.out }); P.begin(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; P.line(L / 2, W / 2, L / 2 + Math.cos(a) * r, W / 2 + Math.sin(a) * r); } P.stroke(PAL.pebble, LW.fine); P.begin().circle(L / 2, W / 2, r * 0.07).paint({ fill: PAL.ink }); },
+    waterJet: (P, L, W) => { const r = Math.min(L, W) / 2; P.begin().circle(L / 2, W / 2, r).paint({ fill: "#BFDDEB", stroke: "#3C8DB5", width: LW.out }); P.begin().circle(L / 2, W / 2, r * 0.3).paint({ fill: "#3C8DB5" }); },
+    waterTable: (P, L, W) => { P.begin().rect(0, 0, L, W).paint({ fill: PAL.stone, stroke: PAL.ink, width: LW.out }); const b = Math.min(L, W) * 0.15; P.begin().rect(b, b, L - 2 * b, W - 2 * b).paint({ fill: "#BFDDEB", stroke: "#3C8DB5", width: LW.det }); },
+    climbWall: (P, L, W) => { P.begin().rect(0, 0, L, W).paint({ fill: PAL.plank, stroke: PAL.ink, width: LW.out }); P.begin(); const n = Math.max(2, Math.round(L / 0.4)); for (let i = 0; i < n; i++) P.circle((i + 0.5) * L / n, i % 2 ? W * 0.3 : W * 0.7, Math.min(W * 0.14, 0.08)); P.fill(PAL.lime); },
+    climbNet: (P, L, W) => { P.begin().rect(0, 0, L, W).paint({ stroke: PAL.ink, width: LW.out }); P.begin(); const nx = Math.max(2, Math.round(L / 0.4)), ny = Math.max(2, Math.round(W / 0.4)); for (let i = 1; i < nx; i++) P.line(i * L / nx, 0, i * L / nx, W); for (let j = 1; j < ny; j++) P.line(0, j * W / ny, L, j * W / ny); P.stroke(PAL.rope, LW.det); P.begin().line(0, W / 2, L, W / 2).stroke(PAL.ink, LW.out); },
+    boulder: (P, L, W) => { const r = Math.min(L, W) / 2; P.begin().circle(L / 2, W / 2, r).paint({ fill: "#B9B6AB", stroke: PAL.ink, width: LW.out }); P.begin().circle(L / 2 - r * 0.25, W / 2 - r * 0.2, r * 0.3).paint({ fill: "#D8D6CD" }); },
+    stairs: (P, L, W, o = {}) => { const n = Math.max(1, Math.min(40, o.steps || 5)); P.begin().rect(0, 0, L, W).paint({ fill: PAL.stone, stroke: PAL.ink, width: LW.out }); P.begin(); for (let i = 1; i < n; i++) P.line(i * L / n, 0, i * L / n, W); P.stroke(PAL.ink, LW.det);
+      const y = W / 2, a = Math.min(W * 0.3, L * 0.25); P.begin().line(L * 0.1, y, L * 0.9, y).line(L * 0.9, y, L * 0.9 - a, y - a * 0.7).line(L * 0.9, y, L * 0.9 - a, y + a * 0.7).stroke(PAL.ink, LW.det * 1.5); },
     ramp: (P, L, W) => { P.begin().rect(0, 0, L, W).paint({ fill: PAL.stone, stroke: PAL.ink, width: LW.out }); P.begin(); for (let t = 0.25; t < L; t += 0.25) P.line(t, 0.05, t, W - 0.05); P.stroke(PAL.pebble, LW.fine);
       P.begin().moveTo(L * 0.2, W / 2).lineTo(L * 0.8, W / 2).moveTo(L * 0.68, W / 2 - W * 0.18).lineTo(L * 0.8, W / 2).lineTo(L * 0.68, W / 2 + W * 0.18).stroke(PAL.ink, LW.det * 2, { cap: "round", join: "round" }); },
     benchGeneric: (P, L, W) => C.bench(P, 0, 0, L, W, { back: true }),
@@ -431,11 +439,18 @@
     restricted: { fill: "#B3261E", fillAlpha: 0.06, edge: "#B3261E", dash: true, tex: "hatch", hatch: "#E2A29D" },
     existing: { fill: "#45453F", fillAlpha: 0.16, edge: "#45453F", tex: "hatch", hatch: "#8F8F87" },
     customArea: { fill: "#EAE8E1", edge: "#5E5E58" },
+    epdm: { fill: "#E2A48F", edge: "#A85F47", tex: "speckle", dot: "#F4D7C9" },
+    water: { fill: "#BFDDEB", edge: "#3C8DB5", tex: "hatch", hatch: "#93C3DA" },
+    customStructure: { fill: "#E4E1D7", edge: "#262626", tex: "hatch", hatch: "#BDB9AC" },
+    terrainHill: { fill: "#CFE0A6", edge: "#6F8F3A", tex: "hatch", hatch: "#A9C27A" },
+    terrainLevel: { fill: "#DDE6C2", edge: "#7E9420", tex: "hatch", hatch: "#BCCB93" },
+    terrainPlatform: { fill: "#E6DAC0", edge: "#7A6A4C", tex: "hatch", hatch: "#C8B48F" },
   };
   const LINE_STYLE = {
     fence: { kind: "fence" }, wall: { kind: "wall" }, hedge: { kind: "hedge" }, path: { kind: "band", fill: "#E9E5DA", edge: "#A8A397" },
     pathAccessible: { kind: "band", fill: "#E9E5DA", edge: "#45453F", chevrons: true }, routeEmergency: { kind: "band", fill: "#B3261E", fillAlpha: 0.05, edge: "#B3261E", dash: true, chevrons: true, chevronColor: "#B3261E" },
     dimension: { kind: "dimension" }, customLine: { kind: "plain" },
+    bridge: { kind: "band", fill: "#D9BE8E", edge: "#45453F" }, retaining: { kind: "wall" }, tunnel: { kind: "band", fill: "#DAD6CA", edge: "#45453F", chevrons: true },
   };
 
   function texture(P, poly, st, k) {

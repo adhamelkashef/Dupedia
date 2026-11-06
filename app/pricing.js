@@ -8,7 +8,7 @@
   const ROLE_RANK = { viewer: 0, employee: 1, admin: 2 };
   const CAT_ORDER = ["equipment", "landscape", "flooring", "installation", "services", "additional"];
   const CAT_LABEL = { equipment: "Playground equipment", landscape: "Landscape & infrastructure", flooring: "Safety flooring & surfaces", installation: "Installation", services: "Other services", additional: "Additional charges" };
-  const UNIT_LABEL = { each: "each", m: "m", m2: "m²", lot: "lot", pct: "%" };
+  const UNIT_LABEL = { each: "each", m: "m", m2: "m²", m3: "m³", lot: "lot", pct: "%" };
 
   const toMinor = (v) => Math.round((+v || 0) * 100);
   const fromMinor = (m) => m / 100;
@@ -50,6 +50,8 @@
       else { status = "unpriced"; source = "no price in price book"; }
       const line = { key: r.key, kind: r.kind, code: r.displayCode || r.code || null, name: r.name, unit: r.unit, cat, qty, planQty, unitMinor, totalMinor: 0, status, source, ids: r.ids, basis: r.basis || null,
         qtyOverridden: !!(ov && ov.qty != null && Math.abs(+ov.qty - planQty) > 1e-9), override: ov, exception: ex, derived: false };
+      const noCommission = r.commissionDefault === false && !(base && base.commission === true); if (noCommission) line.noCommission = true;
+      if (r.stale) issue("error", `${line.name}: the plan changed and this measured quantity is out of date. Open the plan to refresh it.`, r.key, "stale-measure");
       if (ex) {
         line.status = "exception"; line.exMode = ex.mode;
         line.totalMinor = ex.mode === "included" ? 0 : 0;
@@ -64,7 +66,8 @@
       if (base && !ex && line.counted && line.status !== "unpriced") {
         for (const [field, dcat, label] of [["install", "installation", "Installation"], ["delivery", "services", "Delivery"]]) {
           const v = base[field]; if (v == null || v === "" || !(+v > 0)) continue; const u = conv(v); if (u == null) continue;
-          lines.push({ key: r.key + "#" + field, kind: "derived", parent: r.key, code: line.code, name: `${label} — ${r.name}`, unit: r.unit, cat: dcat, qty, planQty: qty, unitMinor: u, totalMinor: Math.round(qty * u), status: "priced", source: "price book", counted: true, derived: true, ids: r.ids });
+          const dl = { key: r.key + "#" + field, kind: "derived", parent: r.key, code: line.code, name: `${label} — ${r.name}`, unit: r.unit, cat: dcat, qty, planQty: qty, unitMinor: u, totalMinor: Math.round(qty * u), status: "priced", source: "price book", counted: true, derived: true, ids: r.ids };
+          if (noCommission) dl.noCommission = true; lines.push(dl);
         }
       }
     }
@@ -98,15 +101,16 @@
     const total = afterDiscount + tax;
     if (!(+settings.taxPct > 0)) issue("info", "Tax is not configured in Settings, so no tax is added.", null, "tax");
 
-    let margin = null;
+    // installation and delivery earn revenue, so their costs count too. One with no cost entered is reported rather than treated as free.
+    let margin = null, serviceCostsMissing = 0;
     if (costs) {
       let cost = 0, missing = 0;
-      for (const l of lines) { if (!l.counted || l.kind === "extra") continue; const k = l.derived ? null : l.key; if (!k) continue;
-        const c = costs[k]; if (c == null || c === "" || !isFinite(c)) { missing++; continue; } cost += Math.round(l.qty * (conv(c) || 0)); }
+      for (const l of lines) { if (!l.counted || l.kind === "extra") continue;
+        const c = costs[l.key]; if (c == null || c === "" || !isFinite(c)) { if (l.derived) serviceCostsMissing++; else missing++; continue; } cost += Math.round(l.qty * (conv(c) || 0)); }
       margin = { costMinor: cost, revenueMinor: afterDiscount, marginMinor: afterDiscount - cost, pct: afterDiscount ? (afterDiscount - cost) / afterDiscount * 100 : 0, missing };
     }
     const blocking = issues.some((i) => i.sev === "error");
-    return { currency, fx, lines, cats, subtotal, eligible, discountPct: pct, discount, afterDiscount, taxPct, taxLabel: settings.taxLabel || "VAT", tax, total, issues, blocking, margin };
+    return { currency, fx, lines, cats, subtotal, eligible, discountPct: pct, discount, afterDiscount, taxPct, taxLabel: settings.taxLabel || "VAT", tax, total, issues, blocking, margin, serviceCostsMissing };
   }
 
   root.DPPricing = { compute, toMinor, fromMinor, fmtMoney, fmtQty, allowedDiscounts, canOverride, DISCOUNTS, CAT_ORDER, CAT_LABEL, UNIT_LABEL, ROLE_RANK };

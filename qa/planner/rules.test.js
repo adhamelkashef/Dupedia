@@ -1,0 +1,58 @@
+/* Database access rules (the same table that is declared when publishing): who can read and write what. */
+global.self = global; require("../../app/store.js"); const S = global.DPStore;
+let n = 0, fail = 0; const ok = (c, m) => { n++; if (!c) { fail++; console.log("FAIL - " + m); } else console.log("ok - " + m); };
+const E = "u_emp1", E2 = "u_emp2", A = "u_adm";
+const can = (lvl, uid, op, path) => S.allowed(path, op, lvl, uid);
+const emp = (op, p) => can("interact", E, op, p), adm = (op, p) => can("admin", A, op, p);
+ok(!emp("read", "restricted/costs"), "employee cannot read cost prices");
+ok(!emp("write", "config/pricebook") && !emp("read", "config/pricebook"), "2.2: the master price book is administrator-only");
+ok(emp("read", `pb/${E}`) && !emp("write", `pb/${E}`) && !emp("read", `pb/${E2}`), "2.2: each person reads only the price copy written for them (engineers and data entry get none)");
+ok(!emp("read", "config/commission") && adm("read", "config/commission"), "2.2: the commission rule table is administrator-only");
+ok(adm("read", "restricted/costs") && adm("write", "config/settings"), "administrator reads costs and writes settings");
+ok(emp("write", `projects/${E}/p/p1`) && emp("read", `projects/${E}/p/p1/versions/v1`), "employee reads and writes own projects");
+ok(!emp("read", `projects/${E2}/p/p1`) && !emp("write", `projects/${E2}/p/p1`), "employee cannot read or write another employee's projects");
+ok(adm("read", `projects/${E}/p/p1`) && adm("write", `projects/${E}/p/p1`), "administrator reads and writes every project");
+ok(emp("read", `commissions/${E}/r/o1`) && !emp("write", `commissions/${E}/r/o1`), "employee reads own commission records but cannot write them");
+ok(!emp("read", `commissions/${E2}/r/o1`), "employee cannot read another employee's commissions");
+ok(adm("write", `commissions/${E}/r/o1`), "administrator writes commission records");
+ok(!emp("read", "orders/o1") && !emp("write", "orders/o1"), "employee cannot read orders (they hold cost and profit)");
+ok(emp("read", "leads/L1") && !emp("write", "leads/L1"), "employee reads Lead Mine, cannot edit leads");
+ok(emp("write", `claims/${E}/c/L1`) && !emp("write", `claims/${E2}/c/L1`) && emp("read", `claims/${E2}/c/L1`), "employee writes only own claims, sees others' claims");
+ok(adm("write", `claims/${E2}/c/L1`), "administrator can reassign / release any claim");
+ok(emp("write", `crm/${E}/l/L1`) && !emp("read", `crm/${E2}/l/L1`), "pipeline notes are private to their owner");
+ok(!emp("write", `directory/${E}`) && emp("read", `directory/${E}`), "employee cannot change the user directory (own role included)");
+ok(emp("read", `staff/${E}`) && !emp("write", `staff/${E}`) && !emp("read", `staff/${E2}`), "employee reads own target only, cannot change it");
+ok(!emp("read", "adminlog/2026-10-25") && adm("write", "adminlog/2026-10-25"), "administrator log is administrator-only");
+ok(emp("write", `submissions/${E}/s/p1`) && !emp("read", `submissions/${E2}/s/p1`), "approval requests: own only");
+ok(emp("write", `data/users/${E}/prefs`) && !emp("read", `data/users/${E2}/prefs`) && !adm("read", `data/users/${E}/prefs`), "preferences are private to each person");
+ok(!can("view", "u_v", "write", `projects/u_v/p/x`) && !can("view", "u_v", "read", "leads/L1"), "viewers (no Contributor access) read and write nothing");
+// ---- 2.2 paths ----
+const G = "u_eng1";
+const eng = (op, p) => can("interact", G, op, p);
+ok(eng("write", `eng/${G}/o/O1`) && !eng("write", `eng/${E}/o/O1`) && emp("read", `eng/${G}/o/O1`), "engineering status: only its engineer writes it, staff can read it");
+ok(eng("read", `engx/${G}/o/O1/h/main`) && !emp("read", `engx/${G}/o/O1/h/main`) && adm("read", `engx/${G}/o/O1`), "handover pack, team and internal notes: engineer and administrators only");
+ok(!eng("read", "orders/O1") && !eng("read", `orders/O1/files/f1/c/000`) && !eng("read", `salesorders/${E}/o/O1`), "engineers cannot read orders, receipts or the sales copy");
+ok(emp("read", `salesorders/${E}/o/O1/f/f1/c/000`) && !emp("write", `salesorders/${E}/o/O1`) && !emp("read", `salesorders/${E2}/o/O1`), "sales owner reads own order copy and receipts, read-only");
+ok(emp("write", `paysub/${E}/p/x`) && !emp("read", `paysub/${E2}/p/x`), "payment reports: own only");
+ok(emp("read", "assign/O1") && !emp("write", "assign/O1"), "assignment (no money): readable by staff, written by administrators");
+ok(emp("write", `notif/${E}/n/x`) && !emp("read", `notif/${E2}/n/x`) && adm("write", `notif/${E2}/n/x`), "inbox: own read/mark, administrators deliver");
+ok(emp("write", `outbox/${E}/e/x`) && !emp("write", `outbox/${E2}/e/x`) && emp("read", `outbox/${E2}/e/x`), "outbox: write own, staff read (non-financial events only)");
+ok(emp("write", `acts/${E}/a/x`) && !emp("write", `acts/${E2}/a/x`) && emp("read", `acts/${E2}/a/x`), "activity timeline: write own, read shared");
+ok(emp("write", "leadcontact/L1") && emp("write", "leadcontact/L1/log/c1") && !emp("write", "leads/L1"), "contact data is shared and editable; ownership and status stay administrator-only");
+ok(emp("read", "avatars/u_x") && !emp("write", "avatars/u_x") && !emp("read", "avatarorig/u_x/c/000"), "pictures: staff see display copies, only administrators change them or read originals");
+ok(!emp("read", "restricted/empids") && !emp("read", "sweep/state"), "employee-ID index and sweep state: administrators only");
+ok(emp("read", `staff/${E}`) && !emp("read", `staff/${E2}`), "HR record (employee ID, mobile, hiring date): own and administrators only");
+// every {self} rule has a prefix rule with both read and write (platform requirement)
+ok(S.RULES.filter((r) => r.path.endsWith("/{self}") && r.path !== "data/users/{self}").every((r) => { const pre = S.RULES.find((x) => x.path === r.path.replace("/{self}", "")); return pre && pre.read && pre.write; }), "each {self} rule has a prefix rule with read and write");
+// X FORCE 1.0
+ok(emp("write", `handoff/${E}/o/O1`) && !emp("write", `handoff/${E2}/o/O1`) && emp("read", `handoff/${E2}/o/O1`), "X FORCE: the engineering handoff is written by its sales owner and readable by staff (no money in it)");
+ok(emp("write", `wall/${E}/m/m1`) && !emp("write", `wall/${E2}/m/m1`) && emp("read", `wall/${E2}/m/m1`), "X FORCE: everyone reads the Company Wall; each person posts only under their own id");
+ok(emp("write", `keys/${E}`) && !emp("write", `keys/${E2}`) && emp("read", `keys/${E2}`), "X FORCE: public chat keys — own write, everyone reads");
+ok(emp("read", "dmx/c123/m/m1") && emp("write", "dmx/c123/m/m1"), "X FORCE: private chat store is open, but holds only ciphertext at paths only the two participants can derive");
+ok(emp("write", `data/users/${E}/chatkey`) && !emp("read", `data/users/${E2}/chatkey`) && !adm("read", `data/users/${E2}/chatkey`), "X FORCE: each person's private chat key is private even from administrators");
+ok(emp("read", `commissions/${E}/r/o1/po/p1/c/000`) && !emp("read", `commissions/${E2}/r/o1/po/p1/c/000`) && !emp("write", `commissions/${E}/r/o1/po/p1/c/000`), "X FORCE: commission payout proof: the employee reads their own, only administrators write");
+ok(!emp("read", "restricted/wid-W1/c/000") && adm("read", "restricted/wid-W1/c/000"), "X FORCE: the National ID master copy is administrator-only");
+ok(emp("write", `engx/${E}/wid/W1/c/000`) && !emp("read", `engx/${E2}/wid/W1/c/000`), "X FORCE: ID document copies sit in each engineer's private area");
+ok(emp("write", `submissions/${E}/s/p1/ev/main/c/000`) && !emp("read", `submissions/${E2}/s/p1/ev/main/c/000`), "X FORCE: acceptance evidence is private to its sales owner and administrators");
+ok(!emp("read", `salesorders/${E2}/o/O1/f/f1/c/000`) && !emp("read", "orders/O1/files/f1/c/000"), "X FORCE: customer payment proof is never readable by other staff");
+console.log(fail ? `${fail} of ${n} FAILED` : `${n} tests passed`); process.exit(fail ? 1 : 0);

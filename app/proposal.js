@@ -171,7 +171,8 @@
     // right: project visual in a photo mask with one rounded corner
     const vx = 150, vy = 0, vw = D.W - vx, vh = D.H - 26, r = 22;
     const P = D.pen(); P.save(); P.begin().roundRect(vx, vy, vw, vh, [0, 0, 0, r]).clip();
-    if (p.proposal.coverImage) { const im = await imgData(p.proposal.coverImage, "image/jpeg", 2200); if (im) { const sc = Math.max(vw / im.w, vh / im.h); D.doc.addImage(im.data, "JPEG", vx + (vw - im.w * sc) / 2, vy + (vh - im.h * sc) / 2, im.w * sc, im.h * sc, undefined, "FAST"); } }
+    if (!p.proposal.coverImage && X.hero) { const im = X.hero, sc = Math.max(vw / im.w, vh / im.h); D.doc.addImage(im.data, "JPEG", vx + (vw - im.w * sc) / 2, vy + (vh - im.h * sc) / 2, im.w * sc, im.h * sc, undefined, "FAST"); }
+    else if (p.proposal.coverImage) { const im = await imgData(p.proposal.coverImage, "image/jpeg", 2200); if (im) { const sc = Math.max(vw / im.w, vh / im.h); D.doc.addImage(im.data, "JPEG", vx + (vw - im.w * sc) / 2, vy + (vh - im.h * sc) / 2, im.w * sc, im.h * sc, undefined, "FAST"); } }
     else { rect(D, vx, vy, vw, vh, C.white); drawPlan(D, X, { x: vx + 8, y: vy + 10, w: vw - 16, h: vh - 18 }, { mode: "presentation", dims: false, labels: false, zones: true }); }
     P.restore();
     cornerMark(D, 16);
@@ -339,7 +340,7 @@
       if (row.cat) { rect(D, x0, y - 4.3, tw, 6.4, C.stone); txt(D, PR.CAT_LABEL[row.cat].toUpperCase(), x0 + 1.5, y, { size: 7, font: "sansBold", charSpace: 0.35 }); y += 6.8; continue; }
       if (row.sub) { txt(D, `Subtotal ${PR.CAT_LABEL[row.sub].toLowerCase()}`, x0 + tw - 56, y, { size: 7.6, color: C.graphite, align: "right" }); txt(D, PR.fmtMoney(r.cats[row.sub].totalMinor, cur, { symbol: false }), x0 + tw - 1.5, y, { size: 7.8, font: "sansBold", align: "right" }); y += 8.5; continue; }
       const l = row.l; const exl = l.status === "exception";
-      const cells = [String(row.i), l.code || "", l.name + (l.basis ? `  ·  ${l.basis}` : ""), l.kind === "derived" || l.unit === "lot" ? "1" : PR.fmtQty(l.qty, l.unit), PR.UNIT_LABEL[l.unit] || l.unit,
+      const cells = [String(row.i), l.code || "", l.name + (l.basis ? `  ·  ${l.basis}` : ""), l.kind === "derived" || l.unit === "lot" ? "1" : PR.fmtQty(l.qty, l.unit), l.unit === "m3" ? "m3" /* the PDF fonts have ² but not ³ */ : PR.UNIT_LABEL[l.unit] || l.unit,
         exl ? "" : l.unitMinor == null ? "—" : PR.fmtMoney(l.unitMinor, cur, { symbol: false }), exl ? (l.exMode === "included" ? "Included" : "Priced separately") : l.counted ? PR.fmtMoney(l.totalMinor, cur, { symbol: false }) : "Not priced"];
       y = tableRows(D, cols.map((c, k) => Object.assign({}, c, { label: "", color: k === 1 ? C.limeInk : undefined, bold: k === 1 })), [{ cells }], x0, y);
     }
@@ -377,6 +378,60 @@
     if (comp.length > 1) para(D, comp.join("  ·  "), 14, D.H - 18, lw, { size: 7, color: C.pebble, maxLines: 2 });
   }
 
+  /* ---------------- 3D views, site schedule, price breakdown ---------------- */
+  const HERO_PX = [2000, 1143], CELL_PX = [1400, 741];
+  /** Brand photo mask: one rounded corner. The picture is cropped to fit, never stretched. */
+  function masked(D, im, x, y, w, h, r = 8) { const P = D.pen(); P.save(); P.begin().roundRect(x, y, w, h, [0, 0, 0, r]).clip(); const sc = Math.max(w / im.w, h / im.h); D.doc.addImage(im.data, "JPEG", x + (w - im.w * sc) / 2, y + (h - im.h * sc) / 2, im.w * sc, im.h * sc, undefined, "FAST"); P.restore(); }
+  function pagesViews(D, X, n) {
+    const list = X.stills.images, top = 36, foot = D.H - 21, W = D.W - 28; let pages = 0;
+    const start = (cont) => { if (pages) D.doc.addPage(); pages++; frame(D, X, "3D views", n); heading(D, cont ? "3D views, continued" : "3D views", 14, 31, 18, cont ? null : "views"); para(D, root.DPPresent.renderNote(X.stills.info), 14, D.H - 18, W, { size: 6.4, color: C.pebble, lh: 1.3, maxLines: 2 }); };
+    const caption = (im, x, y) => txt(D, im.name, x, y, { size: 7.5, font: "sansBold", color: C.graphite });
+    start(false); const hh = foot - top - 5; masked(D, list[0], 14, top, W, hh, 14); caption(list[0], 14, top + hh + 3.8);
+    const rest = list.slice(1), gap = 8, cw = (W - gap) / 2, ch = (foot - top - 2 * 5 - 3) / 2;
+    for (let i = 0; i < rest.length; i++) { if (i % 4 === 0) start(true); const k = i % 4, x = 14 + (k % 2) * (cw + gap), y = top + Math.floor(k / 2) * (ch + 5 + 3); masked(D, rest[i], x, y, cw, ch); caption(rest[i], x, y + ch + 3.8); }
+    return pages;
+  }
+  /** Key plan with numbered tags beside a table of dimensions. No money on this page: engineering receives it too. */
+  function pagesSiteItems(D, X, n, { technical = false } = {}) {
+    const PS = root.DPPresent, items = X.items, boxW = technical ? 240 : 122, tx = 14 + boxW + 8, tw = D.W - 14 - tx, top = 36, bottom = D.H - (technical ? 24 : 22), line = technical ? 4.4 : 3.5, size = technical ? 8.4 : 7; let pages = 0, y = top, pl = null;
+    const start = () => { if (pages) D.doc.addPage(); pages++;
+      if (technical) { drawLogo(D, logoC, 14, 8, 13); eyebrow(D, "Levels and dimensions", 46, 16); txt(D, `${X.p.meta.name}${X.p.meta.ref ? "  ·  " + X.p.meta.ref : ""}`, D.W - 14, 16, { size: 8, color: C.pebble, align: "right" }); }
+      else { frame(D, X, "Site schedule", n); heading(D, "Site schedule", 14, 31, 18, "schedule"); }
+      const box = { x: 14, y: top - (technical ? 12 : 0), w: boxW, h: bottom - top + (technical ? 12 : 0) }; rect(D, box.x, box.y, box.w, box.h, C.white, C.line, 0.2); pl = drawPlan(D, X, box, { mode: "presentation", dims: false, labels: false, zones: false });
+      if (pl) { const spots = PS.spreadTags(items.map((r) => [r.at[0] * pl.s + pl.ox, r.at[1] * pl.s + pl.oy]), 2.4); items.forEach((r, i) => { const [cx, cy] = spots[i], P = D.pen(); P.begin().circle(cx, cy, 2.4).paint({ fill: C.ink, stroke: C.white, px: 0.25 }); txt(D, r.tag, cx, cy + 0.85, { size: r.tag.length > 2 ? 5 : 6, font: "sansBold", color: C.white, align: "center" }); }); }
+      const notes = [PS.SCHEDULE_NOTE].concat(items.some((r) => r.engineer) ? [PS.ENGINEER_NOTE] : []).join(" "); para(D, notes, 14, D.H - (technical ? 18 : 15.5), D.W - 28, { size: 6.4, color: C.pebble, lh: 1.3, maxLines: 2 });
+      y = top + 2; };
+    start();
+    for (const r of items) { D.doc.setFont(FONTS.sans, "normal"); D.doc.setFontSize(size); const text = r.figures.map(([k, v]) => `${k} ${v}`).join("  ·  ") + (r.confirm ? `  ·  ${PS.CONFIRM_NOTE}` : ""), lines = D.doc.splitTextToSize(safe(text, "sans"), tw - 8), need = line + lines.length * line + 3; if (y + need > bottom) start();
+      const P = D.pen(); P.begin().circle(tx + 2.4, y - 1, 2.4).fill(C.ink); txt(D, r.tag, tx + 2.4, y - 0.15, { size: r.tag.length > 2 ? 5 : 6, font: "sansBold", color: C.white, align: "center" }); txt(D, r.name, tx + 8, y, { size: size + 0.6, font: "sansBold" }); y = para(D, text, tx + 8, y + line, tw - 8, { size, color: C.graphite, lh: line / (size * PT) }) + 1; hline(D, tx, tx + tw, y - 0.6, C.line, 0.15); y += 3; }
+    return pages;
+  }
+  function pageBreakdown(D, X, n) {
+    const b = root.DPPresent.breakdown(X.r, PR.CAT_ORDER, PR.CAT_LABEL), cur = b.currency, money = (m) => PR.fmtMoney(m, cur, { symbol: false }); frame(D, X, "Price breakdown", n); heading(D, "Price breakdown", 14, 31, 18, "breakdown");
+    if (X.sample) txt(D, "Illustrative prices for demonstration only", D.W - 14, 31, { size: 8, font: "sansBold", color: C.red, align: "right" }); else txt(D, `All prices in ${cur}${b.taxPct ? `, ${b.taxLabel} shown separately` : ""}`, D.W - 14, 31, { size: 8, color: C.pebble, align: "right" });
+    const lw = 166, barX = 14, barW = lw - 34; let y = 46; eyebrow(D, "Where the budget goes", 14, y); y += 8; const top = Math.max(...b.cats.map((c) => c.share), 0.0001);
+    for (const c of b.cats) { txt(D, c.label, 14, y, { size: 9.5, font: "sansBold" }); txt(D, money(c.totalMinor), 14 + lw, y, { size: 9.5, align: "right" }); y += 2.6; rect(D, barX, y, barW, 3.6, C.stone); if (c.totalMinor > 0) rect(D, barX, y, Math.max(0.6, barW * c.share / top), 3.6, C.lime); txt(D, `${(c.share * 100).toFixed(c.share < 0.1 ? 1 : 0)}%`, 14 + lw, y + 3, { size: 8, color: C.pebble, align: "right" }); y += 12; }
+    if (b.largest.length) { y += 1; eyebrow(D, "Largest items", 14, y); y += 6.5; for (const l of b.largest) { if (y > D.H - 44) break; txt(D, l.name, 14, y, { size: 8.4, color: C.graphite, maxW: lw - 34 }); txt(D, money(l.totalMinor), 14 + lw, y, { size: 8.4, align: "right" }); hline(D, 14, 14 + lw, y + 2.1, C.line, 0.15); y += 6.2; } y += 3; }
+    const say = [["Included at no charge", b.included], ["Priced separately", b.separate], ["Not included", b.excluded], ["Not priced yet", b.unpriced]].filter(([, l]) => l.length); for (const [k, l] of say) { if (y > D.H - 34) break; eyebrow(D, k, 14, y); y = para(D, l.join(" · "), 14, y + 4.6, lw, { size: 7.6, color: C.graphite, maxLines: 3 }) + 4; }
+    const cx = 194, cw = D.W - 14 - cx, cy = 42, rowsN = 1 + (b.discount ? 2 : 0) + (b.taxPct ? 1 : 0), cardH = 19 + rowsN * 9 + 2; rect(D, cx, cy, cw, cardH, C.stone); eyebrow(D, "Summary", cx + 7, cy + 9); let ry = cy + 19;
+    const row = (k, v, color) => { txt(D, k, cx + 7, ry, { size: 8.4, color: color || C.graphite }); txt(D, v, cx + cw - 7, ry, { size: 8.8, font: "sansBold", align: "right", color: color || C.ink }); hline(D, cx + 7, cx + cw - 7, ry + 2.6, "#D3D0C6", 0.15); ry += 9; };
+    row("Subtotal before discount", money(b.subtotal)); if (b.discount) { row(`Discount ${b.discountPct}%`, "- " + money(b.discount), C.limeInk); row("Subtotal after discount", money(b.afterDiscount)); } if (b.taxPct) row(`${b.taxLabel} ${b.taxPct}%`, money(b.tax));
+    const ty = cy + cardH; rect(D, cx, ty, cw, 18, C.ink); txt(D, "Total", cx + 7, ty + 11, { size: 10, font: "sansBold", color: C.white }); txt(D, PR.fmtMoney(b.total, cur), cx + cw - 7, ty + 11.5, { size: 15, font: "serif", color: C.lime, align: "right" });
+    if (!b.taxPct) para(D, "Tax: not included. Applicable taxes will be added where required.", 14, D.H - 18, lw, { size: 7, color: C.pebble });
+  }
+  /** Loads what the 3D sections need, once. */
+  async function load3d(needRender) {
+    if (!root.DPTerrain) await loadScript("app/terrain.js"); if (!root.DPPresent) await loadScript("app/present3d.js");
+    if (needRender) { if (!root.DPScene3D) await loadScript("app/scene3d.js"); if (!root.DP_MODELS) await loadScript("models/manifest.js").catch(() => { root.DP_MODELS = {}; }); if (!root.DPView3D) await loadScript("app/view3d.js"); }
+  }
+  const STILLS = { key: "", val: null };
+  /** Rendering takes a moment and the preview rebuilds as people type, so the same design and cameras reuse the same pictures. Never stored. */
+  async function stillsFor(X, shotIds, withHero) {
+    const list = root.DPPresent.resolveShots(X.p, shotIds), key = JSON.stringify([X.p.site, X.p.objects, X.p.views3d || null, (DPUI.App.config.catalog || {}).models || null, shotIds || null, !!withHero]); if (STILLS.key === key) return STILLS.val;
+    const shots = list.map((s, i) => Object.assign({}, s, { w: i ? CELL_PX[0] : HERO_PX[0], h: i ? CELL_PX[1] : HERO_PX[1] })); if (withHero) shots.push({ id: "hero", name: "Cover", view: "corner", w: 1200, h: 1500 });
+    const res = await root.DPView3D.renderStills(X.p, shots), val = { images: res.images.filter((i) => i.id !== "hero"), hero: res.images.find((i) => i.id === "hero") || null, info: res.info }; STILLS.key = key; STILLS.val = val; return val;
+  }
+
   /* ---------------- builders ---------------- */
   async function ensureLib(progress) {
     progress && progress("Loading the PDF engine");
@@ -409,11 +464,16 @@
     const progress = opts.progress || null, chk = precheck("proposal");
     if (chk.errors.length) throw Object.assign(new Error(chk.errors.join(" ")), { code: "precheck", list: chk.errors });
     await ensureLib(progress); const X = context(), D = newDoc("a4"); let n = 1;
-    const sec = Object.assign({ overview: true, plan: true, schedule: true, technical: true, quotation: true, notes: true }, opts.sections || {});
+    const sec = Object.assign({ overview: true, plan: true, schedule: true, technical: true, quotation: true, notes: true, views3d: false, siteItems: false, breakdown: false }, opts.sections || {}), warnings = chk.warnings.slice();
+    // new pages appear only when the proposal screen asks for them and the 3D planner is switched on
+    const on3d = !!(DPUI.planner3dOn && DPUI.planner3dOn()), needRender = on3d && X.p.objects.length > 0 && (sec.views3d || opts.coverRender), wantItems = on3d && sec.siteItems;
+    if (needRender || wantItems) { try { await load3d(needRender); } catch (e) { warnings.push("The 3D pages could not be loaded, so they are left out."); } }
+    if (needRender && root.DPView3D) { progress && progress("Rendering the 3D views"); try { X.stills = await stillsFor(X, opts.shots || null, !!opts.coverRender); if (opts.coverRender) X.hero = X.stills.hero; } catch (e) { console.warn("3D views", e); warnings.push("The 3D views could not be made on this device, so they are left out."); } }
+    if (wantItems && root.DPPresent) { try { X.items = root.DPPresent.siteItems(X.p); } catch (e) { console.warn("site schedule", e); warnings.push("The site schedule could not be made, so it is left out."); } }
     // 2.0: real step progress — one step per part actually built, reported as progress(label, i, total)
-    const has = { overview: sec.overview, plan: sec.plan && DPIO.extent(X.p), schedule: sec.schedule && Object.keys(X.counts).length, technical: sec.technical && (X.p.site || Object.keys(X.counts).length), quotation: sec.quotation && X.r.lines.length, notes: sec.notes };
-    const steps = ["cover"].concat(["overview", "plan", "schedule", "technical", "quotation", "notes"].filter((k) => has[k]), ["check"]);
-    const LBL = { cover: "Building the cover", overview: "Building the overview", plan: "Drawing the site plan", schedule: "Adding product photographs", technical: "Drawing the technical page", quotation: "Writing the quotation", notes: "Adding the notes", check: "Checking the document" };
+    const has = { views3d: on3d && sec.views3d && X.stills && X.stills.images.length, siteItems: X.items && X.items.length && DPIO.extent(X.p), breakdown: on3d && sec.breakdown && X.r.lines.length, overview: sec.overview, plan: sec.plan && DPIO.extent(X.p), schedule: sec.schedule && Object.keys(X.counts).length, technical: sec.technical && (X.p.site || Object.keys(X.counts).length), quotation: sec.quotation && X.r.lines.length, notes: sec.notes };
+    const steps = ["cover"].concat(["overview", "views3d", "plan", "siteItems", "schedule", "technical", "breakdown", "quotation", "notes"].filter((k) => has[k]), ["check"]);
+    const LBL = { views3d: "Adding the 3D views", siteItems: "Writing the site schedule", breakdown: "Writing the price breakdown", cover: "Building the cover", overview: "Building the overview", plan: "Drawing the site plan", schedule: "Adding product photographs", technical: "Drawing the technical page", quotation: "Writing the quotation", notes: "Adding the notes", check: "Checking the document" };
     const stepTo = (k) => progress && progress(LBL[k], steps.indexOf(k), steps.length);
     stepTo("cover");
     await pageCover(D, X);
@@ -421,15 +481,18 @@
       X.featured = Object.keys(X.counts).sort((a, b) => X.counts[b] - X.counts[a]).slice(0, 4); X.fimgs = {};
       await Promise.all(X.featured.map(async (c) => { const pp = DPCat.BY[c]; if (pp) X.fimgs[c] = await productPhoto(c, pp.thumb).catch(() => null); }));
       D.doc.addPage(); pageOverview(D, X, ++n); }
+    if (has.views3d) { stepTo("views3d"); D.doc.addPage(); pagesViews(D, X, ++n); }
     if (has.plan) { stepTo("plan"); D.doc.addPage(); pagePlan(D, X, ++n); }
+    if (has.siteItems) { stepTo("siteItems"); D.doc.addPage(); pagesSiteItems(D, X, ++n); }
     if (has.schedule) { stepTo("schedule"); D.doc.addPage(); await pagesSchedule(D, X, ++n); }
     if (has.technical) { stepTo("technical"); D.doc.addPage(); pageTechnical(D, X, ++n); }
+    if (has.breakdown) { stepTo("breakdown"); D.doc.addPage(); pageBreakdown(D, X, ++n); }
     if (has.quotation) { stepTo("quotation"); D.doc.addPage(); pagesQuotation(D, X, ++n); }
     if (has.notes) { stepTo("notes"); D.doc.addPage(); pageNotes(D, X, ++n); }
     pageNumbers(D);
     D.doc.setProperties({ title: `${X.p.meta.name} — Dupedia proposal`, subject: `Proposal ${X.p.meta.ref || ""}`, author: X.p.meta.preparedBy || "Dupedia", creator: "Dupedia X FORCE 1.4" });
     stepTo("check");
-    return validatePdf({ blob: D.doc.output("blob"), filename: fileName("proposal"), pages: D.doc.getNumberOfPages(), warnings: chk.warnings, total: X.r.total, currency: X.r.currency }, 2);
+    return validatePdf({ blob: D.doc.output("blob"), filename: fileName("proposal"), pages: D.doc.getNumberOfPages(), warnings, total: X.r.total, currency: X.r.currency }, 2);
   }
   function pageNumbers(D, skipFirst = true) { const N = D.doc.getNumberOfPages(); for (let i = skipFirst ? 2 : 1; i <= N; i++) { D.doc.setPage(i); txt(D, `${i} / ${N}`, D.W - 14, D.H - 7, { size: 7.5, color: C.pebble, align: "right" }); } }
   async function quotation(opts = {}) {
@@ -461,6 +524,8 @@
     scaleBar(D, tx + 6, y + 4, s, tbW - 20); northArrow(D, tx + tbW - 12, y + 24, (X.p.site && X.p.site.north) || 0);
     para(D, M.DISCLAIMER, tx + 6, H - 54, tbW - 12, { size: 6.4, color: C.pebble, lh: 1.35 });
     if (!DPIO.scaleVerified()) txt(D, "SCALE NOT VERIFIED", tx + 6, H - 20, { size: 9, font: "sansBold", color: C.red });
+    // levels and dimensions: the numbers a flat drawing can't show. Never holds up the drawing itself.
+    if (DPUI.planner3dOn && DPUI.planner3dOn()) { try { await load3d(false); X.items = root.DPPresent.siteItems(X.p); if (X.items.length) { D.doc.addPage(); pagesSiteItems(D, X, 2, { technical: true }); } } catch (e) { console.warn("levels page", e); } }
     D.doc.setProperties({ title: `${X.p.meta.name} — technical drawing`, creator: "Dupedia X FORCE 1.4" });
     return validatePdf({ blob: D.doc.output("blob"), filename: fileName("technical-drawing-A3"), pages: D.doc.getNumberOfPages() });
   }

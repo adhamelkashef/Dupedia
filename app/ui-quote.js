@@ -14,6 +14,12 @@
     U.pricing(); if (App.view === "quote") renderQuote(); else if (DPUI.refreshPlan) DPUI.refreshPlan(); U.scheduleAutosave();
   }
 
+  /** A figure can fall out of date if the plan was edited where the terrain code wasn't loaded. Whoever may edit the project gets it refreshed here. */
+  async function freshen(render) {
+    if (ro() || App.sample || !M.staleMeasures(S.project) || ["submitted", "won", "accepted", "cancelled"].includes(S.project.meta.status)) return;
+    try { if (!root.DPTerrain) await DPProposal.loadScript("app/terrain.js"); if (root.DPTerrain.measureProject(S.project)) { S.dirty = true; U.scheduleAutosave(); if (App.view === "quote" || App.view === "review") render(); } } catch (e) { /* the open point stays on the quote, and nothing is priced from an old figure */ }
+  }
+  const leftOutText = (l) => l.map((x) => `${x.name}${x.count > 1 ? ` × ${x.count}` : ""}`).join(", ");
   /* ---------------- quotation ---------------- */
   function renderQuote() {
     const r = U.pricing(), pr = S.project.pricing, w = !ro(), canOv = PR.canOverride(U.role(), App.config.settings) && w;
@@ -39,6 +45,7 @@
         <div class="row"><button class="btn ghost" id="q-plan">← Back to the plan</button><button class="btn ghost" id="q-csv">Export CSV</button><button class="btn ghost" id="q-pdf">Printable quotation (PDF)</button><button class="btn lime" id="q-next">Next: Review &amp; Submit →</button></div></div>
       ${App.sample ? `<div class="note warn">Sample project: prices are illustrative only and are not Dupedia prices.</div>` : ""}
       ${!Object.keys(book.items || {}).length && !App.sample ? `<div class="note err">The price book is empty, so nothing is priced. ${U.isAdmin() ? "Add prices in Admin › Price book." : "Ask an administrator to fill in the price book."}</div>` : ""}
+      ${M.notQuoted().length ? `<div class="note warn small"><b>Drawn on the plan but not in this quotation:</b> ${esc(leftOutText(M.notQuoted()))}. To quote one, select it on the plan and tick Include in the quotation. It needs a price in the Price book.</div>` : ""}
       <div class="qgrid"><div class="card" style="padding:0;overflow:hidden"><div class="tablewrap"><table class="qtable"><thead><tr><th>Code</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Unit price (${esc(cur)})</th><th class="r">Total (${esc(cur)})</th><th>Status</th><th></th></tr></thead><tbody>
         ${PR.CAT_ORDER.filter((c) => byCat[c]).map((c) => `<tr class="cat"><td colspan="5">${esc(PR.CAT_LABEL[c])}</td><td class="r">${esc(PR.fmtMoney(r.cats[c].totalMinor, cur, { symbol: false }))}</td><td colspan="2"></td></tr>${byCat[c].map(row).join("")}`).join("") || `<tr><td colspan="8"><div class="empty small">Nothing to price yet. Place products and elements on the plan.</div></td></tr>`}
       </tbody></table></div>
@@ -60,7 +67,7 @@
         <div class="card stack"><h4>Currency</h4><div class="grid2"><label class="field"><span>Project currency</span><select class="in sm" id="q-cur" ${w ? "" : "disabled"}>${["EGP", "USD", "EUR", "SAR", "AED", "QAR", "KWD", "GBP"].map((c) => `<option${c === cur ? " selected" : ""}>${c}</option>`).join("")}</select></label>
           ${cur !== book.currency ? `<label class="field"><span>1 ${esc(book.currency)} =</span><div class="unit"><input class="in sm num" id="q-fx" type="number" step="any" min="0" value="${pr.fx && pr.fx.rate || ""}" ${w ? "" : "disabled"}><em>${esc(cur)}</em></div></label>` : `<div class="field"><span class="lbl">Price book</span><span class="small">${esc(book.currency)}</span></div>`}</div>
           ${cur !== book.currency ? `<p class="tiny muted">Price book prices are converted at this rate${pr.fx && pr.fx.by ? ` (set by ${esc(pr.fx.by)})` : ""}. Manual prices are entered in ${esc(cur)}.</p>` : ""}</div>
-        ${r.margin ? `<div class="card stack" style="border-color:var(--fg)"><div class="row between"><h4>Margin</h4><span class="pill dark">Administrators only</span></div><div class="sumrows"><div class="r"><span>Revenue after discount</span><span>${esc(PR.fmtMoney(r.margin.revenueMinor, cur, { symbol: false }))}</span></div><div class="r"><span>Cost</span><span>${esc(PR.fmtMoney(r.margin.costMinor, cur, { symbol: false }))}</span></div><div class="r"><b>Gross margin</b><b>${esc(PR.fmtMoney(r.margin.marginMinor, cur, { symbol: false }))} · ${r.margin.pct.toFixed(1)}%</b></div></div>${r.margin.missing ? `<p class="tiny muted">${r.margin.missing} lines have no cost price, so margin is overstated.</p>` : ""}<p class="tiny muted">Never printed on client documents.</p></div>` : ""}
+        ${r.margin ? `<div class="card stack" style="border-color:var(--fg)"><div class="row between"><h4>Margin</h4><span class="pill dark">Administrators only</span></div><div class="sumrows"><div class="r"><span>Revenue after discount</span><span>${esc(PR.fmtMoney(r.margin.revenueMinor, cur, { symbol: false }))}</span></div><div class="r"><span>Cost</span><span>${esc(PR.fmtMoney(r.margin.costMinor, cur, { symbol: false }))}</span></div><div class="r"><b>Gross margin</b><b>${esc(PR.fmtMoney(r.margin.marginMinor, cur, { symbol: false }))} · ${r.margin.pct.toFixed(1)}%</b></div></div>${r.margin.missing ? `<p class="tiny muted">${r.margin.missing} lines have no cost price, so margin is overstated.</p>` : ""}${r.serviceCostsMissing ? `<p class="tiny muted">${r.serviceCostsMissing} installation or delivery lines have no cost entered, so margin is overstated.</p>` : ""}<p class="tiny muted">Never printed on client documents.</p></div>` : ""}
         <div class="card stack"><h4>Open points (${r.issues.filter((i) => i.sev !== "info").length})</h4><div class="issues">${r.issues.map((i) => `<div class="iss ${i.sev}"><i></i><span>${esc(i.msg)}</span></div>`).join("") || `<div class="note ok small">Nothing open.</div>`}</div></div>
       </aside></div></div>`;
     const V = $("#view-quote");
@@ -79,6 +86,7 @@
     $$("[data-xdel]", V).forEach((b) => (b.onclick = () => { const x = pr.extras.find((e) => e.id === b.dataset.xdel); pr.extras = pr.extras.filter((e) => e.id !== b.dataset.xdel); M.commit("Remove charge", { audit: { action: "Charge removed", detail: x ? x.label : "" } }); renderQuote(); U.scheduleAutosave(); }));
     const chg = $("#q-chg"); if (chg) chg.onchange = () => { const c = charges.find((x) => x.id === chg.value); if (!c) return; pr.extras = (pr.extras || []).concat([Object.assign({}, c, { id: M.uid("x"), std: c.id, by: U.userInfo().name || "" })]); M.commit("Add charge", { audit: { action: "Charge added", detail: c.label } }); renderQuote(); U.scheduleAutosave(); };
     const xa = $("#q-xadd"); if (xa) xa.onclick = customCharge;
+    freshen(renderQuote);
   }
   async function manual(key, field, raw) {
     const pr = S.project.pricing, line = App.pricing.lines.find((l) => l.key === key); if (!line) return;
@@ -128,6 +136,7 @@
       { k: "geo", ok: v.counts.error === 0 || !!(rv.ackErrors && rv.ackErrors.count === v.counts.error), warn: v.counts.error > 0 && rv.ackErrors && rv.ackErrors.count === v.counts.error, label: "No geometry errors", detail: v.counts.error ? (rv.ackErrors && rv.ackErrors.count === v.counts.error ? `${v.counts.error} errors acknowledged by ${rv.ackErrors.by}: ${rv.ackErrors.reason}` : `${v.counts.error} errors: overlaps, items outside the site or on restricted ground`) : "Footprints, zones, boundary and restricted areas checked", go: "plan", block: true, ack: v.counts.error ? "errors" : null },
       { k: "warn", ok: v.counts.warning === 0 || !!(rv.ackWarnings && rv.ackWarnings.count === v.counts.warning), warn: v.counts.warning > 0, label: "Warnings reviewed", detail: v.counts.warning ? `${v.counts.warning} warnings${rv.ackWarnings && rv.ackWarnings.count === v.counts.warning ? ` · reviewed by ${rv.ackWarnings.by}` : ""}` : "None", go: "plan", block: false, ack: v.counts.warning ? "warnings" : null },
       { k: "price", ok: !r.blocking, label: "Every item priced or resolved", detail: r.blocking ? r.issues.filter((i) => i.sev === "error").map((i) => i.msg).slice(0, 3).join(" · ") : `${r.lines.length} lines · total ${DPPricing.fmtMoney(r.total, r.currency)}`, go: "quote", block: true },
+      ...(M.notQuoted().length ? [{ k: "leftout", ok: false, label: "Some drawn items aren't quoted", detail: `Left out: ${leftOutText(M.notQuoted())}`, go: "quote", block: false }] : []),
       { k: "terms", ok: terms.length === 0, warn: terms.length > 0, label: "Commercial terms completed", detail: terms.length ? `Still to complete: ${terms.join(", ")}` : "Payment, validity, warranty and delivery filled in", go: "proposal", block: false },
     ];
     return { list, blocking: list.some((c) => c.block && !c.ok), v, r };
@@ -161,6 +170,7 @@
       const r2 = await U.form(`Acknowledge ${cnt} ${kind}`, [{ id: "reason", label: "Why the proposal can go out with these open", required: true }], { intro: kind === "errors" ? "Geometry errors usually mean the layout cannot be built as drawn. Acknowledging records your name and reason in the change log; it does not fix the layout." : "Record that you reviewed the warnings.", submit: "Acknowledge" });
       if (!r2) return; S.project.review = S.project.review || {}; S.project.review[kind === "errors" ? "ackErrors" : "ackWarnings"] = { count: cnt, reason: r2.reason, by: U.userInfo().name || "local user", at: new Date().toISOString() };
       M.commit("Acknowledge", { audit: { action: `Acknowledged ${cnt} ${kind}`, detail: r2.reason } }); U.scheduleAutosave(); renderReview(); }));
+    freshen(renderReview);
     const iss = $("#r-issue"); if (iss) iss.onclick = issue; const iss2 = $("#r-issue-top"); if (iss2) iss2.onclick = issue;
     const sb = $("#r-submit"); if (sb) sb.onclick = () => DPUI.acceptDialog(S.project.meta.id, S.project.meta.ownerId || DPStore.st.userId, () => renderReview());
     const rj = $("#r-reject"); if (rj) rj.onclick = () => DPUI.rejectDialog(S.project.meta.id, S.project.meta.ownerId || DPStore.st.userId, () => renderReview());
@@ -174,7 +184,7 @@
     const cfg = App.commissionCfg, base = DPCommission.base(r, App.config.settings), est = cfg ? DPSales.estimate(base.eligibleMinor, cfg) : null;
     const mine = !S.project.meta.ownerId || S.project.meta.ownerId === DPStore.st.userId;
     const estHtml = est && mine ? `<div class="kv"><span>Commission value</span><b class="num">${esc(DPPricing.fmtMoney(base.eligibleMinor, r.currency))}</b><span>Estimated commission</span><b class="num">${esc(DPPricing.fmtMoney(est.amountMinor, r.currency))}</b></div>
-      <p class="tiny muted">An estimate, not a promise: the commission value excludes ${esc(r.taxLabel)}, delivery and pass-through charges, and the amount you earn is the one an administrator approves after the order.</p>` : "";
+      <p class="tiny muted">An estimate, not a promise: the commission value excludes ${esc(r.taxLabel)}, delivery and pass-through charges${base.noCommissionMinor ? ", and new site items an administrator hasn't included" : ""}, and the amount you earn is the one an administrator approves after the order.</p>` : "";
     if (st === "draft" || !st) return `<p class="small muted">After you submit the quotation, record the client's decision here or in My Orders &amp; Proposals.</p>${estHtml}`;
     if (st === "issued") return `${estHtml}<button class="btn block" id="r-submit" ${w && mine ? "" : "disabled"}>Client accepted…</button><button class="btn ghost block sm" id="r-reject" ${w && mine ? "" : "disabled"}>Client rejected…</button>`;
     if (st === "accepted") return `<span class="pill ok">Accepted — order ${esc(S.project.meta.orderId || "")}</span><p class="small">Engineering has the order. Follow production and payments in <b>My Orders &amp; Proposals</b>.</p>`;

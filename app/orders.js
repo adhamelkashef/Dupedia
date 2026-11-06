@@ -213,10 +213,10 @@
   /** Non-financial handover pack built from the project. Every price, total, discount and the commercial terms are removed. */
   function handoverFrom(project, order) {
     const p = JSON.parse(JSON.stringify(project));
-    delete p.pricing; delete p.audit; delete p.review; p.meta = { name: p.meta.name, client: p.meta.client, location: p.meta.location, type: p.meta.type, ref: p.meta.ref, description: p.meta.description, date: p.meta.date, preparedBy: p.meta.preparedBy, id: p.meta.id };
+    delete p.pricing; delete p.audit; delete p.review; delete p._summaryTotal; delete p._summaryCurrency; delete p._summaryBase; p.meta = { name: p.meta.name, client: p.meta.client, location: p.meta.location, type: p.meta.type, ref: p.meta.ref, description: p.meta.description, date: p.meta.date, preparedBy: p.meta.preparedBy, id: p.meta.id };
     const pr = p.proposal || {}; p.proposal = { scope: pr.scope || "", installation: pr.installation || "", assumptions: pr.assumptions || "", exclusions: pr.exclusions || "", delivery: pr.delivery || "" };
     for (const o of p.objects || []) { delete o.price; delete o.unitPrice; delete o.cost; delete o.sell; }
-    const items = root.DPModel.takeoff(project).filter((t) => t.kind === "product" || t.kind === "point" || t.kind === "line" || t.kind === "area")
+    const items = root.DPModel.takeoff(project).filter((t) => t.kind === "product" || t.kind === "element" || t.kind === "custom")
       .map((t) => ({ key: t.key, code: t.displayCode || t.code || "", name: t.name, qty: t.qty, unit: t.unit, cat: t.cat }));
     return { oid: order.oid, ref: order.ref, name: order.name, client: order.client, location: order.location || p.meta.location || "", type: order.type || p.meta.type || "", items, project: p, at: now() };
   }

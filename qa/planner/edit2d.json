@@ -1,0 +1,579 @@
+{
+ "move snaps to the 0.5 m grid": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 13,
+    "y": 12.5,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "alt moves freely, without snapping": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 13.13,
+    "y": 12.37,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "shift keeps the move on one axis": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 14.5,
+    "y": 10,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "a move aligns to a neighbour within 7 px": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 14,
+    "y": 20,
+    "rot": 0
+   },
+   {
+    "id": "b",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 25,
+    "y": 20,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "guides off means grid only": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 14,
+    "y": 20,
+    "rot": 0
+   },
+   {
+    "id": "b",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 25,
+    "y": 20,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "snap off moves exactly": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 11.234,
+    "y": 12.345,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "a tiny move under 3 px is not an edit": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 10,
+    "y": 10,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 0,
+  "label": "Move"
+ },
+ "dragging a surface snaps its move to the grid": {
+  "objects": [
+   {
+    "id": "r",
+    "kind": "area",
+    "type": "rubber",
+    "poly": [
+     [
+      22,
+      6.5
+     ],
+     [
+      26,
+      6.5
+     ],
+     [
+      26,
+      10.5
+     ],
+     [
+      22,
+      10.5
+     ]
+    ]
+   }
+  ],
+  "selected": [
+   "r"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "alt drags a surface freely": {
+  "objects": [
+   {
+    "id": "r",
+    "kind": "area",
+    "type": "rubber",
+    "poly": [
+     [
+      22.13,
+      6.369999999999999
+     ],
+     [
+      26.13,
+      6.369999999999999
+     ],
+     [
+      26.13,
+      10.37
+     ],
+     [
+      22.13,
+      10.37
+     ]
+    ]
+   }
+  ],
+  "selected": [
+   "r"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "dragging a line snaps its move to the grid": {
+  "objects": [
+   {
+    "id": "f",
+    "kind": "line",
+    "type": "fence",
+    "pts": [
+     [
+      3,
+      22.5
+     ],
+     [
+      9,
+      22.5
+     ],
+     [
+      9,
+      27.5
+     ]
+    ],
+    "width": 0.08
+   }
+  ],
+  "selected": [
+   "f"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "with snap off a surface moves exactly": {
+  "objects": [
+   {
+    "id": "r",
+    "kind": "area",
+    "type": "rubber",
+    "poly": [
+     [
+      22.13,
+      6.369999999999999
+     ],
+     [
+      26.13,
+      6.369999999999999
+     ],
+     [
+      26.13,
+      10.37
+     ],
+     [
+      22.13,
+      10.37
+     ]
+    ]
+   }
+  ],
+  "selected": [
+   "r"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "several moves in one drag land where the last one says": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 13.5,
+    "y": 11,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "selected items move together, keeping their spacing": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 12,
+    "y": 13.5,
+    "rot": 0
+   },
+   {
+    "id": "t",
+    "kind": "point",
+    "type": "tree",
+    "x": 17,
+    "y": 13.5,
+    "l": 4,
+    "w": 4,
+    "rot": 0
+   },
+   {
+    "id": "r",
+    "kind": "area",
+    "type": "rubber",
+    "poly": [
+     [
+      22,
+      8.5
+     ],
+     [
+      26,
+      8.5
+     ],
+     [
+      26,
+      12.5
+     ],
+     [
+      22,
+      12.5
+     ]
+    ]
+   },
+   {
+    "id": "f",
+    "kind": "line",
+    "type": "fence",
+    "pts": [
+     [
+      4,
+      23.5
+     ],
+     [
+      10,
+      23.5
+     ]
+    ],
+    "width": 0.08
+   }
+  ],
+  "selected": [
+   "a",
+   "f",
+   "r",
+   "t"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "a locked item stays put while the rest of the selection moves": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 12,
+    "y": 12,
+    "rot": 0
+   },
+   {
+    "id": "b",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 20,
+    "y": 10,
+    "rot": 0,
+    "locked": true
+   }
+  ],
+  "selected": [
+   "a",
+   "b"
+  ],
+  "history": 1,
+  "label": "Move"
+ },
+ "clicking empty ground clears the selection": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 10,
+    "y": 10,
+    "rot": 0
+   }
+  ],
+  "selected": [],
+  "history": 0,
+  "label": "Move"
+ },
+ "shift-click adds to the selection": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 10,
+    "y": 10,
+    "rot": 0
+   },
+   {
+    "id": "b",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 25,
+    "y": 20,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a",
+   "b"
+  ],
+  "history": 0,
+  "label": "Move"
+ },
+ "read-only selects but never edits": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 10,
+    "y": 10,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 0,
+  "label": "Move"
+ },
+ "rotate handle snaps to the angle step": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 10,
+    "y": 10,
+    "rot": 60
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Rotate"
+ },
+ "alt rotates freely": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 10,
+    "y": 10,
+    "rot": 65.55604521958344
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Rotate"
+ },
+ "rotating a rotated item measures from its centre": {
+  "objects": [
+   {
+    "id": "a",
+    "kind": "product",
+    "code": "SW-A409",
+    "x": 10,
+    "y": 10,
+    "rot": 210
+   }
+  ],
+  "selected": [
+   "a"
+  ],
+  "history": 1,
+  "label": "Rotate"
+ },
+ "resizing a rectangle snaps to its step": {
+  "objects": [
+   {
+    "id": "t",
+    "kind": "point",
+    "type": "bench",
+    "x": 10,
+    "y": 10,
+    "l": 6.300000000000001,
+    "w": 3.5,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "t"
+  ],
+  "history": 1,
+  "label": "Resize"
+ },
+ "resizing a rotated rectangle follows its own axes": {
+  "objects": [
+   {
+    "id": "t",
+    "kind": "point",
+    "type": "bench",
+    "x": 10,
+    "y": 10,
+    "l": 8.3,
+    "w": 1.9000000000000001,
+    "rot": 30
+   }
+  ],
+  "selected": [
+   "t"
+  ],
+  "history": 1,
+  "label": "Resize"
+ },
+ "resizing a circle changes its diameter": {
+  "objects": [
+   {
+    "id": "t",
+    "kind": "point",
+    "type": "tree",
+    "x": 10,
+    "y": 10,
+    "l": 7,
+    "w": 7,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "t"
+  ],
+  "history": 1,
+  "label": "Resize"
+ },
+ "alt resizes freely": {
+  "objects": [
+   {
+    "id": "t",
+    "kind": "point",
+    "type": "bench",
+    "x": 10,
+    "y": 10,
+    "l": 6.260000000000002,
+    "w": 3.539999999999999,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "t"
+  ],
+  "history": 1,
+  "label": "Resize"
+ },
+ "a resize can never reach zero": {
+  "objects": [
+   {
+    "id": "t",
+    "kind": "point",
+    "type": "bench",
+    "x": 10,
+    "y": 10,
+    "l": 0.05,
+    "w": 0.05,
+    "rot": 0
+   }
+  ],
+  "selected": [
+   "t"
+  ],
+  "history": 1,
+  "label": "Resize"
+ }
+}

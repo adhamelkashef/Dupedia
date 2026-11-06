@@ -17,13 +17,15 @@
       <div class="tg">${t('data-act="undo"', "undo", "Undo", "Undo (Ctrl+Z)")}${t('data-act="redo"', "redo", "Redo", "Redo (Ctrl+Y)")}</div>
       <div class="tg">${t('data-act="rotate"', "rotate", "Rotate", "Rotate selection (R; Shift+R = 90°)")}${t('data-act="duplicate"', "dup", "Duplicate", "Duplicate (Ctrl+D)")}${t('data-act="lock"', "lock", "Lock", "Lock / unlock (L)")}${t('data-act="delete"', "del", "Delete", "Delete (Del)")}
         <div class="pop">${t('data-pop="arrange"', "align", "Arrange", "Align, distribute and order")}</div></div>
-      <div class="tg"><div class="seg" role="group" aria-label="Display mode"><button type="button" data-mode="design">Design</button><button type="button" data-mode="presentation">Presentation</button></div>
+      <div class="tg"><div class="seg" role="group" aria-label="Display mode"><button type="button" data-mode="design">Design</button><button type="button" data-mode="presentation">Presentation</button></div><button type="button" class="btn sm ghost" id="tb-3d" hidden aria-pressed="false" title="Show this plan in 3D">3D</button>
         <div class="pop">${t('data-pop="show"', "show", "Show", "Labels, dimensions, safety zones, grid")}</div></div>
-      <div class="tg">${t('data-act="zoom-out"', "zout", "", "Zoom out (−)")}<span class="zoom" id="zoom-label">100%</span>${t('data-act="zoom-in"', "zin", "", "Zoom in (+)")}${t('data-act="fit"', "fit", "Fit", "Fit to screen (F)")}</div>
+      <div class="tg tg-zoom">${t('data-act="zoom-out"', "zout", "", "Zoom out (−)")}<span class="zoom" id="zoom-label">100%</span>${t('data-act="zoom-in"', "zin", "", "Zoom in (+)")}${t('data-act="fit"', "fit", "Fit", "Fit to screen (F)")}</div>
       <div class="tg right"><div class="pop">${t('data-pop="saveas"', "layers", "Versions", "Save a version, template, history")}</div><div class="pop">${t('data-pop="export"', "export", "Export", "Export plan, drawing, schedule or project file")}</div>
         <button type="button" class="btn sm lime" id="tb-quote">Quotation →</button></div>`;
     $("#toolbar").onclick = (e) => {
       const b = e.target.closest("button"); if (!b) return;
+      if (b.id === "tb-3d") return toggle3D();
+      if (b.dataset.tool || b.dataset.draw) close3D();   // 2D tools work on the 2D plan
       if (b.dataset.tool) setTool(b.dataset.tool);
       else if (b.dataset.draw) startDraw(b.dataset.draw);
       else if (b.dataset.act) act(b.dataset.act);
@@ -36,6 +38,7 @@
   function syncToolbar() {
     $$("[data-tool]").forEach((b) => b.classList.toggle("is-on", b.dataset.tool === C.tool && !C.mode));
     $$("[data-mode]").forEach((b) => b.classList.toggle("is-on", b.dataset.mode === C.displayMode));
+    sync3D();
     const sel = M.selected(), any = sel.length > 0, w = !ro();
     const dis = (a, d) => { const b = $(`[data-act="${a}"]`); if (b) b.disabled = d; };
     dis("rotate", !any || !w || sel.every((o) => o.locked)); dis("duplicate", !any || !w); dis("delete", !any || !w || sel.every((o) => o.locked)); dis("lock", !any || !w);
@@ -133,7 +136,11 @@
   function hint(text, onCancel) { const h = $("#hint"); h.innerHTML = `<span>${esc(text)}</span><button type="button" class="alt" id="hint-x">Cancel</button>`; h.hidden = false; $("#hint-x").onclick = () => { C.endMode(null); onCancel && onCancel(); }; mobile("canvas"); }
   const hideHint = () => ($("#hint").hidden = true);
   function newProductObj(code, at) { const p = DPCat.BY[code]; return { id: M.uid(), kind: "product", code, x: at[0], y: at[1], rot: at[2] || 0 }; void p; }
-  function newPointObj(type, at, rot = 0) { const el = DPCat.EL[type]; return { id: M.uid(), kind: "point", type, x: at[0], y: at[1], rot, l: el.l || el.d, w: el.w || el.d, label: type === "label" ? "Label" : "" }; }
+  /** New items join the quotation only once they have a price: an unpriced line would otherwise block the whole quote. */
+  const hasPrice = (el, o) => { const it = ((App.config.pricebook || {}).items || {})[o ? M.priceKey(o) : "el:" + el.id]; return !!(it && it.sell != null && it.sell !== "" && isFinite(it.sell)); };
+  function quoteDefault(o) { const el = DPCat.EL[o.type]; if (el && el.priced3d) o.costable = hasPrice(el, o); else if (el && el.added3d && el.costable && !hasPrice(el)) o.costable = false; return o; }
+  function quoteNote(o) { const el = DPCat.EL[o.type]; if (!el || !(el.added3d || el.priced3d) || (o.costable != null ? o.costable : el.costable)) return ""; const custom = el.group === "custom"; return `<div class="note warn small">${custom ? "Not in the quotation yet. Enter a unit price below and tick the box to include it." : hasPrice(el, o) ? "A price now exists. Tick the box to include this in the quotation." : "Not in the quotation: this item has no price yet. An administrator can add one in the Price book."}</div>`; }
+  function newPointObj(type, at, rot = 0) { const el = DPCat.EL[type]; return quoteDefault({ id: M.uid(), kind: "point", type, x: at[0], y: at[1], rot, l: el.l || el.d, w: el.w || el.d, label: type === "label" ? "Label" : "" }); }
   function placeProduct(code) {
     if (ro()) return; const p = DPCat.BY[code]; if (!p || !p.dims) return U.toast("This product has no published dimensions and cannot be placed. Ask Dupedia for a site-specific layout.", { err: true });
     setTool("select"); hint(`Click to place ${p.displayCode || p.code} ${p.name}. R rotates before placing. Esc cancels.`);
@@ -173,13 +180,13 @@
     if (el.kind === "line") {
       hint(`Draw ${el.name.toLowerCase()}: click each corner; double-click, Enter, or click the last point again to finish. Shift draws straight lines. Backspace removes a corner.`);
       C.setMode("draw-line", type === "dimension" ? { maxPts: 2 } : {}, (pts) => { hideHint(); syncToolbar(); if (!pts || pts.length < 2) return;
-        const o = { id: M.uid(), kind: "line", type, pts, width: el.width, label: "", traced: !!(S.project.cad || S.project.ref) }; M.addObject(o, false); S.selection.clear(); S.selection.add(o.id);
+        const o = quoteDefault({ id: M.uid(), kind: "line", type, pts, width: el.width, label: "", traced: !!(S.project.cad || S.project.ref) }); M.addObject(o, false); S.selection.clear(); S.selection.add(o.id);
         M.commit(`Draw ${el.name}`); refresh(); U.toast(`${el.name}: ${f2(G.polylineLength(pts))} m.`); });
     } else {
       const rect = P.areaMode === "rect";
       hint(rect ? `Draw ${el.name.toLowerCase()}: click one corner, then the opposite corner. Switch to polygon in the Elements tab for any shape.` : `Draw ${el.name.toLowerCase()}: click each corner; click the first corner or press Enter to close.`);
       C.setMode(rect ? "draw-rect" : "draw-area", {}, (pts) => { hideHint(); syncToolbar(); if (!pts || pts.length < 3) return; if (G.area(pts) < 0.01) return U.toast("That area is too small.", { err: true });
-        const o = { id: M.uid(), kind: "area", type, poly: pts, label: "", traced: !!(S.project.cad || S.project.ref) }; M.addObject(o, false); S.selection.clear(); S.selection.add(o.id);
+        const o = quoteDefault({ id: M.uid(), kind: "area", type, poly: pts, label: "", traced: !!(S.project.cad || S.project.ref) }); M.addObject(o, false); S.selection.clear(); S.selection.add(o.id);
         M.commit(`Draw ${el.name}`); refresh(); U.toast(`${el.name}: ${m2(G.area(pts))}.`); });
     }
     syncToolbar();
@@ -351,9 +358,9 @@
   /* --- elements tab --- */
   function elementsTab(B) {
     const w = !ro();
-    B.innerHTML = `<div class="panel"><div class="chips">${DPCat.GROUPS.map((g) => `<button type="button" class="chip ${P.group === g.key ? "is-on" : ""}" data-grp="${g.key}">${esc(g.label)}</button>`).join("")}</div>
+    B.innerHTML = `<div class="panel"><div class="chips">${DPCat.GROUPS.filter((g) => !["terrain", "play"].includes(g.key) || U.planner3dOn()).map((g) => `<button type="button" class="chip ${P.group === g.key ? "is-on" : ""}" data-grp="${g.key}">${esc(g.label)}</button>`).join("")}</div>
       <div class="row between"><span class="small muted">Areas are drawn as</span><div class="seg"><button type="button" data-am="rect" class="${P.areaMode === "rect" ? "is-on" : ""}">Rectangle</button><button type="button" data-am="poly" class="${P.areaMode === "poly" ? "is-on" : ""}">Polygon</button></div></div>
-      <div class="etiles">${DPCat.ELEMENTS.filter((e) => e.group === P.group).map((e) => `<button type="button" class="etile" data-etype="${e.id}" draggable="${e.kind === "point" && w ? "true" : "false"}" ${w ? "" : "disabled"} title="${esc(e.note || e.name)}"><canvas width="104" height="80" data-esym="${e.id}"></canvas>${esc(e.name)}<small>${e.kind === "point" ? (e.shape === "circle" ? `⌀ ${e.d} m` : `${e.l} × ${e.w} m`) : e.kind === "line" ? "draw a route · " + (e.unit === "m2" ? "m²" : "m") : "draw an area · m²"}${e.costable ? "" : " · not priced"}</small></button>`).join("")}</div>
+      <div class="etiles">${DPCat.ELEMENTS.filter((e) => e.group === P.group && (!e.added3d || U.planner3dOn())).map((e) => `<button type="button" class="etile" data-etype="${e.id}" draggable="${e.kind === "point" && w ? "true" : "false"}" ${w ? "" : "disabled"} title="${esc(e.note || e.name)}"><canvas width="104" height="80" data-esym="${e.id}"></canvas>${esc(e.name)}<small>${e.kind === "point" ? (e.shape === "circle" ? `⌀ ${e.d} m` : `${e.l} × ${e.w} m`) : e.kind === "line" ? "draw a route · " + (e.unit === "m2" ? "m²" : "m") : "draw an area · m²"}${e.costable ? "" : " · not priced"}</small></button>`).join("")}</div>
       ${P.group === "generic" ? `<div class="note warn small">Generic items are not Dupedia catalogue products. Their sizes are typical starting points: set the real dimensions and enter the supplier's safety clearance in the properties.</div>` : ""}
       ${P.group === "custom" ? `<p class="tiny muted">Custom areas, objects and lines can carry their own price and category (set in the properties panel).</p>` : ""}</div>`;
     $$("[data-grp]", B).forEach((b) => (b.onclick = () => { P.group = b.dataset.grp; elementsTab(B); }));
@@ -378,6 +385,7 @@
 
   /* ---------------- right panel: properties ---------------- */
   function right() {
+    ensureTerrain();
     const R = $("#right"), sel = M.selected(), w = !ro();
     if (!sel.length) return R.innerHTML = summaryPanel();
     if (sel.length > 1) {
@@ -394,6 +402,13 @@
     bindProps(R, o);
   }
   const pos = (o, w) => `<div class="grid3"><label class="field"><span>X</span><div class="unit"><input class="in sm num" data-f="x" type="number" step="0.01" value="${f2(o.x).replace(/,/g, "")}" ${w ? "" : "disabled"}><em>m</em></div></label><label class="field"><span>Y</span><div class="unit"><input class="in sm num" data-f="y" type="number" step="0.01" value="${f2(o.y).replace(/,/g, "")}" ${w ? "" : "disabled"}><em>m</em></div></label><label class="field"><span>Rotation</span><div class="unit"><input class="in sm num" data-f="rot" type="number" step="1" value="${Math.round((o.rot || 0) * 10) / 10}" ${w ? "" : "disabled"}><em>°</em></div></label></div>`;
+  const heightField = (o, w) => (U.planner3dOn() ? `<label class="field"><span>Height above ground</span><div class="unit"><input class="in sm num" data-f="z" type="number" min="-20" max="50" step="0.05" value="${o.z || 0}" ${w ? "" : "disabled"}><em>m</em></div></label><p class="tiny muted">Shown in 3D, added to the ground height. Quantities, prices and checks don't use it yet.</p>${groundLine(o)}${o.kind === "product" ? libraryFields(o, w) : ""}${o.kind === "point" ? structureFields(o, w) : ""}` : "");
+  /** What the 3D library knows about this product. Shown once 3D has been opened, because its data loads with the 3D view. */
+  function libraryFields(o, w) {
+    if (!root.DPScene3D) return ""; const r = root.DPScene3D.libraryRecord(o.code, root.DP_MODELS, (App.config.catalog || {}).models), acc = r ? r.accuracy : "block-out", cols = (r && r.colours) || [], mats = (r && r.materials) || [];
+    const say = { "block-out": "Block-out: catalogue size, not the real shape.", approximate: "Approximate model: catalogue size, details interpreted. Not for manufacturing.", reviewed: `Reviewed model${r && r.reviewedBy ? ` (${esc(r.reviewedBy)})` : ""}. Not an engineering drawing.` }[acc];
+    return `<p class="tiny muted"><b>3D:</b> ${say}</p>${mats.length ? `<p class="tiny muted"><b>Materials:</b> ${esc(mats.join(", "))}</p>` : ""}${cols.length ? `<label class="field"><span>Colour (recorded. Shows on block-outs, not yet on models)</span><select class="in sm" data-f="finish" ${w ? "" : "disabled"}><option value="">Not chosen</option>${cols.map((c) => `<option value="${esc(c.id)}"${o.finish === c.id ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>` : ""}`;
+  }
   const common = (o, w) => `<label class="field"><span>Note (internal)</span><textarea class="in sm" data-f="note" rows="2" ${w ? "" : "disabled"} placeholder="Visible to the team, not on the proposal">${esc(o.note || "")}</textarea></label>
     <div class="row"><button class="btn ghost sm" data-a="duplicate" ${w ? "" : "disabled"}>Duplicate</button><button class="btn ghost sm" data-a="lock" ${w ? "" : "disabled"}>${o.locked ? "Unlock" : "Lock"}</button><button class="btn ghost sm" data-a="hide" ${w ? "" : "disabled"}>Hide</button><button class="btn danger sm" data-a="delete" ${w && !o.locked ? "" : "disabled"}>Delete</button></div>`;
   const issuesFor = (o) => { const iss = C.validation.per[o.id] || []; return iss.length ? `<div class="issues">${iss.map((i) => `<div class="iss ${i.sev}"><i></i><span>${esc(i.msg)}</span></div>`).join("")}</div>` : `<div class="note ok small">No conflicts found for this item.</div>`; };
@@ -410,10 +425,10 @@
         <div class="grid2"><label class="field"><span>Length</span><div class="unit"><input class="in sm num" data-z="l" type="number" min="0" step="0.05" value="${o.zoneEntered ? o.zoneEntered.l : ""}" ${w ? "" : "disabled"}><em>m</em></div></label><label class="field"><span>Width</span><div class="unit"><input class="in sm num" data-z="w" type="number" min="0" step="0.05" value="${o.zoneEntered ? o.zoneEntered.w : ""}" ${w ? "" : "disabled"}><em>m</em></div></label></div>
         <label class="field"><span>Source</span><input class="in sm" data-z="source" value="${esc(o.zoneEntered ? o.zoneEntered.source || "" : "")}" placeholder="e.g. Soliwood layout drawing rev B, 12 Oct 2026" ${w ? "" : "disabled"}></label></details>` : ""}
       ${flags.length ? `<div class="note warn small">${flags.map((f) => esc(f.text)).join("<br>")}</div>` : ""}
-      <div class="sect"><h4>Position</h4>${pos(o, w)}</div>
+      <div class="sect"><h4>Position</h4>${pos(o, w)}${heightField(o, w)}</div>
       <label class="field"><span>Replace with another product</span><select class="in sm" data-replace ${w ? "" : "disabled"}>${same.map((x) => `<option value="${esc(x.code)}"${x.code === o.code ? " selected" : ""}>${esc((x.displayCode || x.code) + " · " + x.name)}</option>`).join("")}</select><small>Keeps position and rotation; quantities and prices follow.</small></label>
       <div class="sect"><h4>Price</h4>${priceLine(o.code)}</div>
-      <div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
+      ${engineeringFor(o)}<div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
   }
   function pointProps(o) {
     const el = DPCat.EL[o.type], w = !ro() && !o.locked; if (!el) return `<div class="panel"><div class="note err">Unknown element.</div>${common(o, !ro())}</div>`;
@@ -422,13 +437,13 @@
       ${el.id === "label" ? `<label class="field"><span>Text</span><input class="in" data-f="label" value="${esc(o.label || "")}" ${w ? "" : "disabled"}></label><label class="field"><span>Text height</span><div class="unit"><input class="in sm num" data-f="w" type="number" min="0.1" step="0.05" value="${o.w}" ${w ? "" : "disabled"}><em>m</em></div></label>`
         : `<label class="field"><span>Label on plan (optional)</span><input class="in sm" data-f="label" value="${esc(o.label || "")}" ${w ? "" : "disabled"}></label>
       <div class="sect"><h4>Size</h4>${circle ? `<label class="field"><span>Diameter</span><div class="unit"><input class="in sm num" data-f="d" type="number" min="0.05" step="0.05" value="${o.l}" ${w ? "" : "disabled"}><em>m</em></div></label>` : `<div class="grid2"><label class="field"><span>Length</span><div class="unit"><input class="in sm num" data-f="l" type="number" min="0.05" step="0.05" value="${o.l}" ${w ? "" : "disabled"}><em>m</em></div></label><label class="field"><span>Width</span><div class="unit"><input class="in sm num" data-f="w" type="number" min="0.05" step="0.05" value="${o.w}" ${w ? "" : "disabled"}><em>m</em></div></label></div>`}</div>`}
-      <div class="sect"><h4>Position</h4>${pos(o, w)}</div>
+      <div class="sect"><h4>Position</h4>${pos(o, w)}${heightField(o, w)}</div>
       ${el.generic ? `<details ${o.zoneEntered ? "open" : ""}><summary class="small"><b>Supplier safety clearance</b></summary><div class="grid2"><label class="field"><span>${circle ? "Diameter" : "Length"}</span><div class="unit"><input class="in sm num" data-z="l" type="number" min="0" step="0.05" value="${o.zoneEntered ? o.zoneEntered.l : ""}" ${w ? "" : "disabled"}><em>m</em></div></label>${circle ? "" : `<label class="field"><span>Width</span><div class="unit"><input class="in sm num" data-z="w" type="number" min="0" step="0.05" value="${o.zoneEntered ? o.zoneEntered.w : ""}" ${w ? "" : "disabled"}><em>m</em></div></label>`}</div><label class="field"><span>Source</span><input class="in sm" data-z="source" value="${esc(o.zoneEntered ? o.zoneEntered.source || "" : "")}" ${w ? "" : "disabled"}></label></details>` : ""}
-      ${el.id !== "label" ? `<div class="sect"><h4>Quotation</h4><label class="check"><input type="checkbox" data-f="costable" ${costable ? "checked" : ""} ${w ? "" : "disabled"}> Include in the quotation</label>
+      ${el.id !== "label" && (el.group !== "terrain" || el.priced3d) ? `<div class="sect"><h4>Quotation</h4>${quoteNote(o)}<label class="check"><input type="checkbox" data-f="costable" ${costable ? "checked" : ""} ${w ? "" : "disabled"}> Include in the quotation</label>
         <label class="field"><span>Material / colour / specification</span><input class="in sm" data-f="material" value="${esc(o.material || "")}" ${w ? "" : "disabled"}></label>
         <label class="field"><span>Code (optional)</span><input class="in sm" data-f="code" value="${esc(o.code || "")}" ${w ? "" : "disabled"}></label>
-        ${custom ? customPriceFields(o, w) : costable ? priceLine("el:" + el.id) : ""}</div>` : ""}
-      <div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
+        ${custom ? customPriceFields(o, w) : costable ? priceLine(M.priceKey(o)) : ""}</div>` : ""}
+      ${engineeringFor(o)}<div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
   }
   function customPriceFields(o, w) {
     const cp = (S.project.pricing.customPrices || {})["obj:" + o.id] || {};
@@ -437,27 +452,77 @@
   }
   function lineProps(o) {
     const el = DPCat.EL[o.type], w = !ro() && !o.locked; const { gaps } = M.gateHosts(); const L = M.lineLengths(o, gaps[o.id]);
-    const sameKind = DPCat.ELEMENTS.filter((e) => e.kind === "line"), costable = o.costable != null ? o.costable : el.costable;
-    return `<div class="panel"><div class="prop-head"><canvas data-psym="1" width="144" height="112"></canvas><div><span class="eyebrow">Line</span><h3>${esc(el.name)}</h3></div></div>
+    const sameKind = DPCat.ELEMENTS.filter((e) => e.kind === "line" && ((e.group !== "terrain" && !e.added3d) || e.id === o.type || U.planner3dOn())), costable = o.costable != null ? o.costable : el.costable;
+    return `<div class="panel"><div class="prop-head"><canvas data-psym="1" width="144" height="112"></canvas><div><span class="eyebrow">Line</span><h3>${esc(el.name)}</h3></div></div>${structureFields(o, w)}
       <dl class="kv"><dt>Length</dt><dd>${f2(L.gross)} m</dd>${L.openings ? `<dt>Gates / openings</dt><dd>− ${f2(L.openings)} m</dd><dt>Net length</dt><dd>${f2(L.net)} m</dd>` : ""}${el.unit === "m2" ? `<dt>Area (net × width)</dt><dd>${m2(L.net * (o.width || el.width))}</dd>` : ""}<dt>Corners</dt><dd>${o.pts.length}</dd></dl>
       <label class="field"><span>Type</span><select class="in sm" data-type ${w ? "" : "disabled"}>${sameKind.map((e) => `<option value="${e.id}"${e.id === o.type ? " selected" : ""}>${esc(e.name)}</option>`).join("")}</select></label>
       <div class="grid2"><label class="field"><span>Width</span><div class="unit"><input class="in sm num" data-f="width" type="number" min="0.01" step="0.01" value="${o.width || el.width}" ${w ? "" : "disabled"}><em>m</em></div></label><label class="field"><span>Label</span><input class="in sm" data-f="label" value="${esc(o.label || "")}" ${w ? "" : "disabled"}></label></div>
       <button class="btn ghost sm" data-a="verts" ${w ? "" : "disabled"}>${C.editVerts === o.id ? "Finish editing corners" : "Edit corners"}</button>
       ${C.editVerts === o.id ? `<p class="tiny muted">Drag corners; double-click a segment to add a corner; select a corner and press Delete to remove it.</p>` : ""}
       ${["fence", "wall", "hedge"].includes(o.type) ? `<p class="tiny muted">Gates placed on this line are deducted from its length automatically. Add one from Elements › Site infrastructure.</p>` : ""}
-      ${el.annotation ? "" : `<div class="sect"><h4>Quotation</h4><label class="check"><input type="checkbox" data-f="costable" ${costable ? "checked" : ""} ${w ? "" : "disabled"}> Include in the quotation</label><label class="field"><span>Material / specification</span><input class="in sm" data-f="material" value="${esc(o.material || "")}" ${w ? "" : "disabled"}></label>${el.group === "custom" ? customPriceFields(o, w) : costable ? priceLine("el:" + el.id) : ""}</div>`}
-      <div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
+      ${el.annotation || (el.group === "terrain" && !el.priced3d) ? "" : `<div class="sect"><h4>Quotation</h4>${quoteNote(o)}<label class="check"><input type="checkbox" data-f="costable" ${costable ? "checked" : ""} ${w ? "" : "disabled"}> Include in the quotation</label><label class="field"><span>Material / specification</span><input class="in sm" data-f="material" value="${esc(o.material || "")}" ${w ? "" : "disabled"}></label>${el.group === "custom" ? customPriceFields(o, w) : costable ? priceLine(M.priceKey(o)) : ""}</div>`}
+      ${engineeringFor(o)}<div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
   }
+  /* ---------------- terrain panel ---------------- */
+  const groundFeatures = () => (root.DPTerrain ? root.DPTerrain.features(S.project) : []);
+  function ensureTerrain() { if ((root.DPTerrain && root.DPChecks3D) || P.terrainLoading || !U.planner3dOn() || !S.project.objects.length) return; P.terrainLoading = true; (root.DPTerrain ? Promise.resolve() : DPProposal.loadScript("app/terrain.js")).then(() => (root.DPChecks3D ? null : DPProposal.loadScript("app/checks3d.js"))).then(() => { P.terrainLoading = false; right(); }).catch(() => { P.terrainLoading = false; }); }
+  /* ---------------- engineering review prompts ---------------- */
+  let engineeringMemo = { key: null, result: null };
+  /** The prompts for the current design, worked out once per change. Null while dragging or with the switch off. */
+  function engineering() {
+    if (P.live || !U.planner3dOn() || !root.DPChecks3D || !root.DPTerrain) return null; const limits = U.engineeringLimits(), models = (App.config.catalog || {}).models, key = JSON.stringify([S.project.objects, S.project.site, limits, models]);
+    if (engineeringMemo.key !== key) { const lib = root.DPScene3D; engineeringMemo = { key, result: root.DPChecks3D.run(S.project, limits, { record: lib ? (code) => lib.libraryRecord(code, root.DP_MODELS, models) : null }) }; } return engineeringMemo.result;
+  }
+  const engRow = (i) => `<div class="iss ${i.sev === "warning" ? "warning" : "info"}"><i></i><span>${esc(i.msg)}</span></div>`;
+  function engineeringFor(o) { const r = engineering(); if (!r) return ""; const list = r.per[o.id] || []; return list.length ? `<div class="sect"><h4>Engineering review</h4><div class="issues">${list.map(engRow).join("")}</div><p class="tiny muted">${esc(root.DPChecks3D.DISCLAIMER)}</p></div>` : ""; }
+  function engineeringSummary() {
+    const r = engineering(); if (!r || (!r.issues.length && !r.counts.within)) return ""; const shown = r.issues.slice(0, 12), src = r.source, who = src.standard || src.suppliedBy ? `${r.limitsSet} of ${r.limitsTotal} limits entered${src.standard ? `, from ${esc(src.standard)}` : ""}${src.suppliedBy ? `, supplied by ${esc(src.suppliedBy)}` : ""}.` : r.limitsSet ? `${r.limitsSet} of ${r.limitsTotal} limits entered, with no source recorded.` : "No limits have been entered yet, so these can only ask for a review.";
+    return `<div class="sect"><h4>Engineering review · ${r.counts.warning} warnings · ${r.counts.review} to review</h4><p class="tiny muted">${who}${U.isAdmin() ? " Set them in Admin › Engineering limits." : ""}</p>
+      <div class="issues">${shown.map((i) => (i.ids.length ? `<button type="button" class="eng-row" data-eng="${esc(i.ids[0])}" style="all:unset;display:block;cursor:pointer;width:100%">${engRow(i)}</button>` : engRow(i))).join("")}</div>${r.issues.length > shown.length ? `<p class="tiny muted">and ${r.issues.length - shown.length} more. Select an item to see its own.</p>` : ""}
+      <div class="note warn small">${esc(root.DPChecks3D.DISCLAIMER)}</div></div>`;
+  }
+  function terrainFields(o, el, w) {
+    if (!U.planner3dOn()) return `<div class="sect"><h4>Terrain</h4><p class="tiny muted">The 3D view is turned off, so this shape's height can't be edited.</p></div>`;
+    if (P.live) return `<div class="sect"><h4>Terrain</h4><p class="tiny muted">Figures update when you let go.</p></div>`;
+    const T = root.DPTerrain, lim = T ? T.LIMITS[el.terrain] : null, t = T ? T.params(o) : null, field = (label, key, value, extra = "") => `<label class="field"><span>${label}</span><div class="unit"><input class="in sm num" data-tp="${key}" type="number" step="0.05" value="${value}" ${extra} ${w ? "" : "disabled"}><em>m</em></div></label>`;
+    if (!T) return `<div class="sect"><h4>Terrain</h4><p class="tiny muted">Open the 3D view to edit this shape's height.</p></div>`;
+    const f = groundFeatures().find((x) => x.id === o.id), s = f ? T.stats(f) : null, pct = s && s.slopePct != null ? `${Math.round(s.slopePct)}%${s.slopeRatio ? ` (1 in ${f2(s.slopeRatio)})` : ""}` : "Vertical sides";
+    return `<div class="sect"><h4>Terrain</h4>${field(el.terrain === "level" ? "Height (below 0 sinks it)" : "Height", "height", t.height, `min="${lim.min}" max="${lim.max}"`)}
+      ${el.terrain === "platform" ? "" : field(el.terrain === "hill" ? "Slope length, from edge to full height (blank: to the middle)" : "Slope length, from edge to full height", "run", t.run == null ? "" : t.run, `min="0"`)}
+      ${el.terrain === "hill" ? `<label class="field"><span>Shape</span><select class="in sm" data-tp="profile" ${w ? "" : "disabled"}><option value="round"${t.round ? " selected" : ""}>Rounded</option><option value="straight"${t.round ? "" : " selected"}>Straight sides</option></select></label>` : ""}
+      <label class="field"><span>Surface colour</span><select class="in sm" data-tp="surface" ${w ? "" : "disabled"}>${Object.entries(T.SURFACES).map(([k, v]) => `<option value="${k}"${t.surface === k ? " selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label>
+      ${s ? `<dl class="kv"><dt>Highest point</dt><dd>${f2(s.peak)} m</dd><dt>Steepest slope</dt><dd>${pct}</dd><dt>${t.height < 0 ? "Earth removed, about" : "Volume, about"}</dt><dd>${f2(s.volume)} m³</dd></dl>` : ""}
+      ${s && !s.reachesHeight ? `<div class="note warn small">This shape is too small for that slope, so it only reaches ${f2(s.peak)} m. Shorten the slope or make the shape larger.</div>` : ""}
+      <p class="tiny muted">Estimates for planning, not survey figures or engineering checks. An item reaches the quotation only when it's included and priced.</p></div>`;
+  }
+  /** Ramps, stairs, walls and tunnels: their real-world dimensions and what those work out to. States figures, never a pass or fail. */
+  function structureFields(o, w) {
+    const el = DPCat.EL[o.type], T = root.DPTerrain; if (!el || !el.structure || !T || !U.planner3dOn()) return ""; if (P.live) return `<div class="sect"><h4>Dimensions</h4><p class="tiny muted">Figures update when you let go.</p></div>`;
+    const t = T.structureParams(o), fs = groundFeatures(), field = (label, key, value, unit, step) => { const l = T.STRUCTURE_LIMITS[el.structure][key]; return `<label class="field"><span>${label}</span><div class="${unit ? "unit" : ""}"><input class="in sm num" data-tp="${key}" type="number" step="${step}" min="${l.min}" max="${l.max}" value="${value}" ${w ? "" : "disabled"}>${unit ? `<em>${unit}</em>` : ""}</div></label>`; };
+    const kv = (rows) => `<dl class="kv">${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>`, note = `<p class="tiny muted">Figures only, not an engineering or accessibility check. Have them reviewed.</p>`;
+    if (el.structure === "ramp") { const r = T.rampInfo(o, fs); return `<div class="sect"><h4>Ramp</h4>${field("Rise, low end to high end", "rise", t.rise, "m", 0.05)}${t.rise > 0 ? kv([["Slope", `${f2(r.slopePct)}% (1 in ${f2(r.ratio)})`], ["Low end stands at", `${f2(r.lowY)} m`], ["High end reaches", `${f2(r.highY)} m`], ["Ground at the high end", `${f2(r.groundHigh)} m`]]) : `<p class="tiny muted">Enter a rise to give it a slope in 3D.</p>`}${t.rise > 0 && Math.abs(r.gap) > 0.02 ? `<div class="note warn small">The high end is ${f2(Math.abs(r.gap))} m ${r.gap > 0 ? "above" : "below"} the ground there.</div>` : ""}${note}</div>`; }
+    if (el.structure === "stairs") { const r = T.stairInfo(o); return `<div class="sect"><h4>Stairs</h4><div class="grid2">${field("Total rise", "rise", t.rise, "m", 0.05)}${field("Steps", "steps", t.steps, "", 1)}</div>${kv([["Each step rises", `${f2(r.riser * 100)} cm`], ["Each step goes", `${f2(r.going * 100)} cm`], ["Slope", `${f2(r.pitch)}°`]])}${note}</div>`; }
+    if (el.structure === "retaining") { const r = T.wallInfo(o, fs); return `<div class="sect"><h4>Retaining wall</h4>${field("Height, from the lowest ground", "height", t.height, "m", 0.05)}${kv([["Top of wall", `${f2(r.top)} m`], ["Length", `${f2(r.length)} m`], ["Face area, about", `${f2(r.face)} m²`], ["Wall volume, about", `${f2(r.volume)} m³`]])}${r.overtop > 0.01 ? `<div class="note warn small">The ground rises ${f2(r.overtop)} m above the top of this wall. Raise it or move it.</div>` : ""}${note}</div>`; }
+    if (el.structure === "custom") return `<div class="sect"><h4>Size</h4>${field("Height", "height", t.height, "m", 0.05)}<p class="tiny muted">A custom shape: the height is yours to set. Not a checked design.</p></div>`;
+    if (el.structure === "bridge") { const r = T.bridgeInfo(o, fs); return `<div class="sect"><h4>Bridge</h4>${field("Deck above the ground at its ends", "lift", t.lift, "m", 0.05)}${kv([["Length", `${f2(r.length)} m`], ["Deck at the start", `${f2(r.ya)} m`], ["Deck at the end", `${f2(r.yb)} m`], ["Slope", `${f2(Math.abs(r.slopePct))}%`], ["Highest above the ground", `${f2(r.clearance)} m`]])}${note}</div>`; }
+    const r = T.tunnels({ objects: [o] }, fs)[0]; return `<div class="sect"><h4>Tunnel</h4>${field("Clear height inside", "clear", t.clear, "m", 0.05)}${kv([["Length", `${f2(r.length)} m`], ["Floor slope", `${f2(Math.abs(r.gradePct))}%`], ["Under the ground", `${f2(r.covered)} m`], ["In the open", `${f2(r.exposed)} m`], ["Least earth above it, away from the mouths", r.covered > 0 ? `${f2(r.leastCover)} m` : "None"], ["Earth to remove, about", `${f2(r.removed)} m³`]])}${note}</div>`;
+  }
+  function terrainAreaNote(o) {
+    if (P.live || !U.planner3dOn()) return ""; const fs = groundFeatures(); if (!fs.length || !root.DPTerrain) return ""; const r = root.DPTerrain.surfaceArea(fs, o.poly); if (Math.abs(r.actual - r.plan) < 0.01) return "";
+    return `<div class="note small">On sloping ground this surface covers about ${m2(r.actual)}, against ${m2(r.plan)} on plan. The quotation uses the area on the ground and shows both figures.</div>`;
+  }
+  function groundLine(o) { if (P.live) return ""; const fs = groundFeatures(); if (!fs.length || !root.DPTerrain) return ""; const s = M.shapes(o); if (s.missing || !s.foot) return ""; const u = root.DPTerrain.under(fs, s.foot); if (Math.abs(u.max) < 0.001 && u.varies < 0.001) return "";
+    return `<p class="tiny muted"><b>Ground here:</b> ${f2(u.max)} m at its highest point.${u.varies > 0.02 ? ` It varies by ${f2(u.varies)} m under this item, which stands on the highest point. Check this on site.` : ""}</p>`; }
   function areaProps(o) {
     const el = DPCat.EL[o.type], w = !ro() && !o.locked, A = G.area(o.poly), costable = o.costable != null ? o.costable : el.costable;
-    const kinds = DPCat.ELEMENTS.filter((e) => e.kind === "area");
+    const kinds = DPCat.ELEMENTS.filter((e) => e.kind === "area" && ((!e.terrain && !e.added3d) || e.id === o.type || U.planner3dOn()));
     return `<div class="panel"><div class="prop-head"><canvas data-psym="1" width="144" height="112"></canvas><div><span class="eyebrow">Area</span><h3>${esc(el.name)}</h3></div></div>
       <dl class="kv"><dt>Area</dt><dd>${m2(A)}</dd><dt>Perimeter</dt><dd>${f2(G.perimeter(o.poly))} m</dd><dt>Corners</dt><dd>${o.poly.length}</dd></dl>
       <label class="field"><span>Type</span><select class="in sm" data-type ${w ? "" : "disabled"}>${kinds.map((e) => `<option value="${e.id}"${e.id === o.type ? " selected" : ""}>${esc(e.name)}</option>`).join("")}</select></label>
       <label class="field"><span>Label on plan</span><input class="in sm" data-f="label" value="${esc(o.label || "")}" ${w ? "" : "disabled"}></label>
       <button class="btn ghost sm" data-a="verts" ${w ? "" : "disabled"}>${C.editVerts === o.id ? "Finish editing corners" : "Edit corners"}</button>
-      ${el.annotation || el.noBuild || el.existing ? "" : `<div class="sect"><h4>Quotation</h4><label class="check"><input type="checkbox" data-f="costable" ${costable ? "checked" : ""} ${w ? "" : "disabled"}> Include in the quotation</label><label class="field"><span>Material / colour / thickness</span><input class="in sm" data-f="material" value="${esc(o.material || "")}" ${w ? "" : "disabled"} placeholder="e.g. EPDM 40 mm, lime"></label>${el.group === "custom" ? customPriceFields(o, w) : costable ? priceLine("el:" + el.id) : ""}</div>`}
-      <div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
+      ${el.terrain ? terrainFields(o, el, w) : terrainAreaNote(o)}${structureFields(o, w)}${el.annotation || el.noBuild || el.existing || (el.terrain && !el.priced3d) ? "" : `<div class="sect"><h4>Quotation</h4>${quoteNote(o)}<label class="check"><input type="checkbox" data-f="costable" ${costable ? "checked" : ""} ${w ? "" : "disabled"}> Include in the quotation</label><label class="field"><span>Material / colour / thickness</span><input class="in sm" data-f="material" value="${esc(o.material || "")}" ${w ? "" : "disabled"} placeholder="e.g. EPDM 40 mm, lime"></label>${el.group === "custom" ? customPriceFields(o, w) : costable ? priceLine(M.priceKey(o)) : ""}</div>`}
+      ${engineeringFor(o)}<div class="sect"><h4>Checks</h4>${issuesFor(o)}</div>${common(o, !ro())}</div>`;
   }
   function bindProps(R, o) {
     $$("[data-a]", R).forEach((b) => (b.onclick = () => { const a = b.dataset.a;
@@ -467,8 +532,16 @@
       const f = inp.dataset.f; let v = inp.type === "checkbox" ? inp.checked : inp.value;
       if (inp.type === "number") { v = +v; if (!isFinite(v)) return U.toast("Enter a number.", { err: true }); }
       if (["l", "w", "d", "width"].includes(f) && !(v > 0)) return U.toast("Sizes must be greater than zero.", { err: true });
+      if (f === "z") { if (!(v >= -20 && v <= 50)) return U.toast("Enter a height between -20 and 50 m.", { err: true }); if (!v) { delete o.z; M.commit("Edit height"); return refresh(); } }
       if (f === "d") { o.l = o.w = v; } else if (f === "rot") o.rot = G.normAngle(v); else if (f === "costable") o.costable = v; else o[f] = v;
       M.commit("Edit " + f, f === "costable" ? { audit: { action: v ? "Included in quotation" : "Excluded from quotation", detail: M.objName(o) } } : undefined); refresh();
+    }));
+    $$("[data-tp]", R).forEach((inp) => (inp.onchange = () => {
+      const k = inp.dataset.tp, T = root.DPTerrain, el = DPCat.EL[o.type]; if (!T || !(el.terrain || el.structure)) return; let v = inp.value;
+      if (el.structure) { v = +v; const lim = T.STRUCTURE_LIMITS[el.structure][k]; if (inp.value === "" || !isFinite(v)) return U.toast("Enter a number.", { err: true }); if (!(v >= lim.min && v <= lim.max)) return U.toast(`Enter a value between ${lim.min} and ${lim.max}.`, { err: true }); if (k === "steps" && !Number.isInteger(v)) return U.toast("Enter a whole number of steps.", { err: true }); o.terrain = Object.assign({}, o.terrain || {}, { [k]: v }); M.commit("Edit dimensions"); return refresh(); }
+      if (inp.type === "number") { if (k === "run" && v === "") v = null; else { v = +v; if (inp.value === "" || !isFinite(v)) return U.toast("Enter a number.", { err: true }); } const lim = T.LIMITS[el.terrain];
+        if (k === "height" && !(v >= lim.min && v <= lim.max)) return U.toast(`Enter a height between ${lim.min} and ${lim.max} m.`, { err: true }); if (k === "height" && v === 0) return U.toast("A height of 0 changes nothing. Enter a height, or delete this shape.", { err: true }); if (k === "run" && v != null && v < 0) return U.toast("A slope length can't be negative.", { err: true }); }
+      o.terrain = Object.assign({}, o.terrain || {}, { [k]: v }); M.commit("Edit terrain"); refresh();
     }));
     $$("[data-z]", R).forEach((inp) => (inp.onchange = () => {
       const z = o.zoneEntered || { l: 0, w: 0, source: "" }; const k = inp.dataset.z; z[k] = k === "source" ? inp.value.trim() : +inp.value || 0;
@@ -482,15 +555,16 @@
       if (v == null) delete S.project.pricing.customPrices[key]; else if (!(v >= 0)) return U.toast("Enter a price of zero or more.", { err: true }); else S.project.pricing.customPrices[key] = { unitPrice: v, by: U.userInfo().name || "local user", at: new Date().toISOString() };
       M.commit("Custom price", { audit: { action: "Set custom item price", detail: `${M.objName(o)}: ${v == null ? "cleared" : v}` } }); refresh(); };
   }
+  function terrainTotals() { if (P.live || !U.planner3dOn()) return ""; const fs = groundFeatures(); if (!fs.length) return ""; const v = root.DPTerrain.volumes(fs); return `<dt>Terrain fill, about</dt><dd>${f2(v.fill)} m³</dd>${v.cut ? `<dt>Terrain cut, about</dt><dd>${f2(v.cut)} m³</dd>` : ""}<dt>Highest ground</dt><dd>${f2(v.peak)} m</dd>`; }
   function summaryPanel() {
     const m = M.metrics(), v = C.validation, r = App.pricing;
     const surf = Object.entries(m.surfaces).map(([k, a]) => `<dt>${esc(DPCat.EL[k].name)}</dt><dd>${m2(a)}</dd>`).join("");
     const lens = Object.entries(m.lengths).map(([k, L]) => `<dt>${esc(DPCat.EL[k].name)}</dt><dd>${f2(L.net)} m${L.net !== L.gross ? ` <span class="muted">(${f2(L.gross)} gross)</span>` : ""}</dd>`).join("");
     return `<div class="panel"><span class="eyebrow">Plan summary</span><h3>${esc(S.project.meta.name)}</h3>
       <dl class="kv"><dt>Site area</dt><dd>${m.siteArea ? m2(m.siteArea) : "—"}</dd><dt>Products</dt><dd>${m.products} (${m.productTypes} types)</dd><dt>Equipment footprint</dt><dd>${m2(m.footArea)}</dd><dt>Safety zones (drawn)</dt><dd>${m2(m.zoneArea)}</dd>
-        ${m.allocated != null ? `<dt>Allocated (footprint ∪ zones)</dt><dd>${m2(m.allocated)}</dd><dt>Available usable area</dt><dd>${m2(m.usable)}</dd>` : ""}${surf}${lens}</dl>
+        ${m.allocated != null ? `<dt>Allocated (footprint ∪ zones)</dt><dd>${m2(m.allocated)}</dd><dt>Available usable area</dt><dd>${m2(m.usable)}</dd>` : ""}${surf}${lens}${terrainTotals()}</dl>
       ${r ? `<div class="card flat stack" style="padding:12px"><div class="row between"><span class="small muted">Quotation total</span><b class="num">${esc(U.money(r.total))}</b></div>${r.issues.filter((i) => i.code === "unpriced").length ? `<span class="pill err">${r.issues.filter((i) => i.code === "unpriced").length} items not priced</span>` : `<span class="pill ok">All items priced</span>`}<button class="btn sm ghost" id="open-drawer">Open price panel</button></div>` : ""}
-      <div class="sect"><h4>Checks · ${v.counts.error} errors · ${v.counts.warning} warnings · ${v.counts.info} notes</h4>
+      ${engineeringSummary()}<div class="sect"><h4>Checks · ${v.counts.error} errors · ${v.counts.warning} warnings · ${v.counts.info} notes</h4>
         <div class="issues">${v.issues.slice(0, 60).map((i, n) => `<button type="button" class="iss ${i.sev}" data-iss="${n}"><i></i><span>${esc(i.msg)}</span></button>`).join("") || `<div class="note ok small">No conflicts found.</div>`}</div></div>
       <p class="disclaimer">${esc(M.DISCLAIMER)}</p>
       <details><summary class="small"><b>Keyboard shortcuts</b></summary><p class="tiny muted" style="margin-top:6px">V select · H pan · M measure · R rotate (Shift 90°) · L lock · Del delete · Ctrl+D duplicate · Ctrl+C/V copy/paste · Ctrl+Z/Y undo/redo · arrows nudge 10 cm (Shift 1 m, Alt 1 cm) · F fit · Space+drag pan · double-click a line or area to edit its corners.</p></details></div>`;
@@ -577,18 +651,38 @@
     if (which === "canvas") setTimeout(() => window.dispatchEvent(new Event("resize")), 0);
   }
 
+  /* ---------------- 3D view (off unless an administrator turned it on; its code loads on first use) ---------------- */
+  const is3D = () => !!(root.DPView3D && root.DPView3D.isOpen);
+  function sync3D() { const b = $("#tb-3d"); if (!b) return; if (is3D() && !U.planner3dOn()) root.DPView3D.close(); b.hidden = !U.planner3dOn(); b.classList.toggle("lime", is3D()); b.setAttribute("aria-pressed", is3D() ? "true" : "false"); b.textContent = is3D() ? "2D" : "3D"; b.title = is3D() ? "Back to the 2D plan" : "Show this plan in 3D"; }
+  function close3D() { if (is3D()) { root.DPView3D.close(); sync3D(); window.dispatchEvent(new Event("resize")); } }
+  async function toggle3D() {
+    if (is3D()) return close3D();
+    const b = $("#tb-3d"); if (!U.planner3dOn() || !b || b.disabled) return;
+    b.disabled = true; b.textContent = "Loading…";
+    try {
+      if (!root.DPTerrain) await DPProposal.loadScript("app/terrain.js");
+      if (!root.DPChecks3D) await DPProposal.loadScript("app/checks3d.js");
+      if (!root.DPScene3D) await DPProposal.loadScript("app/scene3d.js");
+      if (!root.DP_MODELS) await DPProposal.loadScript("models/manifest.js").catch(() => { root.DP_MODELS = {}; });   // without the list, every product is simply a block-out
+      if (!root.DPView3D) await DPProposal.loadScript("app/view3d.js");
+      await root.DPView3D.open($("#canvas-wrap"));
+    } catch (e) { U.toast(e.code === "webgl" ? e.message : "3D could not load. Check the connection. The 2D plan keeps working.", { err: true }); }
+    b.disabled = false; sync3D();
+  }
+
   /* ---------------- refresh & render ---------------- */
   let rafR = 0;
   function refresh() { U.pricing(); C.validation = M.validate(); syncToolbar(); right(); status(); if (P.drawer) drawer(); if (P.tab === "layers" || P.tab === "site") left(); C.req(); U.header(); }
   function renderPlan() {
     if (!P.inited) {
       toolbar(); C.init($("#cv")); P.inited = true;
+      $("#right").addEventListener("click", (e) => { const b = e.target.closest("[data-eng]"); if (!b) return; const o = M.byId(b.dataset.eng); if (!o) return; S.selection.clear(); S.selection.add(o.id); M.emit("select"); right(); });
       const mt = document.createElement("nav"); mt.className = "mtabs"; mt.innerHTML = `<button data-mt="left">Library</button><button data-mt="canvas" class="is-on">Plan</button><button data-mt="right">Properties</button>`;
       $("#view-plan").insertBefore(mt, $(".work")); mt.onclick = (e) => { const b = e.target.closest("[data-mt]"); if (b) mobile(b.dataset.mt); };
       M.on("select", () => { syncToolbar(); right(); if (P.tab === "layers") left(); });
       M.on("change", () => { if (App.view !== "plan") return; cancelAnimationFrame(rafR); rafR = requestAnimationFrame(refresh); U.scheduleAutosave(); });
-      M.on("live", () => { if (App.view === "plan") { cancelAnimationFrame(rafR); rafR = requestAnimationFrame(() => { right(); }); } });
-      M.on("mode", () => syncToolbar());
+      M.on("live", () => { if (App.view === "plan") { cancelAnimationFrame(rafR); rafR = requestAnimationFrame(() => { P.live = true; right(); P.live = false; }); } });   // while dragging, terrain figures wait until release
+      M.on("mode", () => { if (C.mode) close3D(); syncToolbar(); });
       M.on("view", () => zoomLabel());
       M.on("loaded", () => { P.drawer = false; });
     }

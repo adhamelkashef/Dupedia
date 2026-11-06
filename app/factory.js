@@ -63,7 +63,7 @@
   /** Create the job shell for an accepted order (idempotent, create-only). Products come from the technical handover (no prices). */
   async function ensureJob(a, ho) {
     const path = `fac/jobs/j/${a.oid}`, cur = await DS().tryGet(path); if (cur) return Object.assign({ id: a.oid, oid: a.oid }, cur);
-    const items = (ho && ho.items) || [], products = items.filter((i) => i.qty > 0).map((i) => ({ code: i.displayCode || i.code || "", name: i.name || "", qty: i.qty, unit: i.unit || "pcs" }));
+    const items = (ho && ho.items) || [], products = items.filter((i) => i.qty > 0 && !/^(el|obj):/.test(i.key || "")).map((i) => ({ code: i.displayCode || i.code || "", name: i.name || "", qty: i.qty, unit: i.unit || "pcs" }));
     const job = { jobId: await nextJobId(), oid: a.oid, ref: a.ref || "", name: a.name || "", client: a.client || "", location: a.location || "", salesUid: a.salesUid || null, engineerUid: a.engineerUid || null, products, specs: [], drawings: [], designRef: "",
       bom: [], stage: "review", target: a.deadlineOriginal || null, startDate: null, materials: "unknown", qc: [], install: { required: true, notes: "" }, salesUpdates: [], salesActions: [], machines: [], weight: F().weightOf({ products }),
       createdAt: now(), createdBy: me().id, history: [{ at: now(), by: me().id, action: "Manufacturing job created", detail: a.ref || "" }] };

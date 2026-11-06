@@ -34,6 +34,7 @@
     discountRoles: { 5: "employee", 10: "employee" },
     discountEligible: { equipment: true, landscape: true, flooring: true, installation: true, services: true, additional: true },
     employeeOverrides: false,
+    planner3d: { enabled: false },                         // Site Planner 3D: stays off until an administrator turns it on
     sales: { monthlyTarget: 500000 },                      // default monthly sales target per employee (EGP, eligible value)
     leadPriority: { high: 75, medium: 60 },                // Lead Mine priority thresholds on the 100-point qualification score
     charges: [],          // [{id,label,cat,method,value,base}]
@@ -266,6 +267,11 @@
   }
 
   try { root.addEventListener("beforeunload", (e) => { if (App.open && M.S.dirty && canWrite() && !App.sample) { e.preventDefault(); e.returnValue = ""; } }); } catch (e) {}
-  root.DPUI = { $, $$, esc, svg, ICON, App, DEFAULT_SETTINGS, toast, openModal, closeModal, ask, form, busy, loadConfig, role, me, isAdmin, canWrite, userInfo, pricing, money,
+  /** Site Planner 3D switch: on only when the saved setting is exactly true, so anything missing or unexpected means off. */
+  /** The limits an administrator entered for the engineering prompts. Blank until then: the app holds none of its own.
+   *  Their own key: settings.engineering already holds the default engineer that new orders are assigned to. */
+  const engineeringLimits = () => (App.config.settings && App.config.settings.engineeringLimits) || {};
+  const planner3dOn = () => !!(App.config.settings && App.config.settings.planner3d && App.config.settings.planner3d.enabled === true);
+  root.DPUI = { $, $$, esc, svg, ICON, App, DEFAULT_SETTINGS, planner3dOn, engineeringLimits, toast, openModal, closeModal, ask, form, busy, loadConfig, role, me, isAdmin, canWrite, userInfo, pricing, money,
     register, go, header, banner, VIEWS, PROJECT_VIEWS, ADMIN_VIEWS, ROLE_VIEWS, FIN_VIEWS, allowedView, STATUS_LABEL, STATUS_PILL, setSaveState, scheduleAutosave, save, openProject, startProject, nextRef, pickFile, downloadOut, deepMerge };
 })(typeof self !== "undefined" ? self : this);

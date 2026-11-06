@@ -8,19 +8,28 @@
     ["scope", "Scope of work", "What Dupedia supplies and installs.", 3], ["assumptions", "Assumptions", "", 3], ["exclusions", "Exclusions", "", 3], ["installation", "Installation notes", "", 3],
     ["payment", "Payment terms", "", 2], ["delivery", "Delivery estimate", "", 2], ["validity", "Proposal validity", "", 2], ["warranty", "Warranty terms", "", 2], ["acceptance", "Acceptance wording", "Leave empty for the standard sentence.", 2],
   ];
-  const ST = { sections: { overview: true, plan: true, schedule: true, technical: true, quotation: true, notes: true }, rendering: false, lastUrl: null };
+  const ST = { sections: { overview: true, plan: true, views3d: true, siteItems: true, breakdown: true, schedule: true, technical: true, quotation: true, notes: true }, rendering: false, lastUrl: null, shots: null, coverRender: false, pid: null };
+  const SHOT_NAMES = [["corner", "Corner view"], ["front", "Front view"], ["right", "Right view"], ["back", "Back view"], ["left", "Left view"], ["top", "Top view"]];
+  const savedList = () => (Array.isArray(S.project.views3d) ? S.project.views3d.filter((v) => v && v.name) : []);
+  /** The views ticked now. Before anyone chooses: saved views first, then other sides, up to four. */
+  function shotIds() { if (ST.shots) return ST.shots; const out = savedList().slice(0, 4).map((v) => "saved:" + v.id); for (const id of ["corner", "front", "right", "back"]) if (out.length < 4) out.push(id); return out; }
 
   function renderProposal() {
     const pr = S.project.proposal, defaults = App.config.settings.terms || {}, w = U.canWrite();
-    const tbc = (v) => !v || /\[to be completed/i.test(v);
+    const tbc = (v) => !v || /\[to be completed/i.test(v), on3d = U.planner3dOn();
+    if (ST.pid !== S.project.meta.id) { ST.pid = S.project.meta.id; ST.shots = null; ST.coverRender = false; }
+    const chosen = shotIds();
     $("#view-proposal").innerHTML = `<div class="page" style="max-width:1400px">
       <div class="phead"><div><span class="eyebrow">Step 5 of 5 · Proposal</span><h1>Client proposal</h1><p class="lead small">A branded A4 proposal built from the plan and quotation. The preview below is the real PDF.</p></div>
         <div class="row"><button class="btn ghost" id="pp-review">← Review</button><button class="btn lime" id="pp-dl">${U.svg("export")} Download proposal (PDF)</button><button class="btn ghost" id="pp-send">Send by WhatsApp / e-mail…</button></div></div>
       ${App.sample ? `<div class="note warn">Sample project: the proposal is marked “illustrative prices, not a quotation” on every page.</div>` : ""}
       ${S.project.meta.status !== "issued" && !App.sample ? `<div class="note">This proposal is a draft. Mark it as issued in Review when it is ready to send.</div>` : ""}
       <div class="pgrid"><aside class="pnav">
-        <div class="card stack"><h3>Sections</h3><div class="sec-toggle">${[["overview", "Project overview"], ["plan", "Master site plan"], ["schedule", "Product schedule"], ["technical", "Technical & area summary"], ["quotation", "Commercial quotation"], ["notes", "Notes & next steps"]].map(([k, l]) => `<label class="check"><input type="checkbox" data-sec="${k}" ${ST.sections[k] ? "checked" : ""}> ${l}</label>`).join("")}</div>
+        <div class="card stack"><h3>Sections</h3><div class="sec-toggle">${[["overview", "Project overview"]].concat(on3d ? [["views3d", "3D views"]] : [], [["plan", "Master site plan"]], on3d ? [["siteItems", "Site schedule (levels and dimensions)"]] : [], [["schedule", "Product schedule"], ["technical", "Technical & area summary"]], on3d ? [["breakdown", "Price breakdown"]] : [], [["quotation", "Commercial quotation"], ["notes", "Notes & next steps"]]).map(([k, l]) => `<label class="check"><input type="checkbox" data-sec="${k}" ${ST.sections[k] ? "checked" : ""}> ${l}</label>`).join("")}</div>
           <p class="tiny muted">Sections with nothing to show (no products, no prices) are left out automatically.</p></div>
+        ${on3d ? `<div class="card stack"><h3>3D views</h3><div class="sec-toggle">${savedList().map((v) => [`saved:${v.id}`, v.name]).concat(SHOT_NAMES).map(([id, l]) => `<label class="check"><input type="checkbox" data-shot="${esc(id)}" ${chosen.includes(id) ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>
+          <label class="check small"><input type="checkbox" id="pp-cover3d" ${ST.coverRender ? "checked" : ""}> Use a 3D view on the cover${S.project.proposal.coverImage ? " (your cover image takes priority)" : ""}</label>
+          <p class="tiny muted">Up to 8 views. The first is shown large. Save your own cameras in the plan's 3D view. Each page says the views are illustrative. Pictures are made when the PDF is built and aren't stored with the project.</p></div>` : ""}
         <div class="card stack"><div class="row between"><h3>Proposal text</h3>${w ? `<button class="btn ghost xs" id="pp-def">Fill empty fields from company defaults</button>` : ""}</div>
           ${FIELDS.map(([k, l, h, rows]) => `<label class="field"><span>${esc(l)}${tbc(pr[k]) && ["payment", "delivery", "validity", "warranty"].includes(k) ? ' <span class="pill warn">to complete</span>' : ""}</span><textarea class="in" data-pf="${k}" rows="${rows}" ${w ? "" : "disabled"} placeholder="${esc(defaults[k] ? "Default: " + defaults[k].slice(0, 80) : "Not set")}">${esc(pr[k] || "")}</textarea>${h ? `<small>${esc(h)}</small>` : ""}</label>`).join("")}
           <p class="tiny muted">Empty payment, delivery, validity and warranty fields print as “To be confirmed by Dupedia.” Nothing is promised that you have not written here.</p></div>
@@ -38,6 +47,8 @@
       catch (e) { b.done(); U.toast("The proposal could not be built: " + (e.message || e), { err: true, ms: 9000 }); } };
     $("#pp-refresh").onclick = preview;
     $$("[data-sec]", V).forEach((c) => (c.onchange = () => { ST.sections[c.dataset.sec] = c.checked; preview(); }));
+    $$("[data-shot]", V).forEach((c) => (c.onchange = () => { const all = $$("[data-shot]", V).filter((x) => x.checked).map((x) => x.dataset.shot); if (all.length > 8) { c.checked = false; return U.toast("A proposal can show up to 8 views.", { err: true }); } ST.shots = all; preview(); }));
+    const cov = $("#pp-cover3d"); if (cov) cov.onchange = () => { ST.coverRender = cov.checked; preview(); };
     let t = 0;
     $$("[data-pf]", V).forEach((ta) => (ta.oninput = () => { S.project.proposal[ta.dataset.pf] = ta.value; M.touch(); U.scheduleAutosave(); clearTimeout(t); t = setTimeout(preview, 1200); }));
     $$("[data-pf]", V).forEach((ta) => (ta.onchange = () => M.audit("Edited proposal text", ta.dataset.pf)));
@@ -45,7 +56,7 @@
     $$("[data-out]", V).forEach((b) => (b.onclick = () => other(b.dataset.out)));
     preview();
   }
-  async function build(progress) { return DPProposal.proposal({ sections: ST.sections, progress }); }
+  async function build(progress) { return DPProposal.proposal({ sections: ST.sections, shots: shotIds(), coverRender: ST.coverRender, progress }); }
   async function preview() {
     if (ST.rendering) { ST.again = true; return; } ST.rendering = true;
     const box = $("#pp-pages"), info = $("#pp-info"); if (!box) { ST.rendering = false; return; }
@@ -55,7 +66,7 @@
       const frag = document.createDocumentFragment();
       for (let i = 1; i <= doc.numPages; i++) { const page = await doc.getPage(i), vp = page.getViewport({ scale: 2 }), cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; cv.setAttribute("aria-label", `Proposal page ${i}`);
         await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; frag.appendChild(cv); }
-      box.innerHTML = ""; box.appendChild(frag); info.textContent = `${doc.numPages} pages · A4 landscape · ${(out.blob.size / 1024 / 1024).toFixed(1)} MB`;
+      box.innerHTML = ""; box.appendChild(frag); info.textContent = `${doc.numPages} pages · A4 landscape · ${(out.blob.size / 1024 / 1024).toFixed(1)} MB${out.warnings && out.warnings.length ? " · " + out.warnings.join(" ") : ""}`;
     } catch (e) { console.error(e); if (info) info.textContent = (e && e.code === "precheck" ? "Complete these before the proposal can be built: " : "The preview could not be built: ") + (e.message || e); }
     finally { ST.rendering = false; if (ST.again) { ST.again = false; preview(); } }
   }

@@ -97,9 +97,27 @@
   }
 
   /* ---------------- take-off: quantities by pricing key ---------------- */
+  /* Measured quantities. Volumes and ground areas take a fine grid and live in app/terrain.js, which most screens never load. So the
+     planner stores each figure on its object with a fingerprint of the geometry it came from. Every screen, on every role, then reads
+     the same number straight from the saved project, and a figure that no longer matches its geometry is reported, never used. */
+  const fingerprint = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36) + "." + s.length; };
+  /** Everything about the ground that a figure can depend on. Empty on a flat site, which is every project without terrain. */
+  function terrainKey(project) { let s = ""; for (const o of project.objects || []) { if (o.kind !== "area" || o.hidden || !o.poly || o.poly.length < 3) continue; const el = EL()[o.type]; if (el && el.terrain) s += JSON.stringify([o.id, o.poly, o.terrain || null]); } return s; }
+  /** "item": priced by a measured figure. "surface": a laid surface, which on terrain is priced by its ground area. Otherwise not measured. */
+  function measureKind(o, tk) { const el = o.kind !== "product" && EL()[o.type]; if (!el) return null; if (el.priced3d) return "item"; return tk && o.kind === "area" && !el.terrain && !el.structure && !el.annotation && !el.noBuild && !el.existing && el.group !== "custom" ? "surface" : null; }
+  const measureSig = (o, tk) => fingerprint(tk + JSON.stringify([o.kind, o.type, o.poly || o.pts || null, o.x, o.y, o.rot, o.l, o.w, o.width, o.terrain || null]));
+  /** Which price book row an object is quoted on: raising and digging out earth are separate rates. */
+  function priceRow(o) { const el = EL()[o.type], rows = el && el.priced3d; if (!rows) return null; return rows.length > 1 && o.terrain && o.terrain.height < 0 ? rows[1] : rows[0]; }
+  function priceKey(o) { const r = priceRow(o); return r ? r.key : "el:" + o.type; }
+  const effectiveCostable = (o, el) => (o.costable != null ? !!o.costable : el.costable);
+  /** How many quoted figures no longer match their geometry. */
+  function staleMeasures(project = S.project) { const tk = terrainKey(project); let n = 0; for (const o of project.objects || []) { if (!measureKind(o, tk) || o.excludeFromQuote || !effectiveCostable(o, EL()[o.type])) continue; if (!o.measured || o.measured.sig !== measureSig(o, tk)) n++; } return n; }
+  /** New items that are drawn but left out of the quotation, so nobody mistakes the total for the whole design. */
+  function notQuoted(project = S.project) { const by = {}; for (const o of project.objects || []) { const el = o.kind !== "product" && EL()[o.type]; if (!el || el.annotation || o.excludeFromQuote || !(el.priced3d || el.added3d) || effectiveCostable(o, el)) continue; const key = priceKey(o), r = priceRow(o); (by[key] = by[key] || { key, name: r ? r.name : el.name, count: 0 }).count++; } return Object.values(by); }
+
   /** Returns rows {key, kind:'product'|'element'|'custom', code|type, name, unit, qty, cat, costable, ids[], basis} grouped by key. */
   function takeoff(project = S.project) {
-    const rows = {}, { gaps } = gateHosts(project.objects);
+    const rows = {}, { gaps } = gateHosts(project.objects), tk = terrainKey(project);
     const add = (key, base, qty, id) => { const r = rows[key] || (rows[key] = Object.assign({ key, qty: 0, ids: [] }, base)); r.qty += qty; r.ids.push(id); };
     for (const o of project.objects) {
       if (o.excludeFromQuote) continue;
@@ -113,6 +131,14 @@
       const custom = el.group === "custom";
       const key = custom ? "obj:" + o.id : "el:" + el.id;
       const base = { kind: custom ? "custom" : "element", type: el.id, name: custom ? (o.label || el.name) : el.name, unit: el.unit, cat: o.cat || el.cat, costable: true, code: o.code || null };
+      if (el.added3d || el.priced3d) base.commissionDefault = false;   // new items stay out of commission until an administrator includes them
+      const mk = measureKind(o, tk);
+      if (mk) {
+        const m = o.measured && o.measured.sig === measureSig(o, tk) ? o.measured : null;
+        if (mk === "item") { const pr = priceRow(o); add(pr.key, Object.assign(base, { name: pr.name, unit: pr.unit, basis: pr.basis || null }), m ? m.q : 0, o.id); const r = rows[pr.key]; if (!m) r.stale = true; if (m && m.note === "overlap") r.overlap = true; }
+        else { const plan = G.area(o.poly); add(key, Object.assign(base, { unit: "m2" }), m ? m.q : plan, o.id); const r = rows[key]; r.planArea = (r.planArea || 0) + plan; if (!m) r.stale = true; }
+        continue;
+      }
       if (o.kind === "point") add(key, base, 1, o.id);
       else if (o.kind === "line") {
         const len = lineLengths(o, (gaps[o.id] || [])), w = o.width || el.width || 0.1;
@@ -120,7 +146,9 @@
       } else if (o.kind === "area") add(key, Object.assign(base, { unit: "m2" }), G.area(o.poly), o.id);
     }
     const out = Object.values(rows);
-    for (const r of out) r.qty = r.unit === "each" ? r.qty : Math.round(r.qty * 100) / 100;
+    for (const r of out) { r.qty = r.unit === "each" ? r.qty : Math.round(r.qty * 100) / 100;
+      if (r.planArea != null) { if (Math.abs(r.qty - r.planArea) >= 0.01) r.basis = `Area on the ground. ${r.planArea.toFixed(2)} m² on plan`; delete r.planArea; }
+      if (r.overlap) { r.basis = `${r.basis || "Approximate"}. Shapes overlap, so shared earth is counted twice`; delete r.overlap; } }
     const order = { equipment: 0, landscape: 1, flooring: 2, installation: 3, services: 4, additional: 5 };
     return out.sort((a, b) => (order[a.cat] - order[b.cat]) || String(a.code || a.key).localeCompare(String(b.code || b.key)));
   }
@@ -234,6 +262,7 @@
   const hist = { past: [], future: [], limit: 150, current: null };
   const snapshot = () => JSON.stringify({ site: S.project.site, objects: S.project.objects, cad: S.project.cad, ref: S.project.ref, pricing: S.project.pricing, meta: { name: S.project.meta.name } });
   function commit(label, opts = {}) {
+    if (root.DPTerrain && root.DPTerrain.measureProject) root.DPTerrain.measureProject(S.project);   // before the snapshot, so undo brings the figures back with the shapes
     hist.past.push(hist.current); hist.future = [];
     if (hist.past.length > hist.limit) hist.past.shift();
     hist.current = snapshot(); hist.lastLabel = label;
@@ -301,6 +330,6 @@
     emit("loaded", {}); emit("change", { label: "load" });
   }
 
-  root.DPModel = { S, uid, today, on, emit, newProject, migrateV1, shapes, outline, bounds, objName, shortName, gateHosts, lineLengths, takeoff, metrics, validate, DISCLAIMER,
+  root.DPModel = { terrainKey, measureKind, measureSig, priceRow, priceKey, staleMeasures, notQuoted, S, uid, today, on, emit, newProject, migrateV1, shapes, outline, bounds, objName, shortName, gateHosts, lineLengths, takeoff, metrics, validate, DISCLAIMER,
     hist, commit, undo, redo, resetHistory, touch, audit, addObject, byId, selected, removeIds, cloneObj, translateObj, rotateObj, centerOf, projectFile, checkProject, load };
 })(typeof self !== "undefined" ? self : this);

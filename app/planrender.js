@@ -25,6 +25,7 @@
     const site = pr.site && pr.site.poly && pr.site.poly.length >= 3 ? pr.site.poly : null;
     const pres = mode === "presentation";
     const vis = pr.objects.filter((x) => !x.hidden && !(o.hiddenIds && o.hiddenIds.has(x.id)));
+    const terrainTags = [];
     const inView = (b) => !o.view || !b || !(b.x1 < o.view.x0 || b.x0 > o.view.x1 || b.y1 < o.view.y0 || b.y0 > o.view.y1);
 
     // site ground
@@ -57,6 +58,7 @@
     }
     // areas
     for (const x of vis) { if (x.kind !== "area") continue; const el = DPCat.EL[x.type]; if (!el) continue; if (!inView(G.bbox(x.poly))) continue;
+      if (el.terrain && o.heights) terrainTags.push(x);
       SY.drawArea(P, el, x.poly, { sel: sel.has(x.id), pdf, color: x.color, mode: pres ? "presentation" : "design" });
       if (show.labels && (x.label || el.noBuild || el.existing) && G.area(x.poly) * kp * kp > 2500) { const bb = G.bbox(x.poly), c = G.pointInPolygon([bb.x0 + 0.6, bb.y0 + 0.6], x.poly) ? [bb.x0 + (pdf ? 1.2 : 6) / k, bb.y0 + (pdf ? 1.2 : 6) / k] : G.centroid(x.poly); const tl = c !== null && G.pointInPolygon([bb.x0 + 0.6, bb.y0 + 0.6], x.poly); P.text(x.label || el.name, c[0], c[1], { size: 10 * ts, align: tl ? "left" : "center", baseline: tl ? "top" : "middle", color: el.noBuild ? PAL.red : PAL.graphite, font: "sansBold", halo: pdf ? 0 : 3 }); }
     }
@@ -88,19 +90,24 @@
       const iss = per[x.id] || [], err = iss.some((i) => i.sev === "error"), warn = iss.some((i) => i.sev === "warning");
       P.save().translate(x.x, x.y).rotateDeg(x.rot || 0);
       if (x.kind === "product") SY.drawProduct(P, s.p, { lod: kp, mode: pres ? "presentation" : "design" });
-      else { const el = s.el; if (el.id === "label") { /* text only */ } else SY.drawPointElement(P, el, x.l, x.w, { lod: kp }); }
+      else { const el = s.el; if (el.id === "label") { /* text only */ } else SY.drawPointElement(P, el, x.l, x.w, { lod: kp, steps: x.terrain && x.terrain.steps }); }
       P.restore();
       if (!pdf && (err || warn) && mode === "design") P.begin().poly(s.foot).paint({ stroke: err ? PAL.red : PAL.amber, px: 2.2 });
       if (!pdf && sel.has(x.id)) P.begin().poly(s.foot).paint({ stroke: "#1F5FA8", px: 2, dashPx: [5, 3] });
     }
     // labels
     if (show.labels) {
+      if (o.heights) for (const x of vis) { const el = DPCat.EL[x.type], t = x.terrain || {}, d = (el && el.structureDefaults) || {}, v = (k) => (typeof t[k] === "number" ? t[k] : d[k]); if (!el || !el.structure) continue;
+        const text = el.structure === "stairs" ? `Stairs +${fmt2(v("rise"))} m, ${v("steps")} steps` : el.structure === "ramp" ? (v("rise") ? `Ramp +${fmt2(v("rise"))} m` : "") : el.structure === "retaining" ? `Wall ${fmt2(v("height"))} m` : el.structure === "tunnel" ? `Tunnel, ${fmt2(v("clear"))} m clear` : el.structure === "bridge" ? (v("lift") ? `Bridge +${fmt2(v("lift"))} m` : "Bridge") : `H ${fmt2(v("height"))} m`; if (!text) continue;
+        const at = x.kind === "point" ? [x.x, x.y - Math.max(x.l, x.w) / 2 - 0.2] : x.kind === "area" ? G.centroid(x.poly) : x.pts[Math.floor((x.pts.length - 1) / 2)]; P.text(text, at[0], at[1], { size: 9.5 * ts, align: "center", baseline: "bottom", color: PAL.graphite, halo: 3 }); }
+      for (const x of terrainTags) { const el = DPCat.EL[x.type], h = x.terrain && typeof x.terrain.height === "number" ? x.terrain.height : (el.terrainDefaults || {}).height || 0, c = G.centroid(x.poly); if (c) P.text(`${el.name} ${h < 0 ? "−" : "+"}${fmt2(Math.abs(h))} m`, c[0], c[1], { size: 10 * ts, align: "center", baseline: "middle", color: PAL.ink, font: "sansBold", halo: 3.5 }); }
       for (const x of vis) {
         if (x.kind === "point" && x.type === "label") { P.text(x.label || "Label", x.x, x.y, { size: Math.max(8, Math.min(40, (x.w || 0.6) * k * 0.8)) * (pdf ? 1 : 1), local: false, align: "center", baseline: "middle", color: PAL.ink, font: "sansBold", rot: (x.rot || 0) * Math.PI / 180 }); continue; }
         if (x.kind === "point" && x.label && (x.l * kp > 30 || pdf)) P.text(x.label, x.x, x.y + Math.max(x.l, x.w) / 2 + 0.35, { size: 9.5 * ts, align: "center", baseline: "top", color: PAL.graphite, halo: pdf ? 0 : 3 });
+        if (o.heights && x.kind === "point" && x.z) P.text(`base ${x.z > 0 ? "+" : ""}${fmt2(x.z)} m`, x.x, x.y - Math.max(x.l, x.w) / 2 - 0.2, { size: 9.5 * ts, align: "center", baseline: "bottom", color: PAL.graphite, halo: 3 });
       }
       if (pres) numberBadges(P, prods, o.legend || legend(pr), ts, pdf);
-      else for (const x of prods) { const s = DPModel.shapes(x); if (s.missing) continue; productLabel(P, x, s, k, ts, pdf, show.dims, kp); }
+      else for (const x of prods) { const s = DPModel.shapes(x); if (s.missing) continue; productLabel(P, x, s, k, ts, pdf, show.dims, kp, o.heights); }
     }
     // north arrow inside plan (screen design mode draws it in the overlay instead)
     if (o.north && site) northArrow(P, o.north.at, o.north.size, pr.site.north || 0, pdf);
@@ -115,14 +122,15 @@
       P.text(fmtM(L), (a[0] + b[0]) / 2 - nx * off, (a[1] + b[1]) / 2 - ny * off, { size: 10.5 * ts, align: "center", baseline: "middle", rot: r + P.angle, color: PAL.ink, font: "sansBold", halo: pdf ? 0 : 3 });
     }
   }
-  function productLabel(P, x, s, k, ts, pdf, dims, kp) {
+  function productLabel(P, x, s, k, ts, pdf, dims, kp, heights) {
     const p = s.p, wpx = Math.min(p.dims.l, p.dims.w) * (kp || k); if (wpx < 18 && !pdf) return;
     let r = (x.rot || 0) * Math.PI / 180; while (r > Math.PI / 2) r -= Math.PI; while (r < -Math.PI / 2) r += Math.PI;
     if (p.dims.w > p.dims.l) r += r > 0 ? -Math.PI / 2 : Math.PI / 2;
     // label sits just outside the footprint (below), so it never hides the drawing
     const bb = G.bbox(s.foot), cx = (bb.x0 + bb.x1) / 2, y = bb.y1 + (pdf ? 1.6 : 7) / k;
     const code = p.displayCode || p.code;
-    P.text(dims ? `${code} · ${fmt2(p.dims.l)} × ${fmt2(p.dims.w)} m` : code, cx, y, { size: 10 * ts, align: "center", baseline: "top", color: PAL.ink, font: "sansBold", halo: pdf ? 0 : 3.5 });
+    const hx = heights ? `${p.dims.h ? ` · H ${fmt2(p.dims.h)} m` : ""}${x.z ? ` · base ${x.z > 0 ? "+" : ""}${fmt2(x.z)} m` : ""}` : "";
+    P.text(dims ? `${code} · ${fmt2(p.dims.l)} × ${fmt2(p.dims.w)} m${hx}` : code + hx, cx, y, { size: 10 * ts, align: "center", baseline: "top", color: PAL.ink, font: "sansBold", halo: pdf ? 0 : 3.5 });
   }
   const fmt2 = (n) => String(Math.round(n * 100) / 100);
   function numberBadges(P, prods, lg, ts, pdf) {
