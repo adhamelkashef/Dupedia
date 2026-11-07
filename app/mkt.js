@@ -26,6 +26,9 @@
   let CFG = null;
   async function cfg(force) { if (!CFG || force) CFG = G().cfgOf(await DS().get("mkt/cfg")); return CFG; }
   async function saveCfg(c, reason = "") { if (!isAdmin()) throw new Error("Administrators only."); const next = Object.assign({}, await cfg(true), c, { updatedAt: now(), updatedBy: me().id });
+    const error = G().validateCfg(next); if (error) throw new Error(error);
+    if (!String(reason).trim()) throw new Error("Give the reason for changing scoring settings.");
+    delete next.configWarning; next.changeReason=String(reason).trim().slice(0,600);
     await DS().set("mkt/cfg", next); CFG = G().cfgOf(next); await AU().auditLog("Marketing scoring settings changed", { kind: "lead", reason, after: { weights: next.weights, priorityA: next.priorityA, priorityB: next.priorityB } }).catch(() => {}); return CFG; }
 
   /* ---------------- campaigns & content ---------------- */
@@ -52,8 +55,8 @@
     const id = item.id || rid("ct-"), prev = (c.content || []).find((x) => x.id === id) || {};
     const st = G().CONTENT_STATUS[item.status] ? item.status : prev.status || "draft";
     const rec = Object.assign({}, prev, { id, kind: item.kind, channel: G().CHANNELS[item.channel] ? item.channel : "other", date: item.date, title: String(item.title || "").slice(0, 140), caption: String(item.caption || "").slice(0, 4000),
-      brief: String(item.brief || "").slice(0, 4000), cta: String(item.cta || c.cta || "").slice(0, 200), destination: String(item.destination || c.destination || "").slice(0, 300), status: st, assets: prev.assets || [], updatedAt: now(), updatedBy: me().id },
-      st === "approved" && prev.status !== "approved" ? { approvedBy: me().id, approvedAt: now() } : {}, st === "published" && prev.status !== "published" ? { publishedRecordedBy: me().id, publishedAt: item.publishedAt || now(), url: item.url || "" } : {});
+      brief: String(item.brief || "").slice(0, 4000), cta: String(item.cta || c.cta || "").slice(0, 200), destination: String(item.destination || c.destination || "").slice(0, 300), status: st, assets: prev.assets || [], url: String(item.url != null ? item.url : prev.url || "").trim(), updatedAt: now(), updatedBy: me().id },
+      st === "approved" && prev.status !== "approved" ? { approvedBy: me().id, approvedAt: now() } : {}, st === "published" && prev.status !== "published" ? { publishedRecordedBy: me().id, publishedAt: item.publishedAt || now(), url: String(item.url || "").trim() } : {});
     G().prepareApproval(prev.id ? prev : null, rec, { kind: "content", admin: isAdmin(), by: me().id, at: now() });
     if (rec.status !== "published" && st === "published") { delete rec.publishedAt; delete rec.publishedRecordedBy; }
     c.content = (c.content || []).filter((x) => x.id !== id).concat([rec]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -72,6 +75,7 @@
     if (!isMkt() && !owner) throw new Error("Only Marketing, administrators or the account's owner can edit it.");
     if (!String(a.company != null ? a.company : (prev && prev.company) || "").trim()) throw new Error("Enter the company name.");
     for (const c of a.contacts || []) if ((c.phone || c.email) && !String(c.source || "").trim()) throw new Error(`Contact ${c.name || ""}: record where the phone / e-mail comes from — never enter invented details.`);
+    if (a.verifiedAt && (!G().validDay(a.verifiedAt) || a.verifiedAt > now().slice(0,10))) throw new Error("Source verification must be a valid date on or before today.");
     for (const s of a.sources || []) if (s.url && !/^https?:\/\//.test(s.url)) throw new Error("Source links must start with https://");
     const ownerFields = ["nextAction", "nextDue", "notes", "qualification", "confirmedNeed", "priorityOverride", "feedback", "followUpCompletions"];
     const base = Object.assign({}, prev || {});
@@ -90,14 +94,19 @@
   }
   /** Import researched accounts (rows already parsed: {company, project, segment, location, website, source, verifiedAt, stage, …}).
    *  Rows without a source link are imported as PROVISIONAL. Duplicates (same normalised company + project) are skipped. */
+  async function previewImport(rows) { reqMkt(); return G().researchPlan(rows, await accounts()); }
   async function importAccounts(rows, { origin = "research import" } = {}) {
-    reqMkt(); const have = await accounts(), key = (x) => `${String(x.company || "").toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, "")}|${String(x.project || "").toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, "")}`;
-    const seen = new Set(have.map(key)); let added = 0, skipped = 0; const rejected = [];
-    for (const [i, r] of rows.entries()) { if (!String(r.company || "").trim()) { rejected.push({ row: i + 2, why: "company missing" }); continue; } if (seen.has(key(r))) { skipped++; continue; }
-      const src = r.source && /^https?:\/\//.test(r.source) ? [{ url: r.source, date: r.verifiedAt || null }] : [];
-      await saveAccount({ company: r.company, project: r.project || "", segment: r.segment || "other", location: r.location || "", website: /^https?:\/\//.test(r.website || "") ? r.website : "", sources: src, verifiedAt: src.length ? r.verifiedAt || null : null,
-        stage: G().STAGES[r.stage] ? r.stage : "unknown", procurementBy: r.procurementBy || null, products: r.products || "", notes: r.notes || "", origin, provisional: !src.length, contacts: [] }); seen.add(key(r)); added++; }
-    return { added, skipped, rejected };
+    reqMkt(); const plan=await previewImport(rows), result={added:0,skipped:0,rejected:[],failed:[],savedRows:[]};
+    for (const p of plan) {
+      if(p.status==="rejected"){result.rejected.push({row:p.row,why:p.why});continue;}
+      if(p.status==="duplicate"){result.skipped++;continue;}
+      const r=p.record,src=r.source?[{url:r.source,date:r.verifiedAt||null}]:[];
+      try {
+        await saveAccount({company:r.company,project:r.project,segment:r.segment||"other",location:r.location||"",website:r.website||"",sources:src,verifiedAt:src.length?r.verifiedAt||null:null,stage:r.stage,procurementBy:r.procurementBy||null,products:r.products||"",notes:r.notes||"",origin,provisional:!src.length,contacts:[]});
+        result.added++;result.savedRows.push(p.row);
+      } catch(e) { result.failed.push({row:p.row,why:e.message||String(e)}); }
+    }
+    return result;
   }
   /** Hand a qualified Radar account to Sales: ONE lead in the existing Lead Mine (campaign source kept), no duplicates. */
   async function toLeadMine(id, { preview = false, expectedLeadId = null, expectedVersion = null } = {}) {
@@ -169,5 +178,5 @@
     return { cfg: C, campaigns: camps, accounts: accs, partners: parts, touches: tch, leads, subs, orders, spend, full, salesAvailable };
   }
 
-  root.DPMkt = { cfg, saveCfg, isMkt, campaigns, getCampaign, saveCampaign, saveContent, addAsset, asset, accounts, saveAccount, importAccounts, toLeadMine, partners, savePartner, addReferral, completeFollowUp, touches, logTouch, snapshot };
+  root.DPMkt = { cfg, saveCfg, isMkt, campaigns, getCampaign, saveCampaign, saveContent, addAsset, asset, accounts, saveAccount, previewImport, importAccounts, toLeadMine, partners, savePartner, addReferral, completeFollowUp, touches, logTouch, snapshot };
 })(typeof self !== "undefined" ? self : this);

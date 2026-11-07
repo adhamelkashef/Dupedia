@@ -25,7 +25,7 @@
     leads: ["leads", "claims", "leadcontact"], myleads: ["leads", "claims", "crm", "acts"], allleads: ["leads", "claims", "crm"], calls: ["acts", "crm"], research: ["leads", "leadprop"],
     proposals: ["salesorders", "submissions", "assign", "eng", "fac"], register: ["orders", "assign", "eng", "fac"], tracking: ["salesorders", "assign", "eng", "fac"],
     engorders: ["assign", "eng", "engx", "handoff", "fac"], engqueue: ["assign", "eng", "handoff", "fac"], factory: ["assign", "eng", "fac"], workers: ["workers"],
-    facjobs: ["fac", "assign", "eng"], facdash: ["fac", "assign", "eng"], equipment: ["fac"], products: ["prod"], catalog: ["prod"], reminders: ["rem"], holidays: ["hol"], growth: ["mkt", "leads", "submissions", "orders"], campaigns: ["mkt"], radar: ["mkt"], partners: ["mkt"], miengine: ["mix"],
+    facjobs: ["fac", "assign", "eng"], facdash: ["fac", "assign", "eng"], equipment: ["fac"], products: ["prod"], catalog: ["prod"], reminders: ["rem", "mkt"], holidays: ["hol"], growth: ["mkt", "leads", "submissions", "orders"], campaigns: ["mkt"], radar: ["mkt"], partners: ["mkt"], miengine: ["mix"],
   };
   const busyEditing = () => { const a = document.activeElement, m = document.querySelector("#modal[open], dialog[open]");
     return !!m || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox") || Date.now() - L.typedAt < 4000 || String(root.getSelection ? root.getSelection() : "").length > 0; };
@@ -52,7 +52,7 @@
   function dispatch(paths, more) {
     const uid = me().id, segs = new Set(paths.map((p) => p.split("/")[0]));
     if (paths.some((p) => p.startsWith(`notif/${uid}`))) DPNotify.pull().catch(() => {});
-    if (paths.some((p) => p.startsWith(`rem/${uid}`))) loadReminders().catch(() => {});
+    if (paths.some((p) => p.startsWith(`rem/${uid}`) || p.startsWith("mkt/radar/a/") || p.startsWith("mkt/part/p/"))) loadReminders().catch(() => {});
     for (const h of L.handlers) if ([...segs].some((s) => h.segs.includes(s))) try { h.fn(paths); } catch (e) {}
     const deps = VIEW_DEPS[U().App.view] || [];
     if (more || deps.some((d) => segs.has(d))) softRefresh();
@@ -102,7 +102,7 @@
     const close = () => { el.classList.add("out"); setTimeout(() => el.remove(), 220); };
     el.querySelector(".xt-x").onclick = () => { close(); if (!n._more && !n._rem && root.DPNotify.N.items.some((x) => x.id === n.id)) DPNotify.markRead([n.id]).catch(() => {}); };
     el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => { close(); if (n._onAction) return n._onAction(b.dataset.a); if (n._more) return DPShell.notifPanel(); if (root.DPShell.openNotif) DPShell.openNotif(n); }));
-    if (n._rem) el.dataset.rem = n._remId || "";
+    if (n._rem) { el.dataset.rem = n._remId || ""; el.dataset.remDue = n.at || ""; }
     w.appendChild(el); requestAnimationFrame(() => el.classList.add("in"));
     // a reminder that stays on screen shrinks to a one-line chip after 20 s so it never covers the page's buttons for long
     if (sticky) { let mt = setTimeout(() => el.classList.add("mini"), 20000); el.onmouseenter = () => { clearTimeout(mt); el.classList.remove("mini"); }; el.onmouseleave = () => (mt = setTimeout(() => el.classList.add("mini"), 6000)); }
@@ -119,9 +119,14 @@
   const PRIORITY = { low: "Low", normal: "Normal", high: "High", urgent: "Urgent" };
   const KINDS = { callback: "Customer callback", followup: "Sales follow-up", delivery: "Promised delivery date", factory: "Manufacturing update", collection: "Payment collection", supplier: "Supplier payment", approval: "Missing approval", maintenance: "Maintenance", other: "Other" };
   const remPath = (uid, id) => `rem/${uid}/r/${id}`;
-  async function loadReminders(uid = me().id) { const l = (await DS().tryList(`rem/${uid}/r`)).map((x) => Object.assign({ id: x.id, uid }, x.data)); if (uid === me().id) { L.reminders = l; clearStale(); checkReminders(); } return l; }
+  async function loadReminders(uid = me().id) {
+    const [personal,accounts,partners] = await Promise.all([DS().list(`rem/${uid}/r`),DS().list("mkt/radar/a"),DS().list("mkt/part/p")]);
+    const records = rows => rows.map(x=>({...x.data,id:x.id}));
+    const l=root.DPGrowth.growthReminders(records(personal).map(r=>({...r,uid})),records(accounts),records(partners),uid);
+    if(uid===me().id){L.reminders=l;clearStale();checkReminders();}return l;
+  }
   /** Remove the pop-up of a reminder that was completed, snoozed or cancelled (here or on another device). */
-  function clearStale() { const w = document.getElementById("xf-toasts"); if (!w) return; for (const el of w.querySelectorAll(".xt[data-rem]")) { const r = L.reminders.find((x) => x.id === el.dataset.rem); if (!r || !isOverdue(r)) { el.classList.add("out"); setTimeout(() => el.remove(), 220); } } }
+  function clearStale() { const w = document.getElementById("xf-toasts"); if (!w) return; for (const el of w.querySelectorAll(".xt[data-rem]")) { const r = L.reminders.find((x) => x.id === el.dataset.rem); if (!r || !isOverdue(r) || el.dataset.remDue && el.dataset.remDue !== dueAt(r)) { el.classList.add("out"); setTimeout(() => el.remove(), 220); } } }
   const dueAt = (r) => r.snoozedUntil && r.snoozedUntil > r.due ? r.snoozedUntil : r.due;
   const isOverdue = (r) => r.status === "open" && dueAt(r) <= now();
   function nextDue(r) { const d = new Date(r.due), step = { daily: 1, weekly: 7 }[r.repeat];
@@ -130,6 +135,7 @@
     return d.toISOString(); }
   async function saveReminder(r) {
     const u = me(); if (!u.id || u.role === "viewer") throw new Error("View-only access cannot create reminders.");
+    if(r.growthManaged || root.DPGrowth.growthLinked(r))throw new Error("Edit the follow-up on its linked account or partnership. Its reminder updates automatically.");
     const uid = r.uid || u.id; if (uid !== u.id && !U().isAdmin()) throw new Error("Only an administrator can set a reminder for someone else.");
     if (!String(r.title || "").trim()) throw new Error("Give the reminder a title."); if (!r.due || isNaN(Date.parse(r.due))) throw new Error("Choose the date and time.");
     const id = r.id || "rm-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), path = remPath(uid, id), prev = await DS().tryGet(path);
@@ -141,6 +147,7 @@
     if (uid === u.id) await loadReminders(); return Object.assign({ id, uid }, rec);
   }
   async function actOn(r, action, arg) {
+    if(r.growthManaged || root.DPGrowth.growthLinked(r))throw new Error("Open the linked follow-up to reschedule it or record its completion outcome.");
     const path = remPath(r.uid || me().id, r.id), cur = await DS().get(path); if (!cur) throw new Error("Reminder not found."); const by = me().id;
     if (action === "done") { if (cur.repeat && cur.repeat !== "none") { cur.history.push({ at: now(), by, action: "Completed (repeats)" }); cur.due = nextDue(cur); cur.snoozedUntil = null; } else { cur.status = "done"; cur.doneAt = now(); cur.history.push({ at: now(), by, action: "Completed" }); } }
     else if (action === "snooze") { const mins = +arg || 15; cur.snoozedUntil = new Date(Date.now() + mins * 60000).toISOString(); cur.history.push({ at: now(), by, action: `Snoozed ${mins >= 1440 ? Math.round(mins / 1440) + " day(s)" : mins >= 60 ? Math.round(mins / 60) + " hour(s)" : mins + " min"}` }); }
@@ -152,8 +159,8 @@
     if (!me().id || !L.reminders) return; const w = wrap();
     for (const r of L.reminders.filter(isOverdue)) { const key = r.id + "|" + dueAt(r); if (L.remPopped.has(key)) continue; L.remPopped.add(key);
       toast(w, { id: "rem-" + key, _remId: r.id, type: "reminder", title: r.title, body: (r.notes || KINDS[r.kind] || "").slice(0, 140), ref: r.ref && r.ref.label, at: dueAt(r), _kind: r.priority === "urgent" ? "urgent" : "warning", _rem: true,
-        _onAction: (a) => (a === "open" ? U().go("reminders") : actOn(r, a === "done" ? "done" : "snooze", a === "s15" ? 15 : a === "s60" ? 60 : 1440).catch((e) => U().toast(e.message, { err: true }))) },
-      { actions: [["done", "Done"], ["s15", "15 min"], ["s60", "1 hour"], ["s1d", "Tomorrow"]], sticky: true }); }
+        _onAction: (a) => (a === "open" ? (r.growthManaged ? U().go(r.ref.link.view,r.ref.link.opts) : U().go("reminders")) : actOn(r, a === "done" ? "done" : "snooze", a === "s15" ? 15 : a === "s60" ? 60 : 1440).catch((e) => U().toast(e.message, { err: true }))) },
+      { actions: r.growthManaged ? [["open","Open follow-up"]] : [["done", "Done"], ["s15", "15 min"], ["s60", "1 hour"], ["s1d", "Tomorrow"]], sticky: true }); }
   }
   root.DPLive = { L, VIEW_DEPS, start, stop, poll, on, popNew, toast: (n, o) => toast(wrap(), n, o), loadPrefs, savePrefs, REPEAT, PRIORITY, KINDS, loadReminders, saveReminder, actOn, isOverdue, dueAt, nextDue, softRefresh };
 })(typeof self !== "undefined" ? self : this);

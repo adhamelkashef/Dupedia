@@ -37,7 +37,39 @@
     priorityA: 70, priorityB: 45, qualifiedScore: 60, stallDays: 21,
     segmentFit: { developer: 1, compound: 1, school: 1, club: 0.9, hotel: 1, operator: 0.9, consultant: 0.7, contractor: 0.7, mall: 0.8, government: 0.6, other: 0.3 },
   };
-  const cfgOf = (c) => { const d = JSON.parse(JSON.stringify(DEFAULT_CFG)); if (!c) return d; return Object.assign(d, c, { weights: Object.assign(d.weights, c.weights || {}), segmentFit: Object.assign(d.segmentFit, c.segmentFit || {}) }); };
+  const validDay = d => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d)) && new Date(d + "T12:00:00Z").toISOString().slice(0,10) === d;
+  function validateCfg(c) {
+    const keys = Object.keys(DEFAULT_CFG.weights), w = c && c.weights;
+    if (!w || keys.some(k => typeof w[k] !== "number" || !Number.isFinite(w[k]) || w[k] < 0 || w[k] > 50) || Object.keys(w).some(k => !keys.includes(k))) return "Each score weight must be a number from 0 to 50.";
+    if (Math.abs(keys.reduce((n,k)=>n+w[k],0)-100)>0.000001) return "Score weights must total 100.";
+    if (["priorityA","priorityB","qualifiedScore"].some(k=>!Number.isInteger(c[k]) || c[k]<0 || c[k]>100)) return "Score thresholds must be whole numbers from 0 to 100.";
+    if (c.segmentFit && Object.values(c.segmentFit).some(v=>typeof v!=="number" || !Number.isFinite(v) || v<0 || v>1)) return "Segment fit values must be between 0 and 1.";
+    if (c.priorityA <= c.priorityB) return "Priority A must be higher than Priority B.";
+    if (!Number.isInteger(c.stallDays) || c.stallDays<1 || c.stallDays>365) return "Stalled quotation days must be a whole number from 1 to 365.";
+    return null;
+  }
+  const cfgOf = c => {
+    const d=JSON.parse(JSON.stringify(DEFAULT_CFG)); if(!c)return d;
+    const merged={...d,...c,weights:{...d.weights,...c.weights},segmentFit:{...d.segmentFit,...c.segmentFit}};
+    const error=validateCfg(merged); return error ? {...d,configWarning:"Saved scoring settings are invalid. Default scoring is in use until corrected. "+error} : merged;
+  };
+  const stageOf = value => { const s=String(value||"").trim().toLowerCase(); if(!s)return "unknown"; return Object.keys(STAGES).find(k=>k===s || STAGES[k].toLowerCase()===s) || "unknown"; };
+  const accountKey = r => `${String(r.company||"").trim().toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g,"")}|${String(r.project||"").trim().toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g,"")}`;
+  const webUrl = value => { try { const u=new URL(String(value||"")); return ["https:","http:"].includes(u.protocol) && !!u.hostname; } catch(e) { return false; } };
+  function researchPlan(rows, existing=[], today=today0()) {
+    const seen=new Set(existing.map(accountKey)), plan=[];
+    rows.forEach((raw,i)=>{
+      const r={...raw,company:String(raw.company||"").trim(),project:String(raw.project||"").trim(),stage:stageOf(raw.stage)};
+      let error=!r.company?"Company is missing.":"";
+      for(const k of ["verifiedAt","procurementBy"]) if(r[k]&&!validDay(r[k]))error=`Invalid ${k} date; use YYYY-MM-DD.`;
+      if(r.verifiedAt&&r.verifiedAt>today)error="Verification date cannot be in the future.";
+      if(r.source&&!webUrl(r.source))error="Source must be a valid http:// or https:// link.";
+      if(r.website&&!webUrl(r.website))error="Website must be a valid http:// or https:// link.";
+      const key=accountKey(r), status=error?"rejected":seen.has(key)?"duplicate":"ready";
+      if(status==="ready")seen.add(key);
+      plan.push({row:i+2,status,why:error|| (status==="duplicate"?"Already on the Radar or repeated in this file.":!r.source?"No source link — provisional.":"Ready."),record:r});
+    }); return plan;
+  }
   /** Account / project score with the reason for every point. touches = recorded interactions with this account. */
   function scoreAccount(a, { cfg = null, touches = [], today = today0() } = {}) {
     const C = cfgOf(cfg), W = C.weights, F = [];
@@ -50,14 +82,14 @@
     add("timing", t == null ? 0 : t < 0 ? 0.3 : t <= 90 ? 1 : t <= 180 ? 0.7 : t <= 365 ? 0.4 : 0.15, t == null ? "procurement timing unknown" : t < 0 ? `expected procurement date passed (${a.procurementBy})` : `procurement expected in about ${Math.max(1, Math.round(t / 30))} month(s)`);
     const people = (a.contacts || []).filter((c) => c.name && c.source), dm = people.filter((c) => c.decisionMaker);
     add("people", dm.length ? 1 : people.length ? 0.5 : 0, dm.length ? `${dm.length} decision-maker(s) with a source` : people.length ? `${people.length} contact(s) with a source, no decision-maker yet` : "no sourced contact");
-    const recent = touches.filter((x) => x.at && days(String(x.at).slice(0, 10), today) <= 90 && ["meeting", "call", "visit", "inbound", "referral", "email"].includes(x.kind));
+    const recent = touches.filter((x) => x.at && days(String(x.at).slice(0, 10), today) >= 0 && days(String(x.at).slice(0, 10), today) <= 90 && ["meeting", "call", "visit", "inbound", "referral", "email"].includes(x.kind));
     const meet = recent.filter((x) => ["meeting", "visit", "inbound"].includes(x.kind)).length;
     add("engagement", meet ? 1 : recent.length ? 0.5 : 0, recent.length ? `${recent.length} recorded interaction(s) in 90 days${meet ? `, ${meet} meeting / visit / enquiry` : ""}` : "no recorded two-way interaction (content views do not count)");
     add("need", a.confirmedNeed ? 1 : 0, a.confirmedNeed ? `need confirmed by ${a.confirmedNeedBy || "sales"}` : "need not confirmed by Sales");
     add("qualified", a.qualification === "qualified" ? 1 : a.qualification === "disqualified" ? 0 : 0.3, a.qualification === "qualified" ? "qualified by Sales" : a.qualification === "disqualified" ? "disqualified by Sales" : "not yet qualified");
-    const fresh = a.verifiedAt ? days(String(a.verifiedAt).slice(0, 10), today) : null;
+    const fresh = validDay(String(a.verifiedAt||"").slice(0,10)) && String(a.verifiedAt).slice(0,10)<=today ? days(String(a.verifiedAt).slice(0,10),today) : null;
     add("freshness", fresh == null ? 0 : fresh <= 90 ? 1 : fresh <= 180 ? 0.5 : 0, fresh == null ? "sources never verified" : `sources verified ${fresh} day(s) ago`);
-    const score = Math.round(F.reduce((s, f) => s + f.pts, 0)), auto = score >= C.priorityA ? "A" : score >= C.priorityB ? "B" : "C";
+    const score = Math.max(0,Math.min(100,Math.round(F.reduce((s, f) => s + f.pts, 0)))), auto = score >= C.priorityA ? "A" : score >= C.priorityB ? "B" : "C";
     const priority = a.priorityOverride && ["A", "B", "C"].includes(a.priorityOverride) ? a.priorityOverride : a.qualification === "disqualified" ? "C" : auto;
     return { score, auto, priority, overridden: priority !== auto, factors: F, provisional: !ev || fresh == null || fresh > 180 };
   }
@@ -155,6 +187,18 @@
       if(a.nextDue&&inRange(a.nextDue,from,cutoff)&&!seen.has(`${a.nextDue}|${a.nextAction||''}`))entries.push({due:a.nextDue,completed:false,onTime:false});
     }return {due:entries.length,completed:entries.filter(x=>x.completed).length,onTime:entries.filter(x=>x.completed&&x.onTime).length};
   }
+  const growthLinked = r => !!(r && r.ref && ["radar","partners"].includes(r.ref.kind) && r.ref.id);
+  function growthReminders(personal, accounts, partners, uid) {
+    const out=personal.map(r=>growthLinked(r)?{...r,status:"cancelled",growthManaged:true,notes:"Replaced by the current follow-up on the linked record."}:r);
+    for(const [kind,records] of [["radar",accounts],["partners",partners]])for(const r of records){
+      if(r.ownerUid!==uid)continue;
+      const due=kind==="radar"?r.nextDue:r.followUp,label=r.company||r.name||"Follow-up",ref={kind,id:r.id,label,link:{view:kind,opts:{id:r.id}}};
+      const base={uid,growthManaged:true,kind:"followup",priority:"normal",repeat:"none",ref,history:r.history||[]};
+      if(validDay(due) && r.qualification!=="disqualified" && !["dormant","ended"].includes(r.status)) out.push({...base,id:`growth-${kind}-${r.id}`,title:`${label}: ${r.nextAction||"follow up"}`,notes:"Reschedule or complete this follow-up on its linked record; completion requires an outcome.",due:new Date(due+"T09:00:00").toISOString(),status:"open"});
+      for(const c of r.followUpCompletions||[])if(validDay(c.due))out.push({...base,id:`growth-${kind}-${r.id}-${c.id}`,title:`${label}: ${c.action||"follow up"}`,notes:c.outcome||"",due:new Date(c.due+"T09:00:00").toISOString(),status:"done",doneAt:c.completedAt});
+    }
+    return out;
+  }
   const CAMP_APPROVAL_FIELDS=['name','objective','segment','segments','products','ownerUid','start','end','budgetMinor','channels','cta','destination','location','source'];
   const CONTENT_APPROVAL_FIELDS=['kind','channel','date','title','caption','brief','cta','destination','assets'];
   const APPROVAL_FIELDS=['approvedBy','approvedAt','approvalFingerprint'];
@@ -167,12 +211,14 @@
     if(changed&&APPROVAL_FIELDS.some(k=>old[k])){clearApproval(next);if(approved.includes(next.status))next.status=kind==='campaign'?'awaiting':'review';}
     if(admin&&(approve||(next.status==='approved'&&(!old||old.status!=='approved')))){next.status='approved';next.approvedBy=by;next.approvedAt=at;next.approvalFingerprint=fingerprint(next,kind);}
     if(approved.includes(next.status)&&!hasApproval(next,kind))throw new Error('Approve this version before it runs or is published.');
+    if(kind === "content" && next.status === "published" && !webUrl(next.url)) throw new Error("Add a valid published link (https:// or http://) before recording publication.");
     return next;
   }
   function approvalGuard(old,next,{admin=false,uid}={}){
     const check=(a,b,kind)=>{
       const fieldsChanged=APPROVAL_FIELDS.some(k=>(a&&a[k]||null)!==(b[k]||null));
       if(fieldsChanged&&APPROVAL_FIELDS.some(k=>b[k])&&(!admin||b.approvedBy!==uid))return 'Only an administrator can approve a specific version.';
+      if(kind==='content' && b.status==='published' && !webUrl(b.url)) return 'Published content requires a valid http:// or https:// link.';
       const states=kind==='campaign'?['approved','live']:['approved','published'];
       if(states.includes(b.status)){
         if(!hasApproval(b,kind))return 'The current version needs administrator approval.';
@@ -209,5 +255,5 @@
   /** Simple campaign source code used in links and lead records: CMP-YYMM-XXX. */
   const sourceCode = (name, d = new Date()) => `CMP-${d.toISOString().slice(2, 4)}${d.toISOString().slice(5, 7)}-${(String(name || "X").replace(/[^A-Za-z]/g, "").toUpperCase() + "XXX").slice(0, 3)}${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
 
-  root.DPGrowth = { SEGMENTS, ORG_TO_SEG, SEG_TO_ORG, CHANNELS, CAMP_STATUS, CONTENT_KINDS, CONTENT_STATUS, STAGES, PART_TYPES, PART_STATUS, TOUCH, DEFAULT_CFG, cfgOf, scoreAccount, measure, filterSnapshot, followUpStats, fingerprint, hasApproval, prepareApproval, approvalGuard, clearApproval, attribution, multiTouch, funnel, stalled, suggest, sourceCode, inRange };
+  root.DPGrowth = { SEGMENTS, ORG_TO_SEG, SEG_TO_ORG, CHANNELS, CAMP_STATUS, CONTENT_KINDS, CONTENT_STATUS, STAGES, PART_TYPES, PART_STATUS, TOUCH, DEFAULT_CFG, cfgOf, validateCfg, validDay, webUrl, stageOf, accountKey, researchPlan, growthLinked, growthReminders, scoreAccount, measure, filterSnapshot, followUpStats, fingerprint, hasApproval, prepareApproval, approvalGuard, clearApproval, attribution, multiTouch, funnel, stalled, suggest, sourceCode, inRange };
 })(typeof self !== "undefined" ? self : globalThis);
