@@ -215,6 +215,13 @@ async function ceoOf(env) {
   const o = await env.DB.prepare("SELECT uid FROM users WHERE owner = 1 AND active = 1 LIMIT 1").first(); return o ? o.uid : null;
 }
 
+/** config/settings.miEngine, and the company names when it is on (read only then, so "off" reads nothing extra but the switch). */
+async function engineOpts(env) {
+  const s = await doc(env, "config/settings");
+  if (!(s && s.data && s.data.miEngine === true)) return { engine: false };
+  return { engine: true, aliases: (await coll(env, "mix/alias/a")).docs };
+}
+
 /** Run ONE job now. Returns {ok, created, updated, notes, error}. Records job health and run history either way. */
 export async function runJob(env, jobName, { by = "page" } = {}) {
   const cfg = researchConfig(env);
@@ -226,6 +233,7 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
   try {
     await countUse(env);
     const { db, ver } = await loadDb(env);
+    const eng = await engineOpts(env);   // Market Intelligence 2.0: off unless an administrator switched it on
     let res, extra = [], err = null, code = null;
     try {
       let parsed, seen, info, more = [];
@@ -242,7 +250,7 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
       else {
         const f = evidenceFilter(jobName, parsed, seen); extra = f.notes.concat(more);
         extra.push(info);
-        res = ingest(jobName, db, jobName === "weekly" ? f.cands : (f.cands || []), Date.now());
+        res = ingest(jobName, db, jobName === "weekly" ? f.cands : (f.cands || []), Date.now(), eng);
       }
     } catch (e) {
       err = String(e.message || e).slice(0, 300);

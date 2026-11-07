@@ -284,6 +284,8 @@
     { path: "askceo/{self}", read: "interact", write: "interact" },       // … each employee only their own conversation with the CEO
     { path: "mi", read: "interact", write: "admin" },                      // Market Intelligence: opportunities, research history, job health (no money)
     { path: "mix", read: "admin", write: "admin" },                        // CEO-only intelligence: material prices, supplier quotes, pricing and weekly reports, news
+    { path: "plan", read: "admin", write: "admin" },                       // Market Intelligence 2.0: personal plans and estimates (written by the server)…
+    { path: "plan/{self}", read: "interact", write: "admin" },             //   …each person reads only their own
     { path: "data/users/{self}", write: "interact" },
     // 1.2 — Finance (Cloudflare build). The Accountant's own level "finance" is evaluated by allowedFinance() below.
     { path: "fin", read: "admin", write: "admin" },                        // ledger, accounts, payroll, purchases, invoices, taxes, finance settings

@@ -136,7 +136,7 @@
 
   /* ---------------- navigation ---------------- */
   const PROJECT_VIEWS = ["setup", "plan", "quote", "review", "proposal"];
-  const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission", "xfkit"];   // 2.0: xfkit = internal design-system specimen
+  const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission", "miengine", "xfkit"];   // 2.0: xfkit = internal design-system specimen
   const GROWTH_VIEWS = ["growth", "campaigns", "radar", "partners"];
   const OPS_VIEWS = ["reminders", "facjobs", "facdash", "equipment", "products", "catalog", "holidays"];
   const FIN_VIEWS = ["finance", "transfers", "finaccounts", "salaries", "purchases", "invoices", "taxes", "finreports"];

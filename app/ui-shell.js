@@ -21,7 +21,7 @@
   /* ---------------- rail ---------------- */
   function rail() {
     const r = $("#rail"); if (!r) return; const adm = U.isAdmin(), v = App.view, tab = (App.viewOpts || {}).tab;
-    const on = (k) => k === v || (k === "pricing" && v === "admin" && (tab || "prices") === "prices") || (k === "settings" && v === "admin" && tab && tab !== "prices") || (k === "planner" && (v === "start" || U.PROJECT_VIEWS.includes(v)));
+    const on = (k) => k === v || (k === "mission" && v === "miengine") || (k === "pricing" && v === "admin" && (tab || "prices") === "prices") || (k === "settings" && v === "admin" && tab && tab !== "prices") || (k === "planner" && (v === "start" || U.PROJECT_VIEWS.includes(v)));
     const bd = App.badges || {}, badge = (k) => ({ approvals: bd.approvals, users: bd.requests, engqueue: bd.engqueue, approvecomm: bd.comm, messages: bd.messages, engorders: bd.engnew, calls: bd.followups, payverify: bd.payverify, askceo: bd.askceo, intel: bd.intel, mission: bd.mission }[k]);
     const item = ([k, l, ic]) => `<button type="button" class="ri${on(k) ? " is-on" : ""}" data-nav="${k}" title="${esc(l)}">${U.svg(ic)}<span>${esc(l)}</span>${badge(k) ? `<em>${badge(k)}</em>` : ""}</button>`;
     const mine = adm ? [["dash", "CEO Control Center", "dash"]].concat(NAV_EMP.filter((x) => x[0] !== "dash")) : (NAV[U.role()] || NAV.viewer);

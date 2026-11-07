@@ -48,6 +48,7 @@
     changes: (since) => api("/api/changes?since=" + encodeURIComponent(since || "")),
     notif: (b) => api("/api/notif", { method: "POST", body: JSON.stringify(b) }),
     researchStatus: () => api("/api/research/status"),
+    miReadiness: () => api("/api/mi/readiness"),
     resetAccount: (uid, mode, o) => api("/api/accounts/" + encodeURIComponent(uid) + "/reset", { method: "POST", body: JSON.stringify(Object.assign({ mode }, o || {})) }),
     researchRun: (id, job) => api("/api/research/run", { method: "POST", body: JSON.stringify({ id, job: job || null }) }),
     logout: () => api("/api/logout", { method: "POST", body: "{}" }).finally(toLogin),

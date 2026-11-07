@@ -506,7 +506,7 @@ kbd{font:600 11px var(--f-text);background:var(--stone);border-radius:4px;paddin
 @media (max-width:860px){.coach{bottom:60px}}
 
 /* ===================== X FORCE 1.1 ===================== */
-.app[data-view="start"] #view-start,.app[data-view="payverify"] #view-payverify,.app[data-view="workforce"] #view-workforce,.app[data-view="askceo"] #view-askceo,.app[data-view="intel"] #view-intel,.app[data-view="mission"] #view-mission{display:block;overflow-y:auto}
+.app[data-view="miengine"] #view-miengine,.app[data-view="start"] #view-start,.app[data-view="payverify"] #view-payverify,.app[data-view="workforce"] #view-workforce,.app[data-view="askceo"] #view-askceo,.app[data-view="intel"] #view-intel,.app[data-view="mission"] #view-mission{display:block;overflow-y:auto}
 .kcards.sm{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
 .kc{display:flex;flex-direction:column;gap:3px;background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:9px 12px;min-width:0}
 .kc b{font:600 18px/1.15 var(--f-display);overflow-wrap:anywhere}.kc.err{border-color:var(--red);background:var(--red-bg)}.kc.err b{color:var(--red)}

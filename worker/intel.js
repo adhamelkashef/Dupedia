@@ -29,6 +29,11 @@ const REPUTABLE = ["reuters.com", "bloomberg.com", "ahram.org.eg", "english.ahra
   "constructionweekonline.com", "propertyfinder.eg", "aqarmap.com.eg", "lloydslist.com", "joc.com", "freightos.com", "drewry.co.uk",
   "spglobal.com", "fastmarkets.com", "argusmedia.com", "steelorbis.com", "worldbank.org", "imf.org"];
 const DAY = 864e5;
+/* Market Intelligence 2.0 (config/settings.miEngine). V2 is set only for the length of one synchronous ingest() call. Off = null = the
+   behaviour above and below is unchanged. */
+import "../app/miengine.js";
+let V2 = null;
+const ME = () => globalThis.DPMiEngine;
 
 /* ---------- Python-compatible helpers ---------- */
 const isDict = (x) => x != null && typeof x === "object" && !Array.isArray(x);
@@ -47,13 +52,15 @@ function pyRound(x, n = 0) {
 const iso = (t) => new Date(t).toISOString().slice(0, 19) + "Z";
 const ymd = (t) => new Date(t).toISOString().slice(0, 10);
 function norm(s) {
+  if (V2) { const k = s0(s); let v = V2.names.get(k); if (v === undefined) { v = ME().normName(k); V2.names.set(k, v); } return v; }
   s = s0(s).normalize("NFKD").replace(/[^\x00-\x7f]/g, "").toLowerCase();
   s = s.replace(/\b(the|a|an|of|for|and|in|at|by|project|new|company|co|ltd|s\.a\.e|sae|llc|group|developments?)\b/g, " ");
   return s.replace(/[^a-z0-9]+/g, " ").trim();
 }
 const tokens = (s) => new Set(norm(s).split(/\s+/).filter((t) => t.length > 2));
+const tokensOf = (s) => { if (!V2) return tokens(s); const k = s0(s); let v = V2.words.get(k); if (!v) { v = tokens(s); V2.words.set(k, v); } return v; };
 function jacc(a, b) {
-  const A = tokens(a), B = tokens(b); let i = 0; for (const t of A) if (B.has(t)) i++;
+  const A = tokensOf(a), B = tokensOf(b); let i = 0; for (const t of A) if (B.has(t)) i++;
   return i / Math.max(1, new Set([...A, ...B]).size);
 }
 function host(url) {
@@ -144,8 +151,51 @@ function scoreOpp(o, now) {
   add("commercial", "Commercial potential", commercial, 5, commercial === 5 ? "Large or repeat-business potential" : commercial === 3 ? "Typical project size" : "Limited");
   return [parts.reduce((s, p) => s + p.pts, 0), parts];
 }
+/* The new rules: whole words in English and Arabic, Saudi and Egyptian locations told apart, AI labels add no points, and a published
+   project budget is a size signal, never Dupedia's value. The full qualification model arrives in Phase 3. */
+const V2_WORDS = Object.assign({}, PRODUCT_WORDS, { clubhouse: 4, landscaping: 4, "ملعب": 8, "ملاعب": 8, "اطفال": 5, "حضانه": 5, "مدرسه": 4, "نادي": 3, "منتجع": 3, "كمبوند": 4, "حديقه": 3, "ملاهي": 6, "مائيه": 3 });
+const V2_BIG = ["compound", "resort", "mall", "theme park", "water park", "city", "district", "master plan", "masterplan", "feddan", "acre", "كمبوند", "منتجع", "فدان", "مدينه"];
+const V2_TARGET = TARGET_AREAS.filter((a) => a !== "red sea").concat(["القاهره الجديده", "الشيخ زايد", "زايد الجديده", "الساحل الشمالي", "راس الحكمه", "العلمين", "العين السخنه", "السخنه", "اكتوبر", "العاصمه الاداريه", "الجلاله", "الغردقه", "الجونه", "شرم الشيخ", "مدينتي", "الشروق"]);
+const V2_EGYPT = EGYPT.filter((a) => a !== "red sea").concat(["مصر", "القاهره", "الجيزه", "الاسكندريه", "مطروح", "السويس", "الاسماعيليه", "الاقصر", "اسوان"]);
+const V2_NEAR = NEAR.concat(["saudi arabia", "kingdom", "السعوديه", "الرياض", "جده", "الامارات", "دبي", "ابوظبي", "قطر", "الدوحه", "الكويت", "عمان", "البحرين", "الاردن", "ليبيا", "المغرب", "العراق"]);
+function scoreOppV2(o, now) {
+  const has = ME().hasWord, text = ME().fold([o.title || "", o.description || "", o.organization || ""].join(" ")), loc = ME().fold(o.location || ""), parts = [];
+  const add = (k, label, pts, mx, why) => parts.push({ k, label, pts: Math.trunc(Math.max(0, Math.min(mx, pyRound(pts)))), max: mx, why });
+  const hit = Object.keys(V2_WORDS).filter((w) => has(text, w)), fit = hit.reduce((s, w) => s + V2_WORDS[w], 0), np = (o.products || []).length;
+  add("fit", "Product fit", Math.min(20, fit), 20, `Mentions ${hit.slice().sort().slice(0, 5).join(", ") || "no play or leisure terms"}${np ? `; ${np} AI product suggestion(s) add no points` : ""}`);
+  const cat = o.category || "other";
+  const rel = { compound: 15, developer: 14, resort: 14, hotel: 12, school: 13, nursery: 12, fec: 15, amusement: 15, waterpark: 15, mall: 12, club: 12, public: 11, landscape: 11, coastal: 14, hospitality: 11, tender: 13 }[cat] || 6;
+  add("customer", "Customer relevance", rel, 15, `Customer category: ${cat}`);
+  const pv = g(o.projectValue || {}, "amountEgp"), big = V2_BIG.some((w) => has(text, w)) || /\d\s?km\b/.test(text);
+  let sc, why;
+  if (truthy(pv)) [sc, why] = pv >= 50e6 ? [15, "published project value ≥ EGP 50M (the project's size, not Dupedia's share)"] : pv >= 10e6 ? [11, "published project value ≥ EGP 10M (the project's size, not Dupedia's share)"] : [7, "published project value < EGP 10M"];
+  else [sc, why] = big ? [9, "large-scale development by its description (value not published)"] : [4, "scale unknown"];
+  add("scale", "Project scale", sc, 15, why);
+  if (V2_NEAR.some((a) => has(loc, a))) add("geo", "Geographic relevance", 4, 10, "Nearby export market");
+  else if (V2_TARGET.some((a) => has(loc, a))) add("geo", "Geographic relevance", 10, 10, "Priority sales area");
+  else if (V2_EGYPT.some((a) => has(loc, a))) add("geo", "Geographic relevance", 7, 10, "Egypt, outside the priority areas");
+  else if (has(loc, "red sea") || has(loc, "البحر الاحمر")) add("geo", "Geographic relevance", 3, 10, "Red Sea, country not stated");
+  else add("geo", "Geographic relevance", 1, 10, "Location unclear or far");
+  const scCls = sourceClass(o.sourceUrl, o.sourceType);
+  add("source", "Source reliability", { official: 10, organization: 8, reputable: 7, other: 3 }[scCls], 10, `Source class: ${scCls} (${pyStr(host(o.sourceUrl))})`);
+  const pub = parseDate(o.publishedAt);
+  if (pub != null) { const age = daysBetween(now, pub); add("recency", "Recency", age <= 14 ? 10 : age <= 45 ? 7 : age <= 120 ? 4 : 1, 10, `Published ${age} day(s) ago`); }
+  else add("recency", "Recency", 2, 10, "Publication date unknown");
+  const contact = o.contact || {};
+  add("contact", "Ability to contact", truthy(contact.text) && truthy(contact.sourceUrl) ? 5 : truthy(o.orgWebsite) ? 3 : 1, 5, truthy(contact.text) ? "Published contact route" : truthy(o.orgWebsite) ? "Organisation website known" : "No contact route found yet");
+  const supply = fit >= 10 ? 5 : fit >= 5 ? 3 : 1;
+  add("supply", "Dupedia can supply", supply, 5, supply === 5 ? "Core playground/leisure scope" : supply === 3 ? "Partial fit" : "Weak fit");
+  const dl = parseDate(g(o.deadline || {}, "date"));
+  if (dl != null) { const days = daysBetween(dl, now); add("urgency", "Competitive urgency", days >= 0 && days <= 30 ? 5 : days >= 0 && days <= 90 ? 3 : 0, 5, days >= 0 ? `Deadline in ${days} day(s)` : "Deadline passed"); }
+  else add("urgency", "Competitive urgency", ["tender", "project"].includes(o.kind) ? 2 : 1, 5, "No published deadline");
+  const commercial = big && fit >= 5 ? 5 : rel >= 12 && fit >= 5 ? 3 : 1;
+  add("commercial", "Commercial potential", commercial, 5, commercial === 5 ? "Large project with a leisure need" : commercial === 3 ? "Typical project size" : "Limited or unclear");
+  return [parts.reduce((s, p) => s + p.pts, 0), parts];
+}
 const str_ = (c, k, n) => cut(s0(g(c, k)).trim(), n);
 
+/** The organisation's name for comparing, through the company-names list when there is one. */
+const orgKey = (name) => { const k = norm(name); return (k && V2.alias[k] ? norm(V2.alias[k]) : k); };
 function ingestOpps(db, cands, now, notes) {
   const existing = db["mi/opps/o"] || {}, writes = []; let created = 0, updated = 0;
   const seen = Object.assign({}, existing);
@@ -172,6 +222,7 @@ function ingestOpps(db, cands, now, notes) {
       const cur = (s0(ev.currency) || "EGP").toUpperCase();
       o.estValue = { amount: amt, currency: cur, basis: cut(s0(ev.basis) || "as published", 200), sourceUrl: ev.sourceUrl, amountEgp: cur === "EGP" ? amt : (truthy(ev.fx) ? amt * fnum(ev.fx) : null) };
     } else if (truthy(amt)) notes.push(`#${i}: value dropped — no source`);
+    if (V2 && o.estValue) { o.projectValue = o.estValue; delete o.estValue; }   // a published figure describes the project, not Dupedia's share of it
     const claims = [];
     for (const cl of (Array.isArray(c.claims) ? c.claims : []).slice(0, 12)) {
       const t = cut(s0(g(cl, "text")).trim(), 300); if (!t) continue;
@@ -183,7 +234,8 @@ function ingestOpps(db, cands, now, notes) {
     for (const k of Object.keys(seen)) {
       const d = seen[k];
       if (d.sourceUrl === url || (d.sources || []).some((s) => g(s, "url") === url)) { dup = k; break; }
-      if (o.organization && norm(d.organization) === norm(o.organization) && (!o.location || jacc(d.location, o.location) >= 0.5) && jacc(d.title, title) >= 0.35) { dup = k; break; }
+      if (V2) { const a = orgKey(d.organization), b = orgKey(o.organization); if (a && a === b && (!o.location || jacc(d.location, o.location) >= 0.5) && jacc(d.title, title) >= 0.35) { dup = k; break; } }
+      else if (o.organization && norm(d.organization) === norm(o.organization) && (!o.location || jacc(d.location, o.location) >= 0.5) && jacc(d.title, title) >= 0.35) { dup = k; break; }
       if (jacc(d.title, title) >= 0.8) { dup = k; break; }
     }
     if (dup) {
@@ -198,7 +250,8 @@ function ingestOpps(db, cands, now, notes) {
       d.lastChecked = iso(now); d.history = (d.history || []).slice(-80);
       writes.push({ collection: "mi/opps/o", doc_id: dup, data: d }); seen[dup] = d; updated++; return;
     }
-    const [total, parts] = scoreOpp(o, now), cls = sourceClass(url, o.sourceType);
+    const [total, parts] = V2 ? scoreOppV2(o, now) : scoreOpp(o, now), cls = sourceClass(url, o.sourceType);
+    if (V2) o.scoreVersion = 2;
     const autoVerified = ["official", "organization"].includes(cls) && truthy(o.publishedAt) && !o.unverified.length;
     const high = total >= 70 || ((o.estValue || {}).amountEgp || 0) >= 10e6;
     const oid = "op-" + sid(o.organization || title, o.location, title);
@@ -349,7 +402,11 @@ function ingestWeekly(db, rep, now, notes) {
 }
 
 /** One research job's candidates → the documents to write (plus job state and run history). */
-export function ingest(job, db, cands, nowMs) {
+export function ingest(job, db, cands, nowMs, { engine = false, aliases = null } = {}) {
+  V2 = engine ? { alias: ME().aliasIndex(aliases), names: new Map(), words: new Map() } : null;
+  try { return ingestRun(job, db, cands, nowMs); } finally { V2 = null; }
+}
+function ingestRun(job, db, cands, nowMs) {
   const now = Math.floor(nowMs / 1000) * 1000, notes = [];
   const prev = (db["mi/state/jobs"] || {})[job] || null;
   const sched = g(g(db["mi/schedule"] || {}, "jobs") || {}, job) || {};

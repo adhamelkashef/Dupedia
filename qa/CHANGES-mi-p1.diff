@@ -1,0 +1,1021 @@
+diff --git a/app/export.js b/app/export.js
+index e1742bf..f0cbe80 100644
+--- a/app/export.js
++++ b/app/export.js
+@@ -14,7 +14,8 @@
+     "submissions/U/s", "submissions/U/s/*/ev", "submissions/U/s/*/ev/*/c", "salesorders/U/o", "salesorders/U/o/*/f", "salesorders/U/o/*/f/*/c", "paysub/U/p", "paysub/U/p/*/c",
+     "eng/U/o", "engx/U/o", "engx/U/o/*/f", "engx/U/o/*/f/*/c", "engx/U/o/*/h", "engx/U/wid", "engx/U/wid/*/c", "commissions/U/r", "commissions/U/r/*/po", "commissions/U/r/*/po/*/c",
+     "notif/U/n", "outbox/U/e", "requests/U/cc", "handoff/U/o", "wall/U/m", "wall/U/f", "wall/U/f/*/c", "askceo/U/m", "askceo/U/f", "askceo/U/f/*/c", "askceo/U/meta",
+-    "mi", "mi/opps/o", "mi/state/jobs", "mi/req/r", "mi/runs/r", "mix", "mix/mat/m", "mix/quotes/q", "mix/quotes/q/*/c", "mix/fx/r", "mix/news/n", "mix/reports/w", "mix/reports/p"];
++    "mi", "mi/opps/o", "mi/state/jobs", "mi/req/r", "mi/runs/r", "mix", "mix/mat/m", "mix/quotes/q", "mix/quotes/q/*/c", "mix/fx/r", "mix/news/n", "mix/reports/w", "mix/reports/p",
++    "mix/enginev/v", "mix/alias/a", "mix/disc/j", "mix/disc/c", "mix/opp/o", "mix/assign/a", "mix/outcome/o", "plan/U/o"];
+   async function pool(items, n, fn) { const out = []; let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })); return out; }
+   async function full({ onProgress } = {}) {
+     if (!root.DPAuth.isAdmin()) throw new Error("Administrators only.");
+diff --git a/app/live.js b/app/live.js
+index 571a2ac..38c2f00 100644
+--- a/app/live.js
++++ b/app/live.js
+@@ -25,7 +25,7 @@
+     leads: ["leads", "claims", "leadcontact"], myleads: ["leads", "claims", "crm", "acts"], allleads: ["leads", "claims", "crm"], calls: ["acts", "crm"], research: ["leads", "leadprop"],
+     proposals: ["salesorders", "submissions", "assign", "eng", "fac"], register: ["orders", "assign", "eng", "fac"], tracking: ["salesorders", "assign", "eng", "fac"],
+     engorders: ["assign", "eng", "engx", "handoff", "fac"], engqueue: ["assign", "eng", "handoff", "fac"], factory: ["assign", "eng", "fac"], workers: ["workers"],
+-    facjobs: ["fac", "assign", "eng"], facdash: ["fac", "assign", "eng"], equipment: ["fac"], products: ["prod"], catalog: ["prod"], reminders: ["rem"], holidays: ["hol"], growth: ["mkt", "leads", "submissions", "orders"], campaigns: ["mkt"], radar: ["mkt"], partners: ["mkt"],
++    facjobs: ["fac", "assign", "eng"], facdash: ["fac", "assign", "eng"], equipment: ["fac"], products: ["prod"], catalog: ["prod"], reminders: ["rem"], holidays: ["hol"], growth: ["mkt", "leads", "submissions", "orders"], campaigns: ["mkt"], radar: ["mkt"], partners: ["mkt"], miengine: ["mix"],
+   };
+   const busyEditing = () => { const a = document.activeElement, m = document.querySelector("#modal[open], dialog[open]");
+     return !!m || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox") || Date.now() - L.typedAt < 4000 || String(root.getSelection ? root.getSelection() : "").length > 0; };
+diff --git a/app/miengine.js b/app/miengine.js
+new file mode 100644
+index 0000000..b738930
+--- /dev/null
++++ b/app/miengine.js
+@@ -0,0 +1,110 @@
++/* X FORCE — Market Intelligence 2.0 engine: pure functions shared by the app, the Worker and the tests. No storage, no DOM.
++   Plan: MARKET_INTELLIGENCE_2_PLAN.md (kept outside the repository).
++
++   config/settings.miEngine   the switch. Off (or missing) = every research path behaves exactly as before.
++   mix/enginecfg              versioned engine settings (administrators only)
++   mix/enginev/v/<n>          every earlier version of those settings
++   mix/alias/a/<id>           one organisation's English and Arabic names
++
++   This repository is public, so nothing commercial belongs here: the code starts with every category "Not confirmed" and the
++   administrator's real answers live in the database. */
++(function (root) {
++  "use strict";
++
++  /* ---------------- product capability ---------------- */
++  const CATEGORIES = [
++    ["playground", "Outdoor playground equipment"], ["school", "School playgrounds and educational play"], ["furniture", "Outdoor furniture"], ["custom", "Custom playground and leisure solutions"],
++    ["flooring", "Safety flooring"], ["indoor", "Indoor playgrounds and soft play"], ["amusement", "Amusement parks and water parks"], ["sports", "Sports and fitness equipment"],
++    ["resort", "Resort, hotel and beach furniture"], ["umbrellas", "Umbrellas and leisure products"]];
++  const STATUSES = {
++    core: { label: "Core", effect: "Scores fully. Can go to sales." },
++    supplier: { label: "Supplier-backed", effect: "Scores. A supplier check comes first." },
++    inbound: { label: "Inbound only", effect: "Recorded and sent to an administrator. No outreach." },
++    notsold: { label: "Not sold", effect: "Excluded, with the reason recorded." },
++    unset: { label: "Not confirmed", effect: "Counts as no product fit until an administrator decides." },
++  };
++  const DEFAULT_CFG = { version: 0, capability: {}, personalMin: 20, updatedAt: null, updatedBy: null };
++  /** A stored settings document (or nothing) with every default filled in. Unknown statuses count as "Not confirmed". */
++  function cfgOf(doc) {
++    const d = Object.assign({}, DEFAULT_CFG, doc || {}), cap = {};
++    for (const [k] of CATEGORIES) { const v = (d.capability || {})[k]; cap[k] = STATUSES[v] ? v : "unset"; }
++    d.capability = cap;
++    const m = parseInt(d.personalMin, 10); d.personalMin = Number.isFinite(m) && m >= 1 ? Math.min(m, 1000) : DEFAULT_CFG.personalMin;
++    return d;
++  }
++
++  /* ---------------- text that works in English and Arabic ---------------- */
++  /** Lower case, accents and Arabic vowel marks removed, Arabic letter forms folded (أ إ آ → ا, ة → ه, ى → ي), Arabic digits → 0-9. */
++  function fold(s) {
++    return String(s == null ? "" : s).normalize("NFKD").replace(/[̀-ًͯ-ٰٟـ]/g, "")
++      .replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660)).toLowerCase();
++  }
++  const EN_STOP = /\b(the|a|an|of|for|and|in|at|by|project|new|company|co|ltd|s\.a\.e|sae|llc|group|developments?)\b/g;
++  const AR_STOP = new Set(["شركه", "مجموعه", "مشروع", "جديد", "جديده", "في", "من", "الي", "علي", "عن", "و", "للتطوير", "العقاري", "العقاريه"].map(fold));
++  /** A name reduced for comparing. Plain English text gives exactly the same result as the older worker/intel.js norm(), so ids of
++   *  English records do not change; Arabic letters are kept instead of being removed. */
++  function normName(s) {
++    const t = fold(s).replace(EN_STOP, " ").replace(/[^a-z0-9ء-ي]+/g, " ").trim();
++    return t.split(/\s+/).filter((w) => w && !AR_STOP.has(w)).map((w) => (/^ال[ء-ي]{3,}/.test(w) ? w.slice(2) : w)).join(" ");
++  }
++  const WORD = new Map();
++  /** True when `word` stands as a whole word (a plural counts): "park" is in "parks", never in "parking". Arabic words also match
++   *  with their attached prefixes (و ب ل ف ال لل). `text` must already have been through fold(). */
++  function hasWord(text, word) {
++    let re = WORD.get(word);
++    if (!re) {
++      const w = fold(word).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
++      re = /[ء-ي]/.test(w) ? new RegExp(`(?<![\\p{L}\\p{N}])(?:[وبلف])?(?:ال|لل)?${w}(?:ات|ين|ون)?(?![\\p{L}\\p{N}])`, "u")
++        : new RegExp(`(?<![\\p{L}\\p{N}])${w}(?:s|es)?(?![\\p{L}\\p{N}])`, "u");
++      WORD.set(word, re);
++    }
++    return re.test(text);
++  }
++
++  /* ---------------- organisation names ---------------- */
++  /** alias documents → {normalised name: canonical name} */
++  function aliasIndex(docs) {
++    const out = {};
++    for (const d of Object.values(docs || {})) {
++      if (!d || !d.canonical) continue;
++      for (const n of [d.canonical].concat(Array.isArray(d.names) ? d.names : [])) { const k = normName(n); if (k) out[k] = d.canonical; }
++    }
++    return out;
++  }
++  const canon = (name, index) => (index && index[normName(name)]) || name;
++
++  /* ---------------- data readiness: what the records can support ---------------- */
++  const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : null);
++  /** counts (worker/readiness.js) → one line per planned calculation: ready | partial | none, and why. Counts only, no names. */
++  function verdicts(c, cfg) {
++    const min = cfgOf(cfg).personalMin, s = (c.sellers && c.sellers.active) || 0, out = [];
++    const person = (key, label, n, have, thing) => {
++      const state = !s ? "none" : n >= s ? "ready" : n > 0 ? "partial" : "none";
++      out.push({ key, label, state, text: !s ? "No active salespeople found." : `${n} of ${s} salespeople have at least ${min} ${thing} (${have} recorded in all). The others use the company assumption.` });
++    };
++    person("calls", "Call → conversation", c.sellers.enoughCalls, c.acts.calls, "logged calls");
++    person("conv", "Conversation → meeting", c.sellers.enoughConversations, c.acts.conversations, "conversations");
++    person("meet", "Meeting → quotation", c.sellers.enoughMeetings, c.acts.meetings, "meetings");
++    person("quote", "Quotation → contract", c.sellers.enoughDecided, c.quotes.decided, "decided quotations");
++    const linked = pctOf(c.quotes.withLead, c.quotes.total);
++    out.push({ key: "link", label: "Quotations linked to a lead", state: linked == null ? "none" : linked >= 80 ? "ready" : linked >= 40 ? "partial" : "none",
++      text: linked == null ? "No quotations recorded yet." : `${c.quotes.withLead} of ${c.quotes.total} (${linked}%). Unlinked quotations cannot count in lead-to-quotation rates or sales cycles.` });
++    out.push({ key: "deal", label: "Average deal size", state: !c.quotes.accepted ? "none" : c.sellers.enoughDeals >= s && s ? "ready" : "partial",
++      text: `${c.quotes.accepted} accepted orders. ${c.sellers.enoughDeals} of ${s} salespeople have at least 5.` });
++    out.push({ key: "target", label: "Individual targets this month", state: !s ? "none" : c.targets.individual >= s ? "ready" : c.targets.individual ? "partial" : "none",
++      text: `${c.targets.individual} of ${s} salespeople have their own target for ${c.month}. The others use the company default.` });
++    const held = c.acts.meetingStatus;
++    out.push({ key: "held", label: "Meetings held versus scheduled", state: !c.acts.meetings ? "none" : "partial",
++      text: `${c.acts.meetingsHeld} logged as meetings, ${c.acts.meetingsScheduled} logged with the outcome Meeting Scheduled${held ? `, ${held} with the new status` : ""}. Today one meeting can count under both.` });
++    const lost = pctOf(c.crm.lostWithReason, c.crm.lost);
++    out.push({ key: "lost", label: "Reasons for lost deals", state: lost == null ? "none" : lost >= 80 ? "ready" : "partial", text: lost == null ? "No lost deals recorded yet." : `${c.crm.lostWithReason} of ${c.crm.lost} have a reason (free text).` });
++    out.push({ key: "contact", label: "Verified lead contacts", state: !c.leads.total ? "none" : c.contacts.verified >= c.leads.total * 0.5 ? "ready" : c.contacts.verified ? "partial" : "none",
++      text: `${c.contacts.verified} of ${c.leads.total} leads have a verified phone or e-mail.` });
++    out.push({ key: "assign", label: "Territory and expertise", state: !s ? "none" : c.sellers.withProfile >= s ? "ready" : c.sellers.withProfile ? "partial" : "none",
++      text: `${c.sellers.withProfile} of ${s} salespeople have a sales profile. Needed by Phase 5.` });
++    return out;
++  }
++
++  const api = { CATEGORIES, STATUSES, DEFAULT_CFG, cfgOf, fold, normName, hasWord, aliasIndex, canon, verdicts };
++  root.DPMiEngine = api;
++})(typeof globalThis !== "undefined" ? globalThis : self);
+diff --git a/app/store.js b/app/store.js
+index 2aa8883..873888d 100644
+--- a/app/store.js
++++ b/app/store.js
+@@ -284,6 +284,8 @@
+     { path: "askceo/{self}", read: "interact", write: "interact" },       // … each employee only their own conversation with the CEO
+     { path: "mi", read: "interact", write: "admin" },                      // Market Intelligence: opportunities, research history, job health (no money)
+     { path: "mix", read: "admin", write: "admin" },                        // CEO-only intelligence: material prices, supplier quotes, pricing and weekly reports, news
++    { path: "plan", read: "admin", write: "admin" },                       // Market Intelligence 2.0: personal plans and estimates (written by the server)…
++    { path: "plan/{self}", read: "interact", write: "admin" },             //   …each person reads only their own
+     { path: "data/users/{self}", write: "interact" },
+     // 1.2 — Finance (Cloudflare build). The Accountant's own level "finance" is evaluated by allowedFinance() below.
+     { path: "fin", read: "admin", write: "admin" },                        // ledger, accounts, payroll, purchases, invoices, taxes, finance settings
+diff --git a/app/styles.css b/app/styles.css
+index b0c7b16..8ba8b93 100644
+--- a/app/styles.css
++++ b/app/styles.css
+@@ -506,7 +506,7 @@ kbd{font:600 11px var(--f-text);background:var(--stone);border-radius:4px;paddin
+ @media (max-width:860px){.coach{bottom:60px}}
+ 
+ /* ===================== X FORCE 1.1 ===================== */
+-.app[data-view="start"] #view-start,.app[data-view="payverify"] #view-payverify,.app[data-view="workforce"] #view-workforce,.app[data-view="askceo"] #view-askceo,.app[data-view="intel"] #view-intel,.app[data-view="mission"] #view-mission{display:block;overflow-y:auto}
++.app[data-view="miengine"] #view-miengine,.app[data-view="start"] #view-start,.app[data-view="payverify"] #view-payverify,.app[data-view="workforce"] #view-workforce,.app[data-view="askceo"] #view-askceo,.app[data-view="intel"] #view-intel,.app[data-view="mission"] #view-mission{display:block;overflow-y:auto}
+ .kcards.sm{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+ .kc{display:flex;flex-direction:column;gap:3px;background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:9px 12px;min-width:0}
+ .kc b{font:600 18px/1.15 var(--f-display);overflow-wrap:anywhere}.kc.err{border-color:var(--red);background:var(--red-bg)}.kc.err b{color:var(--red)}
+diff --git a/app/ui-core.js b/app/ui-core.js
+index bb3e59e..dad29a5 100644
+--- a/app/ui-core.js
++++ b/app/ui-core.js
+@@ -136,7 +136,7 @@
+ 
+   /* ---------------- navigation ---------------- */
+   const PROJECT_VIEWS = ["setup", "plan", "quote", "review", "proposal"];
+-  const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission", "xfkit"];   // 2.0: xfkit = internal design-system specimen
++  const ADMIN_VIEWS = ["admin", "allleads", "employees", "users", "commadmin", "reports", "approvals", "engqueue", "register", "approvecomm", "audit", "search", "payverify", "workforce", "askceo", "mission", "miengine", "xfkit"];   // 2.0: xfkit = internal design-system specimen
+   const GROWTH_VIEWS = ["growth", "campaigns", "radar", "partners"];
+   const OPS_VIEWS = ["reminders", "facjobs", "facdash", "equipment", "products", "catalog", "holidays"];
+   const FIN_VIEWS = ["finance", "transfers", "finaccounts", "salaries", "purchases", "invoices", "taxes", "finreports"];
+diff --git a/app/ui-intel.js b/app/ui-intel.js
+index 3c67f9b..a2b0330 100644
+--- a/app/ui-intel.js
++++ b/app/ui-intel.js
+@@ -92,6 +92,7 @@
+         ${(o.unverified || []).length ? `<div class="note warn small"><b>Still to confirm:</b> ${o.unverified.map(esc).join(" · ")}</div>` : ""}`)}
+       ${S("Opportunity", `<p class="small">${esc(o.description || "—")}</p><dl class="kv small"><dt>Relevant Dupedia products</dt><dd>${esc((o.products || []).join(", ") || "—")}</dd>
+         <dt>Estimated value</dt><dd>${o.estValue ? `${esc(H.money(Math.round(o.estValue.amount * 100), o.estValue.currency))} <span class="tiny muted">${esc(o.estValue.basis || "")} · <a href="${esc(o.estValue.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a></span>` : "Not published — not estimated"}</dd>
++        ${o.projectValue ? `<dt>Published project value</dt><dd>${esc(H.money(Math.round(o.projectValue.amount * 100), o.projectValue.currency))} <span class="tiny muted">the project as a whole, not Dupedia's share · ${esc(o.projectValue.basis || "")} · <a href="${esc(o.projectValue.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a></span></dd>` : ""}
+         <dt>Deadline</dt><dd>${o.deadline ? `${esc(o.deadline.date)} <a href="${esc(o.deadline.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : "None published"}</dd>
+         <dt>Contact route</dt><dd>${o.contact ? `${esc(o.contact.text)} <a href="${esc(o.contact.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : o.orgWebsite ? `<a href="${esc(o.orgWebsite)}" target="_blank" rel="noopener noreferrer">${esc(host(o.orgWebsite))}</a>` : "Not found — do not guess contact details"}</dd>
+         <dt>Recommended next action</dt><dd>${esc(o.nextAction || "—")}</dd><dt>Suggested contact strategy</dt><dd>${esc(o.contactStrategy || "—")}</dd>
+diff --git a/app/ui-miengine.js b/app/ui-miengine.js
+new file mode 100644
+index 0000000..f71c618
+--- /dev/null
++++ b/app/ui-miengine.js
+@@ -0,0 +1,99 @@
++/* X FORCE — Market Intelligence 2.0, Phase 1: the administrators' screen (Data Readiness, product capability, company names,
++   job ledger, the switch). Reached from Mission Control → Automation Health. Nothing here is visible to other roles. */
++/* global DPUI, DPStore, DPAuth, DPMiEngine */
++(function (root) {
++  "use strict";
++  const U = DPUI, { $, $$, esc, App } = U, E = DPMiEngine;
++  const S = { tab: "ready", counts: null };
++  const TABS = [["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"]];
++  const STATE = { ready: ["Ready", "ok"], partial: ["Partly", "warn"], none: ["Not yet", "err"] };
++  const num = (x) => (Number(x) || 0).toLocaleString("en-US");
++  const dt = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—");
++  const loadCfg = async () => E.cfgOf(await DPStore.tryGet("mix/enginecfg"));
++
++  /** New settings version: the current one is kept in mix/enginev, and the change is audited with its reason. */
++  async function saveCfg(patch, reason) {
++    if (!U.isAdmin()) throw new Error("Administrators only."); if (!String(reason || "").trim()) throw new Error("Give a reason for the change.");
++    const prev = await loadCfg(), at = new Date().toISOString(), version = (prev.version || 0) + 1;
++    const next = Object.assign({}, prev, patch, { version, updatedAt: at, updatedBy: DPAuth.A.me.id });
++    if (prev.version) await DPStore.set(`mix/enginev/v/${prev.version}`, Object.assign({}, prev, { replacedAt: at, replacedBy: DPAuth.A.me.id }));
++    await DPStore.set("mix/enginecfg", next);
++    await DPAuth.auditLog("Market Intelligence settings changed", { kind: "mi", reason, detail: `Version ${version}`, before: { capability: prev.capability }, after: { capability: next.capability } }).catch(() => {});
++    return next;
++  }
++  /** The switch lives in config/settings. It is re-read first, so nothing else in the settings is overwritten. */
++  async function setSwitch(on, reason) {
++    if (!U.isAdmin()) throw new Error("Administrators only."); if (!String(reason || "").trim()) throw new Error("Give a reason.");
++    const cur = (await DPStore.getConfig("settings")) || {};
++    await DPStore.setConfig("settings", Object.assign({}, cur, { miEngine: !!on }));
++    App.config.settings.miEngine = !!on;
++    await DPAuth.auditLog(on ? "Market Intelligence engine switched on" : "Market Intelligence engine switched off", { kind: "mi", reason }).catch(() => {});
++  }
++
++  async function render() {
++    const V = $("#view-miengine"), on = !!App.config.settings.miEngine;
++    V.innerHTML = `<div class="page"><div class="phead"><div><span class="eyebrow">Market Intelligence 2.0 · Administrators only</span><h1>Engine <em>foundation</em></h1>
++        <p class="lead small">What the records can support today, what Dupedia sells, and the switch for the new research rules.</p></div>
++      <div class="row"><span class="pill ${on ? "ok" : "warn"}">Engine ${on ? "on" : "off"}</span><button class="btn ghost sm" id="me-sw">${on ? "Switch off…" : "Switch on…"}</button><button class="btn lime sm" id="me-mc">${U.svg("globe")} Mission Control</button></div></div>
++      <div class="note small">${on ? "New research results use the corrected scoring and Arabic-safe matching. Records saved earlier keep their score." : "Off: research works exactly as before. Switching on affects only new research results: corrected word matching, Egypt and Saudi locations told apart, AI product labels add no points, a published project budget is no longer treated as Dupedia's value, and Arabic records stay separate."}</div>
++      <div class="chips mi-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" class="chip${S.tab === k ? " is-on" : ""}" data-mt="${k}">${esc(l)}</button>`).join("")}</div>
++      <div id="me-body"><div class="empty"><div class="spinner"></div>Loading…</div></div></div>`;
++    $("#me-mc").onclick = () => U.go("mission", { tab: "auto" });
++    $("#me-sw").onclick = async () => { const f = await U.form(on ? "Switch the engine off" : "Switch the engine on", [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: on ? "Switch off" : "Switch on", intro: "Applies from the next research run. Saved records are not changed." }); if (!f) return; try { await setSwitch(!on, f.r); U.toast(on ? "Engine switched off." : "Engine switched on."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
++    $$("[data-mt]", V).forEach((b) => (b.onclick = () => { S.tab = b.dataset.mt; render(); }));
++    const B = $("#me-body");
++    try { await ({ ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab })[S.tab](B); }
++    catch (e) { B.innerHTML = `<div class="note err">Could not load (${esc(e.message || e.code)}).</div>`; }
++  }
++
++  /* ---------------- data readiness ---------------- */
++  async function readyTab(B) {
++    const [c, cfg] = await Promise.all([root.XFServer.miReadiness(), loadCfg()]); S.counts = c;
++    const v = E.verdicts(c, cfg), box = (t, rows) => `<div class="card"><h3>${esc(t)}</h3><dl class="kv small">${rows.map(([k, x]) => `<dt>${esc(k)}</dt><dd class="num">${num(x)}</dd>`).join("")}</dl></div>`;
++    B.innerHTML = `<div class="stack"><div class="card"><div class="row between"><h3>What can be calculated from your records</h3><span class="tiny muted">Read ${esc(dt(c.at))} · counts only, no names or money</span></div>
++      <div class="tablewrap"><table class="mtable"><thead><tr><th>Measure</th><th>Status</th><th>Detail</th></tr></thead><tbody>${v.map((x) => `<tr><td class="small"><b>${esc(x.label)}</b></td><td><span class="pill ${STATE[x.state][1]}">${STATE[x.state][0]}</span></td><td class="small">${esc(x.text)}</td></tr>`).join("")}</tbody></table></div></div>
++      <div class="grid3">
++      ${box("Salespeople and targets", [["Active salespeople", c.sellers.active], ["Own target this month", c.targets.individual], ["On the company default", c.targets.defaultOnly], ["With a sales profile", c.sellers.withProfile]])}
++      ${box("Activity", [["All activities", c.acts.total], ["Calls", c.acts.calls], ["Calls with an outcome", c.acts.callsWithOutcome], ["Conversations", c.acts.conversations], ["Logged as meetings", c.acts.meetingsHeld], ["Outcome Meeting Scheduled", c.acts.meetingsScheduled], ["Site visits", c.acts.visits]])}
++      ${box("Quotations and orders", [["Quotations issued", c.quotes.total], ["Linked to a lead", c.quotes.withLead], ["Accepted", c.quotes.accepted], ["Decided", c.quotes.decided], ["Orders", c.orders.total], ["Orders not cancelled", c.orders.live]])}
++      ${box("Lead Mine", [["Leads", c.leads.total], ["Open", c.leads.open], ["Assigned", c.leads.assigned], ["With a source", c.leads.withSource], ["With product fit", c.leads.withFit], ["Verified contact", c.contacts.verified], ["Personal pipelines", c.crm.total], ["With stage history", c.crm.withHistory]])}
++      ${box("Market research", [["Opportunities", c.opps.total], ["High priority", c.opps.high], ["Evidence verified", c.opps.verified], ["Single source", c.opps.singleSource], ["Unverified", c.opps.unverified], ["Assigned (old pipeline)", c.opps.assigned], ["Sales updates (old pipeline)", c.opps.legacyUpdates], ["Scored by the new rules", c.opps.newScore], ["Project Radar accounts", c.radar.accounts]])}
++      ${box("Catalogue and calendar", [["Catalogue products in the app", (root.DP_PRODUCTS || []).length], ["Custom products added", c.catalog.customProducts], ["Dupedia Products pages", c.catalog.productPages], ["Price book items", c.catalog.priceBookItems], ["Closures in the calendar", c.catalog.holidaysListed]])}
++      </div></div>`;
++  }
++
++  /* ---------------- product capability ---------------- */
++  async function capTab(B) {
++    const cfg = await loadCfg();
++    B.innerHTML = `<div class="card stack"><div class="row between"><h3>What Dupedia really sells</h3><span class="tiny muted">Version ${cfg.version || "not saved yet"}${cfg.updatedAt ? ` · ${esc(dt(cfg.updatedAt))} by ${esc(DPAuth.nameSync(cfg.updatedBy) || "")}` : ""}</span></div>
++      <p class="small muted">Stored and versioned now. Qualification starts using it in Phase 3. An undecided category counts as no product fit.</p>
++      <div class="tablewrap"><table class="mtable"><thead><tr><th>Category</th><th>Status</th><th>What it means</th></tr></thead><tbody>${E.CATEGORIES.map(([k, l]) => `<tr><td class="small"><b>${esc(l)}</b></td><td><select class="in sm" style="min-width:150px" data-cap="${k}" aria-label="${esc(l)}">${Object.entries(E.STATUSES).map(([s, x]) => `<option value="${s}"${cfg.capability[k] === s ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select></td><td class="small muted" data-capn="${k}">${esc(E.STATUSES[cfg.capability[k]].effect)}</td></tr>`).join("")}</tbody></table></div>
++      <div class="row"><button class="btn lime sm" id="cap-save">Save a new version…</button></div></div>`;
++    $$("[data-cap]", B).forEach((s) => (s.onchange = () => { $(`[data-capn="${s.dataset.cap}"]`, B).textContent = E.STATUSES[s.value].effect; }));
++    $("#cap-save").onclick = async () => { const capability = {}; $$("[data-cap]", B).forEach((s) => (capability[s.dataset.cap] = s.value)); const f = await U.form("Save product capability", [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: "Save" }); if (!f) return; try { await saveCfg({ capability }, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
++  }
++
++  /* ---------------- company names ---------------- */
++  async function namesTab(B) {
++    const rows = (await DPStore.tryList("mix/alias/a")).map((x) => Object.assign({ id: x.id }, x.data)).sort((a, b) => String(a.canonical).localeCompare(String(b.canonical)));
++    B.innerHTML = `<div class="card stack"><div class="row between"><h3>Company names in English and Arabic</h3><button class="btn lime sm" id="al-add">${U.svg("plus")} Add a company</button></div>
++      <p class="small muted">Results that use any of these names count as the same organisation, which stops duplicates when one source writes a name in Arabic and another in English.</p>
++      ${rows.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th>Main name</th><th>Also known as</th><th></th></tr></thead><tbody>${rows.map((r) => `<tr><td class="small"><b>${esc(r.canonical)}</b></td><td class="small"><bdi>${(r.names || []).map(esc).join(" · ")}</bdi></td><td class="r"><button class="btn ghost xs" data-ale="${esc(r.id)}">Edit</button> <button class="btn ghost xs" data-ald="${esc(r.id)}">Remove</button></td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">No names added yet.</p>`}</div>`;
++    const edit = async (r) => { const f = await U.form(r ? "Edit company names" : "Add a company", [{ id: "c", label: "Main name", required: true, value: r ? r.canonical : "" }, { id: "n", label: "Other names, one per line (Arabic welcome)", type: "textarea", value: r ? (r.names || []).join("\n") : "" }], { submit: "Save" }); if (!f) return;
++      try { const id = r ? r.id : "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), names = String(f.n || "").split(/\n+/).map((x) => x.trim()).filter(Boolean).slice(0, 30);
++        await DPStore.set(`mix/alias/a/${id}`, { canonical: f.c.trim(), names, updatedAt: new Date().toISOString(), updatedBy: DPAuth.A.me.id }); await DPAuth.auditLog("Company names changed", { kind: "mi", target: id, detail: f.c.trim() }).catch(() => {}); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
++    $("#al-add").onclick = () => edit(null);
++    $$("[data-ale]", B).forEach((b) => (b.onclick = () => edit(rows.find((r) => r.id === b.dataset.ale))));
++    $$("[data-ald]", B).forEach((b) => (b.onclick = async () => { const r = rows.find((x) => x.id === b.dataset.ald); const f = await U.form("Remove company names", [{ id: "r", label: `Why remove ${r.canonical}?`, required: true }], { submit: "Remove" }); if (!f) return; try { await DPStore.del(`mix/alias/a/${r.id}`); await DPAuth.auditLog("Company names removed", { kind: "mi", target: r.id, reason: f.r, detail: r.canonical }).catch(() => {}); render(); } catch (e) { U.toast(e.message, { err: true }); } }));
++  }
++
++  /* ---------------- job ledger ---------------- */
++  async function jobsTab(B) {
++    const rows = (await DPStore.tryList("mix/disc/j")).map((x) => x.data).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 100), P = { done: "ok", failed: "err", waiting: "warn", running: "info", queued: "" };
++    B.innerHTML = `<div class="card stack"><h3>Job ledger</h3><p class="small muted">Every step of the discovery engine will be recorded here, including failures and their reasons. It stays empty until discovery arrives in Phase 2.</p>
++      ${rows.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th>Created</th><th>Job</th><th>Status</th><th class="r">Tries</th><th>Next</th><th>Detail</th></tr></thead><tbody>${rows.map((j) => `<tr><td class="small">${esc(dt(j.createdAt))}</td><td class="small">${esc(j.kind)}<div class="tiny muted">${esc(j.key)}</div></td><td><span class="pill ${P[j.status] || ""}">${esc(j.status)}</span></td><td class="r num">${j.tries || 0}/${j.maxTries || 0}</td><td class="small">${["queued", "waiting"].includes(j.status) ? esc(dt(j.nextAt)) : "—"}</td><td class="small muted">${esc(j.error || "")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">No jobs yet.</p>`}</div>`;
++  }
++
++  U.register("miengine", render);
++  root.DPMiEngineUI = { render };
++})(typeof self !== "undefined" ? self : this);
+diff --git a/app/ui-mission.js b/app/ui-mission.js
+index 62ba896..2a28df0 100644
+--- a/app/ui-mission.js
++++ b/app/ui-mission.js
+@@ -214,7 +214,7 @@
+     const reqActs = (r) => [(r.status === "queued" && reqWhy(r) && ["expired", "no-time", "start-failed"].includes(reqWhy(r).reason)) || r.status === "failed" ? `<button class="btn ghost xs mc-btn" data-rq-again="${esc(r.id)}">Queue again</button>` : "",
+       stalled(r) ? `<button class="btn ghost xs mc-btn" data-rq-fail="${esc(r.id)}">Mark failed</button>` : "",
+       r.status === "queued" ? `<button class="btn ghost xs mc-btn" data-rq-cancel="${esc(r.id)}">Cancel</button>` : ""].join(" ");
+-    B.innerHTML = `${box("Automation Health", `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Job</th><th>Runs as</th><th>Schedule</th><th>Last successful run</th><th>Last attempt</th><th>Next run</th><th>Status</th><th class="r">Created / updated</th><th>Errors</th></tr></thead><tbody>
++    B.innerHTML = `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><button type="button" class="btn ghost sm" id="mc-engine">Market Intelligence 2.0 foundation</button></div>${box("Automation Health", `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Job</th><th>Runs as</th><th>Schedule</th><th>Last successful run</th><th>Last attempt</th><th>Next run</th><th>Status</th><th class="r">Created / updated</th><th>Errors</th></tr></thead><tbody>
+       ${I.JOBS.map(([k]) => { const h = I.health(k, st, sweep, reqs, sched); return `<tr><td><b>${esc(h.label)}</b></td><td class="small">${esc(h.kind)}</td><td class="small">${esc(h.schedule)}</td><td class="small">${h.lastSuccess ? esc(dt(h.lastSuccess)) + `<div class="tiny mc-muted">${esc(ago(h.lastSuccess))}</div>` : "—"}</td><td class="small">${h.lastAttempt ? esc(dt(h.lastAttempt)) : "—"}</td><td class="small">${h.next ? esc(dt(h.next)) : "on request"}</td>
+         <td><span class="pill ${h.status === "ok" ? "ok" : ["failed", "stale"].includes(h.status) ? "err" : ["queued", "running"].includes(h.status) ? "info" : "warn"}">${esc(h.status)}</span>${h.failures ? `<div class="tiny">${h.failures} failure(s) in a row</div>` : ""}</td><td class="r num small">${h.created != null ? h.created : "—"} / ${h.updated != null ? h.updated : "—"}</td><td class="tiny">${esc(h.status === "waiting" ? h.waiting || "" : h.error || "")}</td></tr>`; }).join("")}</tbody></table></div>
+       ${srv ? `<p class="small">${srv.configured ? `<span class="pill ok">Research connected</span> Tavily + ${esc(srv.model || "Gemini")}` : `<span class="pill warn">Missing configuration</span> ${esc(srv.missingMessage || "")}${srv.secretCheck ? `<br><span class="tiny">Self-check — settings this server can see (names only): ${esc(srv.secretCheck.names.join(", ") || "none")}.${[srv.secretCheck.tavily, srv.secretCheck.gemini].map((x) => ` ${x.name}: ${x.found ? (x.length > 10 ? "found" : `found but only ${x.length} characters — paste the whole key`) : "not found"}${x.similar.length ? ` — a similar name exists: “${x.similar.join("”, “")}” (rename it exactly to ${x.name})` : ""}.`).join("")}</span>` : ""}`}<br><span class="tiny mc-muted">Last hourly research run: ${srv.lastTick ? `${esc(dt(srv.lastTick.at))} — ${srv.lastTick.skipped ? esc(srv.lastTick.skipped) : srv.lastTick.idle ? "nothing was due" : `${srv.lastTick.ran.length} job(s) run${srv.lastTick.ran.some((x) => x.code === "limit") ? ", then waiting for a limit or free quota" : ""}`}` : "none recorded yet"} · next: ${esc(dt(srv.nextTickAt))}</span></p>` : ""}
+@@ -222,6 +222,7 @@
+       ${box("Run requests", reqs.length ? `<div class="tablewrap"><table class="mtable mc-t"><thead><tr><th>Requested</th><th>By</th><th>Jobs</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>${reqs.slice(0, 20).map((r) => `<tr><td class="small">${esc(dt(r.at))}</td><td class="small">${esc(DPAuth.nameSync(r.by) || "—")}</td><td class="small">${(r.jobs || []).map((j) => esc(I.jobLabel(j))).join(", ")}</td><td><span class="pill ${reqState(r)[1]}">${esc(reqState(r)[0])}</span>${r.finishedAt ? `<div class="tiny mc-muted">${esc(dt(r.finishedAt))}</div>` : ""}</td><td class="tiny">${esc(r.result || r.fireNote || "")}${r.progress && !r.result ? `<div class="tiny">${Object.entries(r.progress).map(([j, x]) => `${esc(I.jobLabel(j))}: ${esc(x.status)}${x.status === "done" ? ` (${x.created || 0} new)` : x.error || x.note ? " — " + esc(x.error || x.note) : ""}`).join(" · ")}</div>` : ""}${reqWhy(r) ? `<div class="tiny"><b>Hourly sweep:</b> ${esc(reqWhy(r).detail)}</div>` : ""}</td><td>${reqActs(r)}</td></tr>`).join("")}</tbody></table></div>
+       <p class="tiny mc-muted">${root.XFServer ? "The hourly research run (at minute :28) carries on with any request up to 2 days old — whole requests, oldest first — and stops when a free limit or quota says wait; it continues the next hour. An older request, or one that failed, waits here until an administrator queues it again. “Completed” appears only after every job saved its results; “Partially completed” when some jobs failed." : "A request is started automatically between 10 minutes and 2 days after it was made. An older request, one the research task never picked up (3 attempts), or a run that failed waits here until an administrator queues it again — it is never started or marked complete on its own."}</p>` : `<p class="small mc-muted">No requests yet.</p>`)}
+       ${box("Recent research runs", runsL.length ? `<div class="tl">${runsL.map((r) => `<div><span class="tiny mc-muted">${esc(dt(r.at))}</span><span class="small">${esc(r.label || r.job)} — ${r.ok ? `${r.created || 0} new, ${r.updated || 0} updated` : r.waiting ? `<b>waiting</b>: ${esc(r.error || "")}` : `<b>failed</b>: ${esc(r.error || "")}`}</span></div>`).join("")}</div>` : `<p class="small mc-muted">No runs yet.</p>`)}`;
++    { const eg = $("#mc-engine", B); if (eg) eg.onclick = () => U.go("miengine"); }
+     const act = (key, fn, done) => $$(`[data-${key}]`, B).forEach((b) => (b.onclick = async () => { b.disabled = true;
+       try { const r = await fn(b.getAttribute(`data-${key}`)); U.toast(done(r), { ms: 8000 }); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); } autoTab(B); }));
+     act("rq-again", async (id) => { const r = await I.requeue(id); if (r.server) { serverRun(r); return Object.assign({}, r, { quiet: true }); } return r; }, (r) => r.quiet ? "Queued again." : r.fired ? `Research started: ${r.jobs.map(I.jobLabel).join(", ")}.` : `Queued again (${r.jobs.map(I.jobLabel).join(", ")}). ${r.why} The hourly sweep starts it after 10 minutes.`);
+diff --git a/app/ui-shell.js b/app/ui-shell.js
+index 17161de..095a95a 100644
+--- a/app/ui-shell.js
++++ b/app/ui-shell.js
+@@ -21,7 +21,7 @@
+   /* ---------------- rail ---------------- */
+   function rail() {
+     const r = $("#rail"); if (!r) return; const adm = U.isAdmin(), v = App.view, tab = (App.viewOpts || {}).tab;
+-    const on = (k) => k === v || (k === "pricing" && v === "admin" && (tab || "prices") === "prices") || (k === "settings" && v === "admin" && tab && tab !== "prices") || (k === "planner" && (v === "start" || U.PROJECT_VIEWS.includes(v)));
++    const on = (k) => k === v || (k === "mission" && v === "miengine") || (k === "pricing" && v === "admin" && (tab || "prices") === "prices") || (k === "settings" && v === "admin" && tab && tab !== "prices") || (k === "planner" && (v === "start" || U.PROJECT_VIEWS.includes(v)));
+     const bd = App.badges || {}, badge = (k) => ({ approvals: bd.approvals, users: bd.requests, engqueue: bd.engqueue, approvecomm: bd.comm, messages: bd.messages, engorders: bd.engnew, calls: bd.followups, payverify: bd.payverify, askceo: bd.askceo, intel: bd.intel, mission: bd.mission }[k]);
+     const item = ([k, l, ic]) => `<button type="button" class="ri${on(k) ? " is-on" : ""}" data-nav="${k}" title="${esc(l)}">${U.svg(ic)}<span>${esc(l)}</span>${badge(k) ? `<em>${badge(k)}</em>` : ""}</button>`;
+     const mine = adm ? [["dash", "CEO Control Center", "dash"]].concat(NAV_EMP.filter((x) => x[0] !== "dash")) : (NAV[U.role()] || NAV.viewer);
+diff --git a/index.html b/index.html
+index 456cb11..f1d6c38 100644
+--- a/index.html
++++ b/index.html
+@@ -59,6 +59,7 @@ try{sessionStorage.removeItem("xf.splash");}catch(e){}el.hidden=false;arm();})()
+   <nav class="rail" id="rail" aria-label="Main navigation"></nav>
+   <main class="views">
+     <section class="view" id="view-dash" aria-label="Dashboard"></section>
++    <section class="view" id="view-miengine" aria-label="Market Intelligence engine"></section>
+     <section class="view" id="view-start" aria-label="Site Planner"></section>
+     <section class="view" id="view-payverify" aria-label="Payment Verification"></section>
+     <section class="view" id="view-finance" aria-label="Finance"></section>
+@@ -168,6 +169,7 @@ try{sessionStorage.removeItem("xf.splash");}catch(e){}el.hidden=false;arm();})()
+ <script src="app/pitches.js"></script>
+ <script src="app/askceo.js"></script>
+ <script src="app/intel.js"></script>
++<script src="app/miengine.js"></script>
+ <script src="app/export.js"></script>
+ <script src="app/planrender.js"></script>
+ <script src="app/canvas.js"></script>
+@@ -204,6 +206,7 @@ try{sessionStorage.removeItem("xf.splash");}catch(e){}el.hidden=false;arm();})()
+ <script src="app/ui-assist.js"></script>
+ <script src="app/ui-intel.js"></script>
+ <script src="app/ui-mission.js"></script>
++<script src="app/ui-miengine.js"></script>
+ <script src="app/ui-fin.js"></script>
+ <script src="app/ui-fin2.js"></script>
+ <script src="app/ui-rem.js"></script>
+diff --git a/qa/mi_cpu.bench.mjs b/qa/mi_cpu.bench.mjs
+new file mode 100644
+index 0000000..569a25d
+--- /dev/null
++++ b/qa/mi_cpu.bench.mjs
+@@ -0,0 +1,27 @@
++/* X FORCE Market Intelligence 2.0: how much processing one research ingest takes as saved opportunities grow, with the switch off and on.
++   Workers Free allows 10 ms of CPU per run, so this shows where that becomes a problem. A laptop is not Cloudflare: read the
++   trend and compare it with the real CPU time in Cloudflare's logs. Made-up records only.
++   Run:  node qa/mi_cpu.bench.mjs */
++import { ingest } from "../worker/intel.js";
++
++const T = Date.parse("2026-11-07T10:00:00Z");
++const words = "compound school resort club playground park beach garden tower phase villa lagoon marina hills gate".split(" ");
++const pick = (i, n) => words[(i * 7 + n * 3) % words.length];
++const cand = (i) => ({ title: `${pick(i, 1)} ${pick(i, 2)} ${pick(i, 3)} ${i}`, organization: `Org ${pick(i, 4)} ${i}`, location: "New Cairo, Egypt", category: "compound", kind: "project", description: "A new development with a kids area, clubhouse and landscaped parks. ".repeat(4), products: ["Outdoor playground"], sourceUrl: `https://example.com/p/${i}`, sourceType: "media", publishedAt: "2026-11-01" });
++function savedDb(n) {
++  const db = {}, r = ingest("opportunities", {}, Array.from({ length: n }, (_, i) => cand(i)), T), json = JSON.stringify(Object.fromEntries(r.writes.filter((w) => w.collection === "mi/opps/o").map((w) => [w.doc_id, w.data])));
++  return { json, build: () => { db["mi/opps/o"] = JSON.parse(json); return db; } };
++}
++const fresh = Array.from({ length: 10 }, (_, i) => cand(100000 + i));
++const median = (a) => a.sort((x, y) => x - y)[a.length >> 1];
++console.log("saved | size KB | parse ms | ingest off ms | ingest on ms | total on ms");
++for (const n of [50, 200, 400, 1000, 2000]) {
++  const s = savedDb(n), parse = [], off = [], on = [];
++  for (let i = 0; i < 9; i++) {
++    let t = performance.now(); const db = s.build(); parse.push(performance.now() - t);
++    t = performance.now(); ingest("opportunities", db, fresh, T); off.push(performance.now() - t);
++    t = performance.now(); ingest("opportunities", db, fresh, T, { engine: true }); on.push(performance.now() - t);
++  }
++  const [p, f, o] = [median(parse), median(off), median(on)];
++  console.log([n, Math.round(s.json.length / 1024), p.toFixed(2), f.toFixed(2), o.toFixed(2), (p + o).toFixed(2)].join(" | "));
++}
+diff --git a/qa/mi_engine.test.mjs b/qa/mi_engine.test.mjs
+new file mode 100644
+index 0000000..cee94fa
+--- /dev/null
++++ b/qa/mi_engine.test.mjs
+@@ -0,0 +1,200 @@
++/* X FORCE Market Intelligence 2.0, Phase 1. The failures found in the audit are kept here as permanent tests, with the switch off (the old
++   behaviour must not move) and on (the new rules). Made-up records only: this repository is public.
++   Run:  node --test qa/mi_engine.test.mjs */
++import test from "node:test";
++import assert from "node:assert/strict";
++import { fakeD1 } from "./fake-d1.mjs";
++import { ingest } from "../worker/intel.js";
++import { readiness } from "../worker/readiness.js";
++import { addJob, dueJobs, claimJob, endJob, jobId } from "../worker/enginejobs.js";
++
++globalThis.self = globalThis;   // app/store.js expects the Worker's global name
++await import("../app/store.js");
++const E = globalThis.DPMiEngine, RULES = globalThis.DPStore;
++const T = Date.parse("2026-11-07T10:00:00Z");
++const run = (c, db = {}, on = false, aliases = null) => ingest("opportunities", db, c, T, on ? { engine: true, aliases } : {});
++const opps = (r) => r.writes.filter((w) => w.collection === "mi/opps/o").map((w) => w.data);
++const one = (c, on) => opps(run([c], {}, on))[0];
++const part = (o, k) => o.scoreParts.find((p) => p.k === k);
++const base = { kind: "project", sourceType: "media", publishedAt: "2026-11-05", products: [] };
++const PARKING = Object.assign({}, base, { title: "Small perfect display screens for a parking garage", organization: "Test Screens Co", location: "Red Sea, Saudi Arabia", category: "developer", description: "Electricity capacity upgrade. A small display for car parking with perfect effect.", sourceUrl: "https://example.com/a", products: ["Outdoor playground", "Soft play", "Water play"] });
++const SCHOOL = Object.assign({}, base, { title: "New international school with kindergarten and playground", organization: "Test School", location: "Sheikh Zayed, Egypt", category: "school", description: "A new campus with a children's play area.", sourceUrl: "https://example.com/s" });
++const AR1 = Object.assign({}, base, { title: "مدرسة دولية جديدة في الشيخ زايد", organization: "مدارس النور", location: "الشيخ زايد", category: "school", sourceUrl: "https://example.com/d1", publishedAt: null });
++const AR2 = Object.assign({}, base, { title: "منتجع جديد في الساحل الشمالي", organization: "شركة البحر", location: "الساحل الشمالي", category: "resort", sourceUrl: "https://example.com/d2", publishedAt: null });
++
++/* ---------------- switch off: exactly the old behaviour, including its faults ---------------- */
++test("off: the old results do not move", () => {
++  const a = one(PARKING, false);
++  assert.equal(a.score, 79); assert.equal(a.priority, "high"); assert.equal(a.scoreVersion, undefined);
++  assert.equal(part(a, "geo").pts, 10);
++  const r = opps(run([AR1, AR2]));
++  assert.equal(r[0].id, r[1].id, "the old Arabic id collision is unchanged while the switch is off");
++  const v = one(Object.assign({}, SCHOOL, { estValue: { amount: 25e9, currency: "EGP", basis: "budget", sourceUrl: "https://example.com/v" } }), false);
++  assert.equal(v.estValue.amountEgp, 25e9); assert.equal(v.needsApproval, true);
++});
++test("off is the default", () => assert.deepEqual(one(SCHOOL), one(SCHOOL, false)));
++
++/* ---------------- switch on: the audit's failures ---------------- */
++test("on: letters inside words do not match", () => {
++  const a = one(PARKING, true);
++  assert.equal(part(a, "fit").pts, 0, part(a, "fit").why);
++  assert.equal(a.priority, "low"); assert.equal(a.scoreVersion, 2);
++  const has = (t, w) => E.hasWord(E.fold(t), w);
++  for (const [t, w] of [["a perfect fit", "fec"], ["small shops", "mall"], ["car parking", "park"], ["a display wall", "play"], ["electricity capacity", "city"]]) assert.equal(has(t, w), false, `${w} in ${t}`);
++  for (const [t, w] of [["new FEC centre", "fec"], ["the Mall of Cairo", "mall"], ["two parks", "park"], ["a play area", "play"], ["a new city", "city"]]) assert.equal(has(t, w), true, `${w} in ${t}`);
++});
++test("on: Saudi Red Sea is not a priority area of Egypt", () => {
++  assert.equal(part(one(PARKING, true), "geo").pts, 4);
++  assert.equal(part(one(Object.assign({}, SCHOOL, { location: "Red Sea" }), true), "geo").pts, 3);
++  assert.equal(part(one(Object.assign({}, SCHOOL, { location: "Hurghada, Red Sea, Egypt" }), true), "geo").pts, 10);
++  assert.equal(part(one(Object.assign({}, SCHOOL, { location: "New Cairo" }), true), "geo").pts, 10);
++  assert.equal(part(one(AR1, true), "geo").pts, 10);
++  assert.equal(part(one(Object.assign({}, AR1, { location: "الرياض، السعودية" }), true), "geo").pts, 4);
++});
++test("on: AI product labels add no points, and are still kept to read", () => {
++  const a = one(SCHOOL, true), b = one(Object.assign({}, SCHOOL, { products: ["a", "b", "c", "d", "e", "f", "g", "h"] }), true);
++  assert.equal(part(a, "fit").pts, part(b, "fit").pts); assert.equal(a.score, b.score); assert.equal(b.products.length, 8);
++  assert.match(part(b, "fit").why, /add no points/);
++});
++test("on: a real play project still scores well above an irrelevant one", () => {
++  const good = one(SCHOOL, true), bad = one(PARKING, true);
++  assert.ok(good.score - bad.score >= 20, `${good.score} against ${bad.score}`);
++  assert.ok(part(good, "fit").pts >= 10, part(good, "fit").why);
++});
++test("on: a project budget is the project's size, never Dupedia's value", () => {
++  const v = one(Object.assign({}, SCHOOL, { estValue: { amount: 25e9, currency: "EGP", basis: "budget", sourceUrl: "https://example.com/v" } }), true);
++  assert.equal(v.estValue, undefined); assert.equal(v.projectValue.amountEgp, 25e9);
++  assert.equal(part(v, "scale").pts, 15); assert.match(part(v, "scale").why, /not Dupedia's share/);
++});
++test("on: different Arabic records stay separate, and each is saved", () => {
++  const r = opps(run([AR1, AR2], {}, true));
++  assert.equal(new Set(r.map((x) => x.id)).size, 2);
++  assert.ok(part(r[0], "fit").pts > 0, "Arabic words count");
++});
++test("on: the same Arabic record seen again is one record", () => {
++  const first = opps(run([AR1], {}, true))[0], db = { "mi/opps/o": { [first.id]: first } };
++  const again = run([Object.assign({}, AR1, { sourceUrl: "https://example.com/d9", title: "مَدرسة دولية جديدة في الشيخ زايد" })], db, true);
++  assert.equal(again.stats.created, 0); assert.equal(again.stats.updated, 1);
++});
++test("on: English ids do not change, so existing records still match", () => {
++  assert.equal(one(SCHOOL, true).id, one(SCHOOL, false).id);
++  for (const s of ["Example Developments S.A.E", "The Company of New Cairo", "Résidence Élite"]) assert.equal(E.normName(s), oldNorm(s));
++});
++function oldNorm(s) { s = String(s).normalize("NFKD").replace(/[^\x00-\x7f]/g, "").toLowerCase(); s = s.replace(/\b(the|a|an|of|for|and|in|at|by|project|new|company|co|ltd|s\.a\.e|sae|llc|group|developments?)\b/g, " "); return s.replace(/[^a-z0-9]+/g, " ").trim(); }
++test("on: Arabic and English names of one company are one organisation", () => {
++  const al = { x: { canonical: "Test School", names: ["مدارس النور"] } };
++  const first = one(Object.assign({}, SCHOOL, { title: "School campus in Sheikh Zayed", location: "Sheikh Zayed" }), true), db = { "mi/opps/o": { [first.id]: first } };
++  const r = run([Object.assign({}, AR1, { title: "School campus Sheikh Zayed", location: "Sheikh Zayed" })], db, true, al);
++  assert.equal(r.stats.created, 0); assert.equal(r.stats.updated, 1);
++});
++test("on: a name with nothing left after cleaning never matches another", () => {
++  const first = one(Object.assign({}, SCHOOL, { organization: "The Company" }), true), db = { "mi/opps/o": { [first.id]: first } };
++  const r = run([Object.assign({}, PARKING, { organization: "Group LLC" })], db, true);
++  assert.equal(r.stats.created, 1);
++});
++
++/* ---------------- settings ---------------- */
++test("settings: everything starts Not confirmed, and unknown values stay Not confirmed", () => {
++  const c = E.cfgOf(null); assert.equal(E.CATEGORIES.length, 10);
++  for (const [k] of E.CATEGORIES) assert.equal(c.capability[k], "unset");
++  assert.equal(E.cfgOf({ capability: { playground: "core", sports: "nonsense" } }).capability.sports, "unset");
++  assert.equal(E.cfgOf({ capability: { playground: "core" } }).capability.playground, "core");
++});
++
++/* ---------------- permissions ---------------- */
++test("permissions: engine records are administrators only; plans are private", () => {
++  const can = (p, op, lvl, uid = "u1") => RULES.allowed(p, op, lvl, uid);
++  for (const p of ["mix/enginecfg", "mix/enginev/v/1", "mix/alias/a/x", "mix/disc/j/x", "mix/disc/c/x", "mix/opp/o/x", "mix/assign/a/x", "mix/outcome/o/x"]) {
++    assert.equal(can(p, "read", "admin"), true, p); assert.equal(can(p, "write", "admin"), true, p);
++    assert.equal(can(p, "read", "interact"), false, p); assert.equal(can(p, "write", "interact"), false, p);
++    assert.equal(RULES.allowedFinance(p, "read", "u1"), false, "finance " + p);
++  }
++  assert.equal(can("plan/u1/o/x", "read", "interact"), true); assert.equal(can("plan/u2/o/x", "read", "interact"), false);
++  assert.equal(can("plan/u1/o/x", "write", "interact"), false); assert.equal(can("plan/u1/o/x", "write", "admin"), true);
++});
++
++/* ---------------- job ledger ---------------- */
++const env = () => ({ DB: fakeD1() });
++test("jobs: asking twice makes one job", async () => {
++  const e = env(), a = await addJob(e, { key: "sweep|new-cairo|schools", kind: "sweep" }, T), b = await addJob(e, { key: "sweep|new-cairo|schools", kind: "sweep" }, T);
++  assert.equal(a.id, b.id); assert.equal(a.created, true); assert.equal(b.created, false);
++  assert.equal(a.id, await jobId("sweep|new-cairo|schools")); assert.equal((await dueJobs(e, 10, T)).length, 1);
++});
++test("jobs: one holder at a time; finished jobs do not come back", async () => {
++  const e = env(), { id } = await addJob(e, { key: "k", kind: "sweep" }, T);
++  const j = await claimJob(e, id, "h1", T); assert.equal(j.status, "running"); assert.equal(j.tries, 1);
++  assert.equal(await claimJob(e, id, "h2", T), null);
++  assert.equal((await endJob(e, id, "h1", { status: "done", result: { found: 3 } }, T)).status, "done");
++  assert.equal((await dueJobs(e, 10, T + 864e5)).length, 0); assert.equal(await claimJob(e, id, "h2", T + 864e5), null);
++});
++test("jobs: a failure retries, then stays visible as failed with its reason", async () => {
++  const e = env(), { id } = await addJob(e, { key: "k", kind: "sweep", maxTries: 2 }, T); let t = T;
++  await claimJob(e, id, "h", t); let d = await endJob(e, id, "h", { status: "fail", reason: "Search timed out" }, t);
++  assert.equal(d.status, "waiting"); assert.equal(d.error, "Search timed out");
++  assert.equal(await claimJob(e, id, "h", t), null, "not before its retry time");
++  t += 2 * 3600e3; assert.equal((await claimJob(e, id, "h", t)).tries, 2);
++  d = await endJob(e, id, "h", { status: "fail", reason: "Search timed out again" }, t);
++  assert.equal(d.status, "failed"); assert.equal(d.error, "Search timed out again"); assert.equal(d.log.length, 2);
++  const row = await e.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(`mix/disc/j/${id}`).first(); assert.ok(row, "kept, not deleted");
++});
++test("jobs: waiting on a limit does not use up a try", async () => {
++  const e = env(), { id } = await addJob(e, { key: "k", kind: "sweep", maxTries: 1 }, T);
++  await claimJob(e, id, "h", T); const d = await endJob(e, id, "h", { status: "wait", reason: "Daily allowance reached", untilMs: T + 3600e3 }, T);
++  assert.equal(d.status, "waiting"); assert.equal(d.tries, 0); assert.equal((await claimJob(e, id, "h", T + 3600e3)).status, "running");
++});
++test("jobs: a run that died is picked up again, and fails with a reason on its last try", async () => {
++  const e = env(), { id } = await addJob(e, { key: "k", kind: "sweep", maxTries: 2 }, T);
++  await claimJob(e, id, "dead", T); let t = T + 10 * 60e3;   // its lease has ended and it never reported
++  assert.equal((await dueJobs(e, 5, t)).length, 1); assert.equal((await claimJob(e, id, "h2", t)).tries, 2);
++  t += 10 * 60e3; assert.equal(await claimJob(e, id, "h3", t), null);
++  const row = JSON.parse((await e.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(`mix/disc/j/${id}`).first()).data);
++  assert.equal(row.status, "failed"); assert.match(row.error, /last try/);
++});
++
++/* ---------------- data readiness ---------------- */
++function seed(db) {
++  const put = (p, d) => db.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?)").run(p, p.slice(0, p.lastIndexOf("/")), JSON.stringify(d), "2026-11-01");
++  put("directory/a", { uid: "s1", role: "employee", active: true, firstName: "PRIVATE-NAME" }); put("directory/b", { uid: "s2", role: "seller2", active: true }); put("directory/c", { uid: "x", role: "engineer", active: true }); put("directory/d", { uid: "s3", role: "employee", active: false });
++  put("config/roles", { roles: [{ id: "seller2", base: "employee" }] });
++  for (let i = 0; i < 25; i++) put(`acts/s1/a/c${i}`, { type: "call", outcome: i < 10 ? "No Answer" : "Contact Reached", qualifying: true, notes: "PRIVATE-NOTE" });
++  put("acts/s2/a/m1", { type: "meeting", outcome: "Interested", qualifying: true }); put("acts/s2/a/m2", { type: "call", outcome: "Meeting Scheduled", qualifying: true }); put("acts/s2/a/n", { type: "call", outcome: "", qualifying: false });
++  put("projects/s1/p/q1", { summary: { issuedAt: "2026-10-01", leadId: "L1", status: "issued" }, project: {} }); put("projects/s1/p/q2", { summary: { issuedAt: "2026-10-02", leadId: null, status: "won" }, project: {} }); put("projects/s1/p/q3", { summary: { issuedAt: null, status: "draft" }, project: {} });
++  put("submissions/s1/s/q2", { status: "accepted", leadId: null, base: { eligibleMinor: 999 } });
++  put("crm/s1/l/L1", { stage: "lost", lostReason: "Price", stageHistory: [{}] }); put("crm/s2/l/L2", { stage: "lost", stageHistory: [] }); put("crm/s1/mi/o1", { status: "contacted" });
++  put("leads/L1", { name: "PRIVATE-LEAD", orgType: "developer", sources: [{ url: "https://example.com" }], productsFit: "Play", assignedTo: "s1" }); put("leads/L2", { name: "B", orgType: "school", sources: [], status: "archived" });
++  put("leadcontact/L1", { contact: { phone: "0100", phoneVerified: true } }); put("leadcontact/L2", { contact: { phone: "0101", phoneVerified: false } });
++  put("orders/O1", { status: "accepted" }); put("orders/O2", { status: "cancelled" });
++  put("mi/opps/o/1", { priority: "high", evidence: "unverified", assignedTo: "s1" }); put("mi/opps/o/2", { priority: "low", evidence: "verified", scoreVersion: 2 });
++  put("staff/s1", { targets: { "2026-11": 1 }, sales: { territories: ["x"] } }); put("staff/s2", { targets: { "2026-10": 1 } }); put("staff/x", { targets: { "2026-11": 1 } });
++  put("config/pricebook", { items: { a: {}, b: {} } }); put("config/catalog", { custom: [{}] }); put("prod/cat/p/a", {}); put("hol/cal", { days: [{}, {}] }); put("mkt/radar/a/1", {});
++}
++test("readiness: the counts are right", async () => {
++  const e = env(); seed(e.DB.raw); const c = await readiness(e, "2026-11-07T10:00:00Z", 20);
++  assert.deepEqual(c.sellers, { active: 2, enoughCalls: 1, enoughConversations: 0, enoughMeetings: 0, enoughDecided: 0, enoughDeals: 0, withProfile: 1 });
++  assert.deepEqual(c.targets, { individual: 1, defaultOnly: 1 });
++  assert.deepEqual(c.acts, { total: 28, calls: 27, callsWithOutcome: 26, qualifying: 27, conversations: 17, meetings: 2, meetingsHeld: 1, meetingsScheduled: 1, meetingStatus: 0, visits: 0 });
++  assert.deepEqual(c.quotes, { total: 2, withLead: 1, accepted: 1, decided: 1 });
++  assert.deepEqual(c.crm, { total: 2, won: 0, lost: 2, lostWithReason: 1, withHistory: 1 });
++  assert.equal(c.leads.total, 2); assert.equal(c.leads.open, 1); assert.equal(c.leads.assigned, 1); assert.equal(c.leads.withSource, 1); assert.equal(c.contacts.verified, 1);
++  assert.deepEqual(c.orders, { total: 2, live: 1 });
++  assert.equal(c.opps.total, 2); assert.equal(c.opps.high, 1); assert.equal(c.opps.newScore, 1); assert.equal(c.opps.legacyUpdates, 1);
++  assert.deepEqual(c.catalog, { priceBookItems: 2, customProducts: 1, productPages: 1, holidaysListed: 2 }); assert.equal(c.radar.accounts, 1);
++});
++test("readiness: no names, notes, contact details or money leave the server", async () => {
++  const e = env(); seed(e.DB.raw); const s = JSON.stringify(await readiness(e, "2026-11-07T10:00:00Z"));
++  for (const x of ["PRIVATE", "0100", "s1", "s2", "eligibleMinor", "Price"]) assert.equal(s.includes(x), false, x);
++});
++test("readiness: it writes nothing", async () => {
++  const e = env(); seed(e.DB.raw); const count = () => e.DB.raw.prepare("SELECT COUNT(*) c, SUM(v) s FROM docs").get();
++  const before = count(); await readiness(e); assert.deepEqual(count(), before);
++});
++test("readiness: an empty database gives plain answers, never an error", async () => {
++  const c = await readiness(env()); const v = E.verdicts(c, null);
++  assert.equal(c.sellers.active, 0); assert.ok(v.length >= 10); assert.ok(v.every((x) => x.state === "none" && x.text));
++});
++test("verdicts: say who has enough records and who falls back on the assumption", async () => {
++  const e = env(); seed(e.DB.raw); const v = E.verdicts(await readiness(e, "2026-11-07T10:00:00Z"), null), by = (k) => v.find((x) => x.key === k);
++  assert.equal(by("calls").state, "partial"); assert.match(by("calls").text, /1 of 2 salespeople/);
++  assert.equal(by("quote").state, "none"); assert.equal(by("link").state, "partial"); assert.match(by("link").text, /50%/);
++  assert.equal(by("target").state, "partial");
++});
+diff --git a/qa/mi_switch.test.mjs b/qa/mi_switch.test.mjs
+new file mode 100644
+index 0000000..9ebd5f9
+--- /dev/null
++++ b/qa/mi_switch.test.mjs
+@@ -0,0 +1,49 @@
++/* X FORCE Market Intelligence 2.0, Phase 1: the switch in config/settings.miEngine, through a real research job (worker/research.js) on a
++   fake database and fake providers. Made-up records only.  Run:  node --test qa/mi_switch.test.mjs */
++import test from "node:test";
++import assert from "node:assert/strict";
++import { fakeD1 } from "./fake-d1.mjs";
++import { runJob } from "../worker/research.js";
++
++const realFetch = globalThis.fetch;
++const reply = (body) => new Response(JSON.stringify(body), { status: 200 });
++const U1 = "https://www.ahram.org.eg/news/parking-screens", U2 = "https://www.ahram.org.eg/news/arabic-1", U3 = "https://www.ahram.org.eg/news/arabic-2";
++const ANSWER = [
++  { title: "Small perfect display screens for a parking garage", organization: "Test Screens Co", location: "Red Sea, Saudi Arabia", category: "developer", kind: "project", description: "Electricity capacity upgrade.", products: ["Soft play", "Water play"], sourceUrl: U1, sourceType: "media", publishedAt: new Date().toISOString().slice(0, 10) },
++  { title: "مدرسة دولية جديدة في الشيخ زايد", organization: "مدارس النور", location: "الشيخ زايد", category: "school", kind: "project", products: [], sourceUrl: U2, sourceType: "media" },
++  { title: "منتجع جديد في الساحل الشمالي", organization: "شركة البحر", location: "الساحل الشمالي", category: "resort", kind: "project", products: [], sourceUrl: U3, sourceType: "media" }];
++function env() {
++  globalThis.fetch = async (url) => new URL(url).host === "tavily.test"
++    ? reply({ results: [U1, U2, U3].map((u, i) => ({ url: u, title: "t" + i, content: "c", score: 0.9, published_date: "2026-11-01" })), usage: { credits: 1 } })
++    : reply({ candidates: [{ content: { parts: [{ text: JSON.stringify(ANSWER) }] } }], usageMetadata: { totalTokenCount: 10 } });
++  return { DB: fakeD1(), TAVILY_API_KEY: "tvly-test-not-a-real-key", GEMINI_API_KEY: "gem-test-not-a-real-key", TAVILY_BASE_URL: "https://tavily.test", GEMINI_BASE_URL: "https://gemini.test" };
++}
++const put = (e, p, d) => e.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?)").bind(p, p.slice(0, p.lastIndexOf("/")), JSON.stringify(d), "2026-11-01").run();
++const saved = async (e) => ((await e.DB.prepare("SELECT data FROM docs WHERE parent = 'mi/opps/o'").all()).results).map((r) => JSON.parse(r.data));
++test.afterEach(() => { globalThis.fetch = realFetch; });
++
++for (const [name, settings] of [["no settings at all", null], ["the switch missing", { taxPct: 14 }], ["the switch off", { miEngine: false }], ["a value that isn't true", { miEngine: "yes" }]])
++  test(`research with ${name} keeps the old rules`, async () => {
++    const e = env(); if (settings) await put(e, "config/settings", settings);
++    const r = await runJob(e, "opportunities"); assert.equal(r.ok, true, r.error);
++    const o = await saved(e), p = o.find((x) => x.title.startsWith("Small"));
++    assert.equal(p.priority, "high"); assert.equal(p.scoreVersion, undefined);
++    assert.equal(o.length, 2, "the old Arabic id collision still loses one record while off");
++  });
++
++test("research with the switch on uses the new rules, and saves every Arabic record", async () => {
++  const e = env(); await put(e, "config/settings", { miEngine: true });
++  const r = await runJob(e, "opportunities"); assert.equal(r.ok, true, r.error);
++  const o = await saved(e), p = o.find((x) => x.title.startsWith("Small"));
++  assert.equal(p.scoreVersion, 2); assert.equal(p.priority, "low");
++  assert.equal(o.length, 3, "nothing lost");
++  assert.equal(r.created, 3);
++});
++test("records saved before the switch keep their score", async () => {
++  const e = env(); await runJob(e, "opportunities");
++  const before = (await saved(e)).find((x) => x.title.startsWith("Small"));
++  await put(e, "config/settings", { miEngine: true }); await e.DB.prepare("DELETE FROM kv").run();
++  await runJob(e, "opportunities");
++  const after = (await saved(e)).find((x) => x.id === before.id);
++  assert.equal(after.score, before.score); assert.equal(after.scoreVersion, undefined);
++});
+diff --git a/worker/enginejobs.js b/worker/enginejobs.js
+new file mode 100644
+index 0000000..d485b79
+--- /dev/null
++++ b/worker/enginejobs.js
+@@ -0,0 +1,75 @@
++/* X FORCE — Market Intelligence 2.0: the job ledger, mix/disc/j/<id>. Phase 1 builds it; Phase 2's discovery uses it.
++   One small step per job, saved after every step, so a stopped run can always resume and nothing disappears:
++
++     queued → running → done
++                      → waiting (a limit, or a temporary failure; retried at nextAt)
++                      → failed  (out of tries, with the reason, visible to administrators)
++
++   Retry-safe: a job's id comes from its key, so asking twice for the same work never makes two jobs.
++   One worker per job: a lease in the existing `leases` table. A job left "running" by a run that died is picked up again. */
++
++const LEASE_MS = 3 * 60e3, BACKOFF_MS = 60 * 60e3;
++const PARENT = "mix/disc/j";
++const nowIso = (t) => new Date(t == null ? Date.now() : t).toISOString();
++const pathOf = (id) => `${PARENT}/${id}`;
++const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
++
++/** A fixed id from the job's key (the same key always gives the same id). */
++export async function jobId(key) {
++  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(key)));
++  return "j" + [...new Uint8Array(b)].slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
++}
++const save = (env, id, d) => env.DB.prepare("UPDATE docs SET data = ?, v = v + 1, at = ? WHERE path = ?").bind(JSON.stringify(d), nowIso(), pathOf(id)).run();
++const read = async (env, id) => { const r = await env.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(pathOf(id)).first(); return r ? JSON.parse(r.data) : null; };
++
++/** Adds a job unless one with this key exists. Returns {id, created}. */
++export async function addJob(env, { key, kind, input = null, maxTries = 3 }, t = Date.now()) {
++  if (!key || !kind) throw new Error("A job needs a key and a kind.");
++  const id = await jobId(key);
++  const d = { id, key: clip(key, 300), kind: clip(kind, 40), input, status: "queued", tries: 0, maxTries, createdAt: nowIso(t), nextAt: nowIso(t), startedAt: null, finishedAt: null, result: null, error: null, log: [] };
++  const r = await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING RETURNING v").bind(pathOf(id), PARENT, JSON.stringify(d), nowIso()).first();
++  return { id, created: !!r };
++}
++
++/** Jobs ready now, oldest first (counted in the database, so the Worker parses only what it returns). */
++export async function dueJobs(env, limit = 1, t = Date.now()) {
++  const rs = (await env.DB.prepare(`SELECT data FROM docs WHERE parent = ? AND json_extract(data,'$.status') IN ('queued','waiting','running') AND json_extract(data,'$.nextAt') <= ? ORDER BY json_extract(data,'$.nextAt') LIMIT ?`)
++    .bind(PARENT, nowIso(t), Math.max(1, Math.min(50, limit))).all()).results || [];
++  return rs.map((r) => JSON.parse(r.data));
++}
++
++/** Takes one job for this holder. Returns the job, or null when someone else holds it or it is not ready. A claim counts as a try. */
++export async function claimJob(env, id, holder, t = Date.now()) {
++  const lease = "mi:job:" + id;
++  await env.DB.prepare("DELETE FROM leases WHERE path = ? AND exp < ?").bind(lease, t).run();
++  const got = await env.DB.prepare("INSERT INTO leases (path, holder, exp) VALUES (?, ?, ?) ON CONFLICT(path) DO NOTHING RETURNING holder").bind(lease, holder, t + LEASE_MS).first();
++  if (!got) return null;
++  const d = await read(env, id);
++  const release = () => env.DB.prepare("DELETE FROM leases WHERE path = ? AND holder = ?").bind(lease, holder).run();
++  if (!d || !["queued", "waiting", "running"].includes(d.status) || d.nextAt > nowIso(t)) { await release(); return null; }
++  if (d.tries >= d.maxTries) {   // it died while running on its last try: report that instead of trying for ever
++    Object.assign(d, { status: "failed", finishedAt: nowIso(t), error: d.error || "Stopped responding on its last try." }); await save(env, id, d); await release(); return null;
++  }
++  Object.assign(d, { status: "running", tries: d.tries + 1, startedAt: d.startedAt || nowIso(t), nextAt: nowIso(t + LEASE_MS) });
++  await save(env, id, d);
++  return d;
++}
++
++/** Records how a claimed job's step ended and frees the job.
++ *  done   {result}                     finished
++ *  wait   {reason, untilMs?}           a limit: not this job's fault, so the try is given back and the reason is shown
++ *  fail   {reason}                     a failure: retried until maxTries, then failed with the reason. */
++export async function endJob(env, id, holder, outcome, t = Date.now()) {
++  const d = await read(env, id); if (!d) return null;
++  const entry = { at: nowIso(t), outcome: outcome.status };
++  if (outcome.status === "done") Object.assign(d, { status: "done", result: outcome.result == null ? null : outcome.result, error: null, finishedAt: nowIso(t) });
++  else if (outcome.status === "wait") { Object.assign(d, { status: "waiting", tries: Math.max(0, d.tries - 1), error: clip(outcome.reason, 300), nextAt: nowIso(outcome.untilMs || t + BACKOFF_MS) }); entry.reason = d.error; }
++  else {
++    const reason = clip(outcome.reason || "Unknown failure", 300), out = d.tries >= d.maxTries; entry.reason = reason;
++    Object.assign(d, out ? { status: "failed", error: reason, finishedAt: nowIso(t) } : { status: "waiting", error: reason, nextAt: nowIso(t + BACKOFF_MS) });
++  }
++  d.log = (d.log || []).concat([entry]).slice(-20);
++  await save(env, id, d);
++  await env.DB.prepare("DELETE FROM leases WHERE path = ? AND holder = ?").bind("mi:job:" + id, holder).run();
++  return d;
++}
+diff --git a/worker/index.js b/worker/index.js
+index 553d439..8a2348d 100644
+--- a/worker/index.js
++++ b/worker/index.js
+@@ -19,6 +19,7 @@ import { computeSweep } from "./sweep.js";
+ import { researchConfig, runRequestJob, researchTick, missingMessage, secretCheck } from "./research.js";
+ import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
+ import { usageSummary } from "./usage.js";
++import { readiness } from "./readiness.js";
+ import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
+ 
+ const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
+@@ -899,6 +900,8 @@ async function route(req, env, ctx) {
+       provider: c.provider, tavily: c.tavily, gemini: c.gemini, geminiModel: c.geminiModel, usage: await usageSummary(env, acc.uid),
+       markets: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.label])),
+       depths: Object.fromEntries(Object.entries(DEPTHS).map(([k, d]) => [k, { label: d.label, searches: d.queries, pages: d.extract, maxCredits: creditEstimate(k) }])) }); }
++  // Market Intelligence 2.0 — Data Readiness: read-only counts, no names or money. Administrators only (this block is after the admin check).
++  if (p === "/api/mi/readiness" && M === "GET") { const c = await env.DB.prepare("SELECT json_extract(data,'$.personalMin') m FROM docs WHERE path = 'mix/enginecfg'").first(); return json(200, await readiness(env, now(), c && c.m)); }
+   // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
+   if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
+     if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);
+diff --git a/worker/intel.js b/worker/intel.js
+index 85d7745..bc9c09f 100644
+--- a/worker/intel.js
++++ b/worker/intel.js
+@@ -29,6 +29,11 @@ const REPUTABLE = ["reuters.com", "bloomberg.com", "ahram.org.eg", "english.ahra
+   "constructionweekonline.com", "propertyfinder.eg", "aqarmap.com.eg", "lloydslist.com", "joc.com", "freightos.com", "drewry.co.uk",
+   "spglobal.com", "fastmarkets.com", "argusmedia.com", "steelorbis.com", "worldbank.org", "imf.org"];
+ const DAY = 864e5;
++/* Market Intelligence 2.0 (config/settings.miEngine). V2 is set only for the length of one synchronous ingest() call. Off = null = the
++   behaviour above and below is unchanged. */
++import "../app/miengine.js";
++let V2 = null;
++const ME = () => globalThis.DPMiEngine;
+ 
+ /* ---------- Python-compatible helpers ---------- */
+ const isDict = (x) => x != null && typeof x === "object" && !Array.isArray(x);
+@@ -47,13 +52,15 @@ function pyRound(x, n = 0) {
+ const iso = (t) => new Date(t).toISOString().slice(0, 19) + "Z";
+ const ymd = (t) => new Date(t).toISOString().slice(0, 10);
+ function norm(s) {
++  if (V2) { const k = s0(s); let v = V2.names.get(k); if (v === undefined) { v = ME().normName(k); V2.names.set(k, v); } return v; }
+   s = s0(s).normalize("NFKD").replace(/[^\x00-\x7f]/g, "").toLowerCase();
+   s = s.replace(/\b(the|a|an|of|for|and|in|at|by|project|new|company|co|ltd|s\.a\.e|sae|llc|group|developments?)\b/g, " ");
+   return s.replace(/[^a-z0-9]+/g, " ").trim();
+ }
+ const tokens = (s) => new Set(norm(s).split(/\s+/).filter((t) => t.length > 2));
++const tokensOf = (s) => { if (!V2) return tokens(s); const k = s0(s); let v = V2.words.get(k); if (!v) { v = tokens(s); V2.words.set(k, v); } return v; };
+ function jacc(a, b) {
+-  const A = tokens(a), B = tokens(b); let i = 0; for (const t of A) if (B.has(t)) i++;
++  const A = tokensOf(a), B = tokensOf(b); let i = 0; for (const t of A) if (B.has(t)) i++;
+   return i / Math.max(1, new Set([...A, ...B]).size);
+ }
+ function host(url) {
+@@ -144,8 +151,51 @@ function scoreOpp(o, now) {
+   add("commercial", "Commercial potential", commercial, 5, commercial === 5 ? "Large or repeat-business potential" : commercial === 3 ? "Typical project size" : "Limited");
+   return [parts.reduce((s, p) => s + p.pts, 0), parts];
+ }
++/* The new rules: whole words in English and Arabic, Saudi and Egyptian locations told apart, AI labels add no points, and a published
++   project budget is a size signal, never Dupedia's value. The full qualification model arrives in Phase 3. */
++const V2_WORDS = Object.assign({}, PRODUCT_WORDS, { clubhouse: 4, landscaping: 4, "ملعب": 8, "ملاعب": 8, "اطفال": 5, "حضانه": 5, "مدرسه": 4, "نادي": 3, "منتجع": 3, "كمبوند": 4, "حديقه": 3, "ملاهي": 6, "مائيه": 3 });
++const V2_BIG = ["compound", "resort", "mall", "theme park", "water park", "city", "district", "master plan", "masterplan", "feddan", "acre", "كمبوند", "منتجع", "فدان", "مدينه"];
++const V2_TARGET = TARGET_AREAS.filter((a) => a !== "red sea").concat(["القاهره الجديده", "الشيخ زايد", "زايد الجديده", "الساحل الشمالي", "راس الحكمه", "العلمين", "العين السخنه", "السخنه", "اكتوبر", "العاصمه الاداريه", "الجلاله", "الغردقه", "الجونه", "شرم الشيخ", "مدينتي", "الشروق"]);
++const V2_EGYPT = EGYPT.filter((a) => a !== "red sea").concat(["مصر", "القاهره", "الجيزه", "الاسكندريه", "مطروح", "السويس", "الاسماعيليه", "الاقصر", "اسوان"]);
++const V2_NEAR = NEAR.concat(["saudi arabia", "kingdom", "السعوديه", "الرياض", "جده", "الامارات", "دبي", "ابوظبي", "قطر", "الدوحه", "الكويت", "عمان", "البحرين", "الاردن", "ليبيا", "المغرب", "العراق"]);
++function scoreOppV2(o, now) {
++  const has = ME().hasWord, text = ME().fold([o.title || "", o.description || "", o.organization || ""].join(" ")), loc = ME().fold(o.location || ""), parts = [];
++  const add = (k, label, pts, mx, why) => parts.push({ k, label, pts: Math.trunc(Math.max(0, Math.min(mx, pyRound(pts)))), max: mx, why });
++  const hit = Object.keys(V2_WORDS).filter((w) => has(text, w)), fit = hit.reduce((s, w) => s + V2_WORDS[w], 0), np = (o.products || []).length;
++  add("fit", "Product fit", Math.min(20, fit), 20, `Mentions ${hit.slice().sort().slice(0, 5).join(", ") || "no play or leisure terms"}${np ? `; ${np} AI product suggestion(s) add no points` : ""}`);
++  const cat = o.category || "other";
++  const rel = { compound: 15, developer: 14, resort: 14, hotel: 12, school: 13, nursery: 12, fec: 15, amusement: 15, waterpark: 15, mall: 12, club: 12, public: 11, landscape: 11, coastal: 14, hospitality: 11, tender: 13 }[cat] || 6;
++  add("customer", "Customer relevance", rel, 15, `Customer category: ${cat}`);
++  const pv = g(o.projectValue || {}, "amountEgp"), big = V2_BIG.some((w) => has(text, w)) || /\d\s?km\b/.test(text);
++  let sc, why;
++  if (truthy(pv)) [sc, why] = pv >= 50e6 ? [15, "published project value ≥ EGP 50M (the project's size, not Dupedia's share)"] : pv >= 10e6 ? [11, "published project value ≥ EGP 10M (the project's size, not Dupedia's share)"] : [7, "published project value < EGP 10M"];
++  else [sc, why] = big ? [9, "large-scale development by its description (value not published)"] : [4, "scale unknown"];
++  add("scale", "Project scale", sc, 15, why);
++  if (V2_NEAR.some((a) => has(loc, a))) add("geo", "Geographic relevance", 4, 10, "Nearby export market");
++  else if (V2_TARGET.some((a) => has(loc, a))) add("geo", "Geographic relevance", 10, 10, "Priority sales area");
++  else if (V2_EGYPT.some((a) => has(loc, a))) add("geo", "Geographic relevance", 7, 10, "Egypt, outside the priority areas");
++  else if (has(loc, "red sea") || has(loc, "البحر الاحمر")) add("geo", "Geographic relevance", 3, 10, "Red Sea, country not stated");
++  else add("geo", "Geographic relevance", 1, 10, "Location unclear or far");
++  const scCls = sourceClass(o.sourceUrl, o.sourceType);
++  add("source", "Source reliability", { official: 10, organization: 8, reputable: 7, other: 3 }[scCls], 10, `Source class: ${scCls} (${pyStr(host(o.sourceUrl))})`);
++  const pub = parseDate(o.publishedAt);
++  if (pub != null) { const age = daysBetween(now, pub); add("recency", "Recency", age <= 14 ? 10 : age <= 45 ? 7 : age <= 120 ? 4 : 1, 10, `Published ${age} day(s) ago`); }
++  else add("recency", "Recency", 2, 10, "Publication date unknown");
++  const contact = o.contact || {};
++  add("contact", "Ability to contact", truthy(contact.text) && truthy(contact.sourceUrl) ? 5 : truthy(o.orgWebsite) ? 3 : 1, 5, truthy(contact.text) ? "Published contact route" : truthy(o.orgWebsite) ? "Organisation website known" : "No contact route found yet");
++  const supply = fit >= 10 ? 5 : fit >= 5 ? 3 : 1;
++  add("supply", "Dupedia can supply", supply, 5, supply === 5 ? "Core playground/leisure scope" : supply === 3 ? "Partial fit" : "Weak fit");
++  const dl = parseDate(g(o.deadline || {}, "date"));
++  if (dl != null) { const days = daysBetween(dl, now); add("urgency", "Competitive urgency", days >= 0 && days <= 30 ? 5 : days >= 0 && days <= 90 ? 3 : 0, 5, days >= 0 ? `Deadline in ${days} day(s)` : "Deadline passed"); }
++  else add("urgency", "Competitive urgency", ["tender", "project"].includes(o.kind) ? 2 : 1, 5, "No published deadline");
++  const commercial = big && fit >= 5 ? 5 : rel >= 12 && fit >= 5 ? 3 : 1;
++  add("commercial", "Commercial potential", commercial, 5, commercial === 5 ? "Large project with a leisure need" : commercial === 3 ? "Typical project size" : "Limited or unclear");
++  return [parts.reduce((s, p) => s + p.pts, 0), parts];
++}
+ const str_ = (c, k, n) => cut(s0(g(c, k)).trim(), n);
+ 
++/** The organisation's name for comparing, through the company-names list when there is one. */
++const orgKey = (name) => { const k = norm(name); return (k && V2.alias[k] ? norm(V2.alias[k]) : k); };
+ function ingestOpps(db, cands, now, notes) {
+   const existing = db["mi/opps/o"] || {}, writes = []; let created = 0, updated = 0;
+   const seen = Object.assign({}, existing);
+@@ -172,6 +222,7 @@ function ingestOpps(db, cands, now, notes) {
+       const cur = (s0(ev.currency) || "EGP").toUpperCase();
+       o.estValue = { amount: amt, currency: cur, basis: cut(s0(ev.basis) || "as published", 200), sourceUrl: ev.sourceUrl, amountEgp: cur === "EGP" ? amt : (truthy(ev.fx) ? amt * fnum(ev.fx) : null) };
+     } else if (truthy(amt)) notes.push(`#${i}: value dropped — no source`);
++    if (V2 && o.estValue) { o.projectValue = o.estValue; delete o.estValue; }   // a published figure describes the project, not Dupedia's share of it
+     const claims = [];
+     for (const cl of (Array.isArray(c.claims) ? c.claims : []).slice(0, 12)) {
+       const t = cut(s0(g(cl, "text")).trim(), 300); if (!t) continue;
+@@ -183,7 +234,8 @@ function ingestOpps(db, cands, now, notes) {
+     for (const k of Object.keys(seen)) {
+       const d = seen[k];
+       if (d.sourceUrl === url || (d.sources || []).some((s) => g(s, "url") === url)) { dup = k; break; }
+-      if (o.organization && norm(d.organization) === norm(o.organization) && (!o.location || jacc(d.location, o.location) >= 0.5) && jacc(d.title, title) >= 0.35) { dup = k; break; }
++      if (V2) { const a = orgKey(d.organization), b = orgKey(o.organization); if (a && a === b && (!o.location || jacc(d.location, o.location) >= 0.5) && jacc(d.title, title) >= 0.35) { dup = k; break; } }
++      else if (o.organization && norm(d.organization) === norm(o.organization) && (!o.location || jacc(d.location, o.location) >= 0.5) && jacc(d.title, title) >= 0.35) { dup = k; break; }
+       if (jacc(d.title, title) >= 0.8) { dup = k; break; }
+     }
+     if (dup) {
+@@ -198,7 +250,8 @@ function ingestOpps(db, cands, now, notes) {
+       d.lastChecked = iso(now); d.history = (d.history || []).slice(-80);
+       writes.push({ collection: "mi/opps/o", doc_id: dup, data: d }); seen[dup] = d; updated++; return;
+     }
+-    const [total, parts] = scoreOpp(o, now), cls = sourceClass(url, o.sourceType);
++    const [total, parts] = V2 ? scoreOppV2(o, now) : scoreOpp(o, now), cls = sourceClass(url, o.sourceType);
++    if (V2) o.scoreVersion = 2;
+     const autoVerified = ["official", "organization"].includes(cls) && truthy(o.publishedAt) && !o.unverified.length;
+     const high = total >= 70 || ((o.estValue || {}).amountEgp || 0) >= 10e6;
+     const oid = "op-" + sid(o.organization || title, o.location, title);
+@@ -349,7 +402,11 @@ function ingestWeekly(db, rep, now, notes) {
+ }
+ 
+ /** One research job's candidates → the documents to write (plus job state and run history). */
+-export function ingest(job, db, cands, nowMs) {
++export function ingest(job, db, cands, nowMs, { engine = false, aliases = null } = {}) {
++  V2 = engine ? { alias: ME().aliasIndex(aliases), names: new Map(), words: new Map() } : null;
++  try { return ingestRun(job, db, cands, nowMs); } finally { V2 = null; }
++}
++function ingestRun(job, db, cands, nowMs) {
+   const now = Math.floor(nowMs / 1000) * 1000, notes = [];
+   const prev = (db["mi/state/jobs"] || {})[job] || null;
+   const sched = g(g(db["mi/schedule"] || {}, "jobs") || {}, job) || {};
+diff --git a/worker/readiness.js b/worker/readiness.js
+new file mode 100644
+index 0000000..047de52
+--- /dev/null
++++ b/worker/readiness.js
+@@ -0,0 +1,85 @@
++/* X FORCE — Market Intelligence 2.0: Data Readiness. Read-only counts for administrators (GET /api/mi/readiness).
++   It writes nothing and returns no names, ids, contact details or money: only how many records of each kind exist.
++   The counting happens inside the database, so the Worker's own processing stays small (Workers Free allows 10 ms of CPU). */
++
++const MIN_DEALS = 5;
++/** parent IN acts/<uid>/a … as an index range (parent >= 'acts/' AND parent < 'acts0'), then an exact pattern. */
++const under = (top, glob) => `parent >= '${top}/' AND parent < '${top}0' AND parent GLOB '${glob}'`;
++const one = async (env, sql, ...args) => (await env.DB.prepare(sql).bind(...args).first()) || {};
++const many = async (env, sql, ...args) => (await env.DB.prepare(sql).bind(...args).all()).results || [];
++const n = (x) => Number(x) || 0;
++const sumOf = (rows, k) => rows.reduce((a, r) => a + n(r[k]), 0);
++
++const REACHED = "('Contact Reached','Interested','Not Interested','Decision-Maker Identified','Follow-Up Required','Meeting Scheduled','Qualified Opportunity')";
++
++export async function readiness(env, nowIso = new Date().toISOString(), personalMin = 20) {
++  const month = nowIso.slice(0, 7), min = Math.max(1, parseInt(personalMin, 10) || 20);
++
++  const acts = await many(env, `SELECT parent uid, COUNT(*) total,
++      SUM(t='call') calls, SUM(t='call' AND o IS NOT NULL AND o<>'') callsWithOutcome, SUM(q=1) qualifying,
++      SUM(t IN ('call','email','whatsapp','meeting','visit') AND o IN ${REACHED}) conversations,
++      SUM(t='meeting') held, SUM(o='Meeting Scheduled') scheduled, SUM(t='meeting' OR o='Meeting Scheduled') meetings, SUM(t='visit') visits, SUM(ms IS NOT NULL) meetingStatus
++    FROM (SELECT parent, json_extract(data,'$.type') t, json_extract(data,'$.outcome') o, json_extract(data,'$.qualifying') q, json_extract(data,'$.meetingStatus') ms FROM docs WHERE ${under("acts", "acts/*/a")})
++    GROUP BY parent`);
++
++  // a quotation = a saved project that was issued; its status is kept on the project's summary
++  const quotes = await many(env, `SELECT parent uid, SUM(i IS NOT NULL) total, SUM(i IS NOT NULL AND lead IS NOT NULL AND lead<>'') withLead,
++      SUM(i IS NOT NULL AND st IN ('accepted','won','lost','rejected')) decided
++    FROM (SELECT parent, json_extract(data,'$.summary.issuedAt') i, json_extract(data,'$.summary.leadId') lead, json_extract(data,'$.summary.status') st FROM docs WHERE ${under("projects", "projects/*/p")})
++    GROUP BY parent`);
++  const subs = await many(env, `SELECT parent uid, SUM(st IN ('accepted','approved')) accepted
++    FROM (SELECT parent, json_extract(data,'$.status') st FROM docs WHERE ${under("submissions", "submissions/*/s")})
++    GROUP BY parent`);
++
++  const crm = await one(env, `SELECT COUNT(*) total, SUM(st='won') won, SUM(st='lost') lost, SUM(st='lost' AND r IS NOT NULL AND r<>'') lostWithReason, SUM(COALESCE(h,0)>0) withHistory
++    FROM (SELECT json_extract(data,'$.stage') st, json_extract(data,'$.lostReason') r, json_array_length(data,'$.stageHistory') h FROM docs WHERE ${under("crm", "crm/*/l")})`);
++
++  const leads = await one(env, `SELECT COUNT(*) total, SUM(st IS NULL OR st NOT IN ('archived','merged','inactive')) open, SUM(a IS NOT NULL) assigned, SUM(COALESCE(s,0)>0) withSource, SUM(f IS NOT NULL AND f<>'') withFit
++    FROM (SELECT json_extract(data,'$.status') st, json_extract(data,'$.assignedTo') a, json_array_length(data,'$.sources') s, json_extract(data,'$.productsFit') f FROM docs WHERE parent='leads')`);
++  const contacts = await one(env, `SELECT COUNT(*) total, SUM(json_extract(data,'$.contact.phoneVerified')=1 OR json_extract(data,'$.contact.emailVerified')=1) verified FROM docs WHERE parent='leadcontact'`);
++  const orgTypes = await many(env, `SELECT COALESCE(json_extract(data,'$.orgType'),'other') k, COUNT(*) c FROM docs WHERE parent='leads' GROUP BY k ORDER BY c DESC`);
++
++  const orders = await one(env, `SELECT COUNT(*) total, SUM(json_extract(data,'$.status')='cancelled') cancelled FROM docs WHERE parent='orders'`);
++
++  const opps = await one(env, `SELECT COUNT(*) total, SUM(p='high') high, SUM(ev='verified') verified, SUM(ev='single-source') singleSource, SUM(ev='unverified') unverified, SUM(a IS NOT NULL) assigned, SUM(sv=2) newScore
++    FROM (SELECT json_extract(data,'$.priority') p, json_extract(data,'$.evidence') ev, json_extract(data,'$.assignedTo') a, json_extract(data,'$.scoreVersion') sv FROM docs WHERE parent='mi/opps/o')`);
++  const overlays = await one(env, `SELECT COUNT(*) c FROM docs WHERE ${under("crm", "crm/*/mi")}`);
++  const radar = await one(env, `SELECT COUNT(*) c FROM docs WHERE parent='mkt/radar/a'`);
++
++  // salespeople: built-in "employee" plus custom roles based on it (no names leave this function)
++  const roleRow = await one(env, `SELECT data FROM docs WHERE path='config/roles'`);
++  const baseRoles = new Set(["employee"]);
++  try { for (const r of (JSON.parse(roleRow.data || "{}").roles || [])) if (r && r.id && r.base === "employee") baseRoles.add(r.id); } catch (e) { /* no custom roles */ }
++  const dir = await many(env, `SELECT json_extract(data,'$.uid') uid, json_extract(data,'$.role') role, json_extract(data,'$.active') active FROM docs WHERE parent='directory'`);
++  const salesUids = new Set(dir.filter((r) => r.uid && r.active !== 0 && baseRoles.has(r.role)).map((r) => r.uid));
++  const of = (rows, uid, k, top, tail) => n((rows.find((r) => r.uid === `${top}/${uid}/${tail}`) || {})[k]);
++  let enoughCalls = 0, enoughConversations = 0, enoughMeetings = 0, enoughDecided = 0, enoughDeals = 0;
++  for (const u of salesUids) {
++    if (of(acts, u, "calls", "acts", "a") >= min) enoughCalls++;
++    if (of(acts, u, "conversations", "acts", "a") >= min) enoughConversations++;
++    if (of(acts, u, "meetings", "acts", "a") >= min) enoughMeetings++;
++    if (of(quotes, u, "decided", "projects", "p") >= min) enoughDecided++;
++    if (of(subs, u, "accepted", "submissions", "s") >= MIN_DEALS) enoughDeals++;
++  }
++  const staff = await many(env, `SELECT path, json_extract(data,?) t, json_extract(data,'$.sales') sp FROM docs WHERE parent='staff'`, `$.targets."${month}"`);
++  const has = (k) => staff.filter((r) => r[k] != null && salesUids.has(r.path.slice(6))).length;
++
++  const pb = await one(env, `SELECT COUNT(*) c FROM docs, json_each(docs.data,'$.items') WHERE docs.path='config/pricebook'`);
++  const cat = await one(env, `SELECT json_array_length(data,'$.custom') custom FROM docs WHERE path='config/catalog'`);
++  const prod = await one(env, `SELECT COUNT(*) c FROM docs WHERE parent='prod/cat/p'`);
++  const hol = await one(env, `SELECT json_array_length(data,'$.days') days FROM docs WHERE path='hol/cal'`);
++
++  return { at: nowIso, month, personalMin: min,
++    sellers: { active: salesUids.size, enoughCalls, enoughConversations, enoughMeetings, enoughDecided, enoughDeals, withProfile: has("sp") },
++    targets: { individual: has("t"), defaultOnly: Math.max(0, salesUids.size - has("t")) },
++    acts: { total: sumOf(acts, "total"), calls: sumOf(acts, "calls"), callsWithOutcome: sumOf(acts, "callsWithOutcome"), qualifying: sumOf(acts, "qualifying"), conversations: sumOf(acts, "conversations"),
++      meetings: sumOf(acts, "meetings"), meetingsHeld: sumOf(acts, "held"), meetingsScheduled: sumOf(acts, "scheduled"), meetingStatus: sumOf(acts, "meetingStatus"), visits: sumOf(acts, "visits") },
++    quotes: { total: sumOf(quotes, "total"), withLead: sumOf(quotes, "withLead"), accepted: sumOf(subs, "accepted"), decided: sumOf(quotes, "decided") },
++    crm: { total: n(crm.total), won: n(crm.won), lost: n(crm.lost), lostWithReason: n(crm.lostWithReason), withHistory: n(crm.withHistory) },
++    leads: { total: n(leads.total), open: n(leads.open), assigned: n(leads.assigned), withSource: n(leads.withSource), withFit: n(leads.withFit), byType: orgTypes.map((r) => [r.k, n(r.c)]) },
++    contacts: { records: n(contacts.total), verified: n(contacts.verified) },
++    orders: { total: n(orders.total), live: n(orders.total) - n(orders.cancelled) },
++    opps: { total: n(opps.total), high: n(opps.high), verified: n(opps.verified), singleSource: n(opps.singleSource), unverified: n(opps.unverified), assigned: n(opps.assigned), newScore: n(opps.newScore), legacyUpdates: n(overlays.c) },
++    radar: { accounts: n(radar.c) },
++    catalog: { priceBookItems: n(pb.c), customProducts: n(cat.custom), productPages: n(prod.c), holidaysListed: n(hol.days) } };
++}
+diff --git a/worker/research.js b/worker/research.js
+index a232659..b25c538 100644
+--- a/worker/research.js
++++ b/worker/research.js
+@@ -215,6 +215,13 @@ async function ceoOf(env) {
+   const o = await env.DB.prepare("SELECT uid FROM users WHERE owner = 1 AND active = 1 LIMIT 1").first(); return o ? o.uid : null;
+ }
+ 
++/** config/settings.miEngine, and the company names when it is on (read only then, so "off" reads nothing extra but the switch). */
++async function engineOpts(env) {
++  const s = await doc(env, "config/settings");
++  if (!(s && s.data && s.data.miEngine === true)) return { engine: false };
++  return { engine: true, aliases: (await coll(env, "mix/alias/a")).docs };
++}
++
+ /** Run ONE job now. Returns {ok, created, updated, notes, error}. Records job health and run history either way. */
+ export async function runJob(env, jobName, { by = "page" } = {}) {
+   const cfg = researchConfig(env);
+@@ -226,6 +233,7 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
+   try {
+     await countUse(env);
+     const { db, ver } = await loadDb(env);
++    const eng = await engineOpts(env);   // Market Intelligence 2.0: off unless an administrator switched it on
+     let res, extra = [], err = null, code = null;
+     try {
+       let parsed, seen, info, more = [];
+@@ -242,7 +250,7 @@ export async function runJob(env, jobName, { by = "page" } = {}) {
+       else {
+         const f = evidenceFilter(jobName, parsed, seen); extra = f.notes.concat(more);
+         extra.push(info);
+-        res = ingest(jobName, db, jobName === "weekly" ? f.cands : (f.cands || []), Date.now());
++        res = ingest(jobName, db, jobName === "weekly" ? f.cands : (f.cands || []), Date.now(), eng);
+       }
+     } catch (e) {
+       err = String(e.message || e).slice(0, 300);
+diff --git a/xf-shim.js b/xf-shim.js
+index 05f9e37..48874ce 100644
+--- a/xf-shim.js
++++ b/xf-shim.js
+@@ -48,6 +48,7 @@
+     changes: (since) => api("/api/changes?since=" + encodeURIComponent(since || "")),
+     notif: (b) => api("/api/notif", { method: "POST", body: JSON.stringify(b) }),
+     researchStatus: () => api("/api/research/status"),
++    miReadiness: () => api("/api/mi/readiness"),
+     resetAccount: (uid, mode, o) => api("/api/accounts/" + encodeURIComponent(uid) + "/reset", { method: "POST", body: JSON.stringify(Object.assign({ mode }, o || {})) }),
+     researchRun: (id, job) => api("/api/research/run", { method: "POST", body: JSON.stringify({ id, job: job || null }) }),
+     logout: () => api("/api/logout", { method: "POST", body: "{}" }).finally(toLogin),

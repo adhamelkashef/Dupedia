@@ -19,6 +19,7 @@ import { computeSweep } from "./sweep.js";
 import { researchConfig, runRequestJob, researchTick, missingMessage, secretCheck } from "./research.js";
 import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
 import { usageSummary } from "./usage.js";
+import { readiness } from "./readiness.js";
 import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
@@ -899,6 +900,8 @@ async function route(req, env, ctx) {
       provider: c.provider, tavily: c.tavily, gemini: c.gemini, geminiModel: c.geminiModel, usage: await usageSummary(env, acc.uid),
       markets: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.label])),
       depths: Object.fromEntries(Object.entries(DEPTHS).map(([k, d]) => [k, { label: d.label, searches: d.queries, pages: d.extract, maxCredits: creditEstimate(k) }])) }); }
+  // Market Intelligence 2.0 — Data Readiness: read-only counts, no names or money. Administrators only (this block is after the admin check).
+  if (p === "/api/mi/readiness" && M === "GET") { const c = await env.DB.prepare("SELECT json_extract(data,'$.personalMin') m FROM docs WHERE path = 'mix/enginecfg'").first(); return json(200, await readiness(env, now(), c && c.m)); }
   // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
   if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
     if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);
