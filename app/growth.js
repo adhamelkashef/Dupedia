@@ -105,9 +105,19 @@
   function attribution({ campaigns = [], leads = [], subs = [], orders = [], touches = [], spend = [], cfg = null, from = null, to = null, mode = 'activity', scoreOf = null }) {
     const out = {};
     for (const c of campaigns) {
-      const sourced = leads.filter(l => l.campaignId === c.id), influencedIds = new Set(touches.filter(t => t.campaignId === c.id && t.leadId && byEnd(t.at,to)).map(t=>t.leadId));
+      const sourced = leads.filter(l => l.campaignId === c.id), firstTouch = new Map();
+      for (const t of touches.filter(t => t.campaignId === c.id && t.leadId && byEnd(t.at,to))) {
+        if (!firstTouch.has(t.leadId) || String(t.at) < firstTouch.get(t.leadId)) firstTouch.set(t.leadId, String(t.at));
+      }
+      // An interaction can influence only later events, not a quotation or sale already made.
+      const afterTouch = (leadId, date) => firstTouch.has(leadId) && !!date && String(date).slice(0,10) >= firstTouch.get(leadId).slice(0,10) && (String(date).length <= 10 || String(date) >= firstTouch.get(leadId));
+      const influencedSubs = subs.filter(q => afterTouch(q.leadId, quoteDate(q)));
+      const influencedOrders = orders.map(o => {
+        const q = subs.find(q => oidOf(q) === o.oid || (q.pid === o.pid && q.ownerId === o.ownerId));
+        return o.leadId ? o : {...o, leadId: q && q.leadId};
+      }).filter(o => afterTouch(o.leadId, orderDate(o)));
       const common = {subs,orders,cfg,from,to,mode,scoreOf};
-      const S = measure({...common,leads:sourced}), I = measure({...common,leads:leads.filter(l => l.campaignId !== c.id && influencedIds.has(l.id))});
+      const S = measure({...common,leads:sourced}), I = measure({...common,subs:influencedSubs,orders:influencedOrders,leads:leads.filter(l => l.campaignId !== c.id && firstTouch.has(l.id))});
       const costs = spend.filter(x => x.campaignId === c.id && inRange(x.date,from,to)), sp = costs.reduce((s,x)=>s+(+x.amountMinor||0),0);
       out[c.id] = {id:c.id,name:c.name,sourced:S,influenced:I,spendMinor:sp,hasSpend:costs.length>0,costPerQualified:sp>0&&S.qualified?Math.round(sp/S.qualified):null,
         roas:mode==='activity'&&sp>0&&S.contractMinor?Math.round(S.contractMinor/sp*100)/100:null,touches:touches.filter(t=>t.campaignId===c.id&&inRange(t.at,from,to)).length};
