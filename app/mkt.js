@@ -21,20 +21,20 @@
   const rid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const isAdmin = () => AU().isAdmin(), isMkt = () => isAdmin() || me().role === "marketing";
   const reqMkt = () => { if (!isMkt()) throw new Error("Marketing or administrators only."); };
-  const list = async (c) => (await DS().tryList(c)).map((x) => Object.assign({ id: x.id }, x.data));
+  const list = async (c) => (await DS().list(c)).map((x) => Object.assign({ id: x.id }, x.data));
   const hist = (o, action, detail = "") => { o.history = (o.history || []).concat([{ at: now(), by: me().id, action, detail: String(detail).slice(0, 300) }]).slice(-120); };
   let CFG = null;
-  async function cfg(force) { if (!CFG || force) CFG = G().cfgOf(await DS().tryGet("mkt/cfg")); return CFG; }
+  async function cfg(force) { if (!CFG || force) CFG = G().cfgOf(await DS().get("mkt/cfg")); return CFG; }
   async function saveCfg(c, reason = "") { if (!isAdmin()) throw new Error("Administrators only."); const next = Object.assign({}, await cfg(true), c, { updatedAt: now(), updatedBy: me().id });
     await DS().set("mkt/cfg", next); CFG = G().cfgOf(next); await AU().auditLog("Marketing scoring settings changed", { kind: "lead", reason, after: { weights: next.weights, priorityA: next.priorityA, priorityB: next.priorityB } }).catch(() => {}); return CFG; }
 
   /* ---------------- campaigns & content ---------------- */
   const campaigns = async () => (await list("mkt/camp/c")).sort((a, b) => String(b.start || b.createdAt).localeCompare(String(a.start || a.createdAt)));
-  const getCampaign = (id) => DS().tryGet(`mkt/camp/c/${id}`).then((c) => (c ? Object.assign({ id }, c) : null));
+  const getCampaign = (id) => DS().get(`mkt/camp/c/${id}`).then((c) => (c ? Object.assign({ id }, c) : null));
   async function saveCampaign(c, { approve = false } = {}) {
     reqMkt(); if (!String(c.name || "").trim()) throw new Error("Name the campaign."); if (!String(c.objective || "").trim()) throw new Error("State the objective (e.g. 15 qualified site visits from schools).");
     if (c.start && c.end && c.end < c.start) throw new Error("The end date is before the start date.");
-    const id = c.id || rid("cp-"), path = `mkt/camp/c/${id}`, prev = await DS().tryGet(path);
+    const id = c.id || rid("cp-"), path = `mkt/camp/c/${id}`, prev = await DS().get(path);
     const rec = Object.assign({}, prev || {}, { name: c.name.trim().slice(0, 120), objective: String(c.objective).trim().slice(0, 500), segment: G().SEGMENTS[c.segment] ? c.segment : "other", segments: c.segments || [c.segment].filter(Boolean),
       products: (c.products || []).slice(0, 40), ownerUid: c.ownerUid || (prev && prev.ownerUid) || me().id, start: c.start || null, end: c.end || null, budgetMinor: c.budgetMinor != null && c.budgetMinor !== "" ? Math.max(0, Math.round(+c.budgetMinor)) : null,
       channels: (c.channels || []).filter((x) => G().CHANNELS[x]), status: G().CAMP_STATUS[c.status] ? c.status : (prev && prev.status) || "draft", cta: String(c.cta || "").slice(0, 200), destination: String(c.destination || "").slice(0, 300),
@@ -68,7 +68,7 @@
   /* ---------------- Project Radar ---------------- */
   const accounts = async () => list("mkt/radar/a");
   async function saveAccount(a, { reason = "" } = {}) {
-    const id = a.id || rid("ra-"), path = `mkt/radar/a/${id}`, prev = await DS().tryGet(path), owner = prev && prev.ownerUid === me().id;
+    const id = a.id || rid("ra-"), path = `mkt/radar/a/${id}`, prev = await DS().get(path), owner = prev && prev.ownerUid === me().id;
     if (!isMkt() && !owner) throw new Error("Only Marketing, administrators or the account's owner can edit it.");
     if (!String(a.company != null ? a.company : (prev && prev.company) || "").trim()) throw new Error("Enter the company name.");
     for (const c of a.contacts || []) if ((c.phone || c.email) && !String(c.source || "").trim()) throw new Error(`Contact ${c.name || ""}: record where the phone / e-mail comes from — never enter invented details.`);
@@ -100,24 +100,16 @@
     return { added, skipped, rejected };
   }
   /** Hand a qualified Radar account to Sales: ONE lead in the existing Lead Mine (campaign source kept), no duplicates. */
-  async function toLeadMine(id, { campaignId = null } = {}) {
-    reqMkt(); const path = `mkt/radar/a/${id}`, a = await DS().get(path); if (!a) throw new Error("Account not found.");
-    if (a.leadId && (await DS().tryGet(`leads/${a.leadId}`))) return { leadId: a.leadId, existed: true };
-    const c0 = (a.contacts || [])[0] || {};
-    let leadId;
-    try { leadId = await root.DPLeads.createLead({ name: a.company, orgType: G().SEG_TO_ORG[a.segment] || "other", location: a.location || "", website: a.website || "", projects: [a.project, a.products].filter(Boolean).join(" — "), evidence: a.notes || "",
-      sources: (a.sources || []).filter((s) => s.url), contact: { name: c0.name || "", title: c0.role || "", phone: c0.phone || "", email: c0.email || "", source: c0.source || "", sub: "none" }, campaignId: campaignId || a.campaignId || null, radarId: id }); }
-    catch (e) { if (e.code === "duplicate" && e.leadId) leadId = e.leadId; else throw e; }
-    a.leadId = leadId; hist(a, "Sent to the Lead Mine", leadId); await DS().set(path, a);
-    const sales = a.ownerUid ? [a.ownerUid] : AU().A.directory.filter((r) => r.uid && r.active !== false && AU().baseOf(r.role) === "employee").map((r) => r.uid);
-    if (NT() && sales.length) await NT().deliver(sales, { id: `radar-lead-${id}`, type: "lead", title: "New qualified lead from Marketing", body: `${a.company}${a.project ? " — " + a.project : ""}`, link: { view: "leads" }, ref: leadId }).catch(() => {});
-    return { leadId, existed: false };
+  async function toLeadMine(id, { preview = false, expectedLeadId = null, expectedVersion = null } = {}) {
+    reqMkt();
+    if (!root.XFServer) throw new Error("Sales handoff requires the company server. Open the live X FORCE site.");
+    return root.XFServer.api("/api/growth/handoff", { method: "POST", body: JSON.stringify({ accountId: id, preview, expectedLeadId, expectedVersion }) });
   }
 
   /* ---------------- partnerships ---------------- */
   const partners = async () => list("mkt/part/p");
   async function savePartner(p) {
-    const id = p.id || rid("pa-"), path = `mkt/part/p/${id}`, prev = await DS().tryGet(path), owner = prev && prev.ownerUid === me().id;
+    const id = p.id || rid("pa-"), path = `mkt/part/p/${id}`, prev = await DS().get(path), owner = prev && prev.ownerUid === me().id;
     if (!isMkt() && !owner) throw new Error("Only Marketing, administrators or the relationship owner can edit it.");
     if (!String(p.name || "").trim()) throw new Error("Enter the partner's name.");
     for (const c of p.contacts || []) if ((c.phone || c.email) && !String(c.source || "").trim()) throw new Error(`Contact ${c.name || ""}: record where the details come from.`);
@@ -149,23 +141,32 @@
   async function logTouch(t) {
     const u = me(); if (!u.id || u.role === "viewer") throw new Error("View-only access cannot log interactions."); if (!G().TOUCH[t.kind]) throw new Error("Choose what happened.");
     if (!t.leadId && !t.accountId && !t.partnerId) throw new Error("Link the interaction to a lead, account or partner.");
-    const id = rid("tc-"), rec = { kind: t.kind, campaignId: t.campaignId || null, leadId: t.leadId || null, accountId: t.accountId || null, partnerId: t.partnerId || null, note: String(t.note || "").slice(0, 600), outcome: String(t.outcome || "").slice(0, 200), at: t.at || now(), by: u.id };
+    const id = rid("tc-");
+    if (root.XFServer) return root.XFServer.api("/api/growth/interaction", { method: "POST", body: JSON.stringify({ ...t, id }) });
+    if (t.nextAction || t.nextDue) throw new Error("Recording an interaction with a next action requires the company server.");
+    const rec = { kind: t.kind, campaignId: t.campaignId || null, leadId: t.leadId || null, accountId: t.accountId || null, partnerId: t.partnerId || null, note: String(t.note || "").slice(0, 600), outcome: String(t.outcome || "").slice(0, 200), at: t.at || now(), by: u.id };
     const r = await DS().create(`mkt/touch/t/${id}`, rec); if (!r.created) throw new Error("Not recorded — try again.");
-    if (t.accountId && t.nextAction) { await saveAccount({ id: t.accountId, nextAction: t.nextAction, nextDue: t.nextDue || null }).catch(() => {}); }
     return Object.assign({ id }, rec);
   }
 
   /* ---------------- everything the dashboard needs, honestly limited by what this person may read ---------------- */
   async function snapshot() {
-    const admin = isAdmin(), fin = AU().isFinance && AU().isFinance();
-    const [C, camps, accs, parts, tch, leads] = await Promise.all([cfg(true), campaigns(), accounts(), partners(), touches(), root.DPLeads.listLeads()]);
-    let subs = [], orders = [], spend = [], full = false;
-    if (admin || fin) { full = true;
-      [subs, orders] = await Promise.all([admin ? root.DPSales.allSubmissions() : Promise.resolve([]), root.DPSales.listOrders()]);
-      if (!admin) { full = false; }
-      const txs = root.DPFin ? await root.DPFin.txs() : [];
-      spend = txs.filter((t) => t.status === "verified" && (t.direction === "out" || (t.type === "reversal" && t.direction === "in")) && t.links && t.links.campaign).map((t) => ({ campaignId: t.links.campaign, amountMinor: t.direction === "in" ? -t.amountMinor : t.amountMinor, date: t.date, ref: t.ref })); }
-    return { cfg: C, campaigns: camps, accounts: accs, partners: parts, touches: tch, leads, subs, orders, spend, full };
+    const admin = isAdmin();
+    const [C, camps, accs, parts, tch, leads] = await Promise.all([cfg(true), campaigns(), accounts(), partners(), touches(), list("leads")]);
+    let subs = [], orders = [], spend = [], full = false, salesAvailable = false;
+    if (isMkt() && root.XFServer) {
+      ({ subs, orders, full, salesAvailable } = await root.XFServer.api("/api/growth/sales"));
+    } else if (admin) {
+      const owners = [...new Set(AU().A.directory.map(r => r.uid).concat(me().id).filter(Boolean))];
+      subs = (await Promise.all(owners.map(async owner => (await list(`submissions/${owner}/s`)).map(q => ({...q, ownerId: owner}))))).flat();
+      orders = await list("orders"); full = true; salesAvailable = true;
+    }
+    if (full) {
+      if (!root.DPFin) throw new Error("Finance data is unavailable. Reload X FORCE.");
+      const txs = (await DS().list("fin/tx/t")).map(x => x.data);
+      spend = txs.filter(t => t.status === "verified" && (t.direction === "out" || (t.type === "reversal" && t.direction === "in")) && t.links && t.links.campaign).map(t => ({ campaignId: t.links.campaign, amountMinor: t.direction === "in" ? -t.amountMinor : t.amountMinor, date: t.date, ref: t.ref }));
+    }
+    return { cfg: C, campaigns: camps, accounts: accs, partners: parts, touches: tch, leads, subs, orders, spend, full, salesAvailable };
   }
 
   root.DPMkt = { cfg, saveCfg, isMkt, campaigns, getCampaign, saveCampaign, saveContent, addAsset, asset, accounts, saveAccount, importAccounts, toLeadMine, partners, savePartner, addReferral, completeFollowUp, touches, logTouch, snapshot };
