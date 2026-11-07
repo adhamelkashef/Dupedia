@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import '../app/growth.js';
 const BASE=process.argv[2]||'http://localhost:8789';if(!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(BASE))throw Error('Local test server only');
-const G=globalThis.DPGrowth;let checks=0;
+const G=globalThis.DPGrowth;let checks=0;const accountId='test-'+Date.now().toString(36);
 async function call(path,body,cookie){const r=await fetch(BASE+path,{method:body?'POST':'GET',headers:{'content-type':'application/json','x-xf':'1',...(cookie?{cookie}:{})},body:body?JSON.stringify(body):undefined});return{status:r.status,j:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
 function ok(v,label){assert.ok(v,label);checks++;console.log('PASS '+label)}
 let a=await call('/api/setup',{code:'local-growth-fixture-only',username:'growth.owner',name:'Growth Local Owner',password:'Growth-Local-Owner-1'});
@@ -22,10 +22,10 @@ r=await set('mkt/camp/c/test',{...approved,budgetMinor:99900},staff);ok(r.j.erro
 r=await set('mkt/camp/c/test',{...approved,status:'live'},staff);ok(!r.j.error,'Worker accepts starting unchanged approved version');
 const content=G.prepareApproval(null,{id:'post',kind:'post',date:'2026-11-07',caption:'Approved copy',assets:[],status:'draft'},{kind:'content',admin:true,approve:true,by:uid,at:new Date().toISOString()});
 r=await set('mkt/camp/c/test',{...approved,content:[content]});ok(!r.j.error,'approved content saved');r=await set('mkt/camp/c/test',{...approved,content:[{...content,caption:'Changed copy'}]},staff);ok(r.j.error,'Worker rejects stale content approval');
-const account={company:'Local test school',segment:'school',ownerUid:sm.uid,nextAction:'Call',nextDue:'2026-11-07'};await set('mkt/radar/a/test',account);
+const account={company:'Local test school',segment:'school',ownerUid:sm.uid,nextAction:'Call',nextDue:'2026-11-07'};await set(`mkt/radar/a/${accountId}`,account);
 const completion={id:'local-completion',due:account.nextDue,action:account.nextAction,completedAt:new Date().toISOString(),completedBy:sm.uid,outcome:'Completed the call'};
-r=await set('mkt/radar/a/test',{...account,nextDue:null,nextAction:'',followUpCompletions:[completion]},staff);ok(!r.j.error,'Worker accepts explicit completion');
-r=await set('mkt/radar/a/test',{...account,followUpCompletions:[]},staff);ok(r.j.error,'Worker rejects rewriting completion history');
+r=await set(`mkt/radar/a/${accountId}`,{...account,nextDue:null,nextAction:'',followUpCompletions:[completion]},staff);ok(!r.j.error,'Worker accepts explicit completion');
+r=await set(`mkt/radar/a/${accountId}`,{...account,followUpCompletions:[]},staff);ok(r.j.error,'Worker rejects rewriting completion history');
 // Browser fixtures: two newly acquired leads; two quotes to only one lead (50% conversion).
 await set('mkt/camp/c/fixture',{...draft,name:'Local reporting fixture',source:'LOCAL-REPORT',status:'draft'});
 for(const id of ['a','b'])await set('leads/'+id,{name:'Local lead '+id,orgType:'school',location:'Cairo',createdAt:'2026-11-01T12:00:00Z',campaignId:'fixture',assignedTo:uid,qualification:{}});
