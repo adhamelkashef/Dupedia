@@ -64,58 +64,121 @@
 
   /* ---------------- attribution & dashboard ---------------- */
   const inRange = (d, from, to) => !!d && (!from || String(d).slice(0, 10) >= from) && (!to || String(d).slice(0, 10) <= to);
-  /**
-   * leads: [{id, campaignId, orgType, location, createdAt, qualification, ownerUid?}]
-   * subs:  [{pid, leadId, ownerId, status, issuedAt, at, base:{totalMinor}, oid}]   (quotations)
-   * orders:[{oid, totalMinor, status, bookedAt, ownerId, payments:[{status, amountMinor}]}]
-   * touches: [{campaignId, leadId, accountId, kind, at}]
-   * spend: [{campaignId, amountMinor, date}]  — verified ledger transactions only
-   */
-  function attribution({ campaigns = [], leads = [], subs = [], orders = [], touches = [], spend = [], cfg = null, from = null, to = null, scoreOf = null }) {
-    const C = cfgOf(cfg), ordersBy = Object.fromEntries(orders.map((o) => [o.oid, o])), byLead = {};
-    for (const s of subs) if (s.leadId) (byLead[s.leadId] = byLead[s.leadId] || []).push(s);
-    const leadById = Object.fromEntries(leads.map((l) => [l.id, l]));
-    const qualified = (l) => (scoreOf ? (scoreOf(l.qualification) || 0) >= C.qualifiedScore : false) || (byLead[l.id] || []).length > 0;
+  /* Shared, deterministic reporting. Dates are event dates in activity mode and
+     lead-acquisition dates in cohort mode. Both stop at the selected end date. */
+  const oidOf = (s) => s.oid || s.orderId;
+  const quoteDate = (s) => s.issuedAt || s.at;
+  const orderDate = (o) => o.acceptedAt || o.bookedAt || o.approvedAt;
+  const byEnd = (date, to) => !!date && (!to || String(date).slice(0, 10) <= to);
+  const isQuote = (s) => s.status !== 'draft' && !!quoteDate(s);
+  function unique(rows, key) {
+    const out = new Map();
+    for (const row of rows) { const k = key(row); if (!k) continue; const prev = out.get(k);
+      if (!prev || (+row.rev || 0) > (+prev.rev || 0) || ((+row.rev || 0) === (+prev.rev || 0) && String(row.updatedAt || row.at || '') > String(prev.updatedAt || prev.at || ''))) out.set(k, row);
+    } return [...out.values()];
+  }
+  function measure({ leads = [], subs = [], orders = [], from = null, to = null, mode = 'activity', cfg = null, scoreOf = null }) {
+    const C = cfgOf(cfg), all = leads.filter(l => byEnd(l.createdAt, to)), cohort = all.filter(l => inRange(l.createdAt, from, to));
+    const population = mode === 'cohort' ? cohort : all, ids = new Set(population.map(l => l.id)), cohortIds = new Set(cohort.map(l => l.id));
+    const qs = unique(subs.filter(s => ids.has(s.leadId) && isQuote(s) && byEnd(quoteDate(s), to)), s => `${s.ownerId || ''}/${s.pid || s.id || ''}`);
+    const qids = new Set(qs.map(oidOf).filter(Boolean));
+    const os = unique(orders.filter(o => o.status !== 'cancelled' && (ids.has(o.leadId) || qids.has(o.oid)) && byEnd(orderDate(o), to)), o => o.oid);
+    const shownQ = mode === 'cohort' ? qs : qs.filter(s => inRange(quoteDate(s), from, to));
+    const shownO = mode === 'cohort' ? os : os.filter(o => inRange(orderDate(o), from, to));
+    const quoted = new Set(qs.map(s => s.leadId)), cohortQ = qs.filter(s => cohortIds.has(s.leadId));
+    const wonIds = new Set(os.map(o => o.oid)), cohortWonQ = cohortQ.filter(s => wonIds.has(oidOf(s)) || os.some(o => o.pid === s.pid && (!o.ownerId || o.ownerId === s.ownerId)));
+    const outstanding = qs.filter(s => !qids.has(oidOf(s)) && !['rejected','withdrawn','lost','accepted','approved'].includes(s.status));
+    // A linked order closes its quotation even when the submission has no oid yet.
+    const open = outstanding.filter(s => !os.some(o => o.pid === s.pid && (!o.ownerId || o.ownerId === s.ownerId)));
+    const closeDays = shownO.map(o => {const l = population.find(l => l.id === o.leadId) || population.find(l => qs.some(q => q.leadId === l.id && oidOf(q) === o.oid)); return l ? days(String(l.createdAt).slice(0,10),String(orderDate(o)).slice(0,10)) : null;}).filter(n => n != null && n >= 0);
+    const cashOrders = mode === 'cohort' ? os : os;
+    const cash = cashOrders.reduce((sum,o) => sum + (o.payments || []).filter(p => p.status === 'verified' && (mode === 'cohort' ? byEnd(p.date || p.verifiedAt || p.at,to) : inRange(p.date || p.verifiedAt || p.at,from,to))).reduce((s,p) => s + (+p.amountMinor || 0),0),0);
+    return { leads: cohort.length, qualified: cohort.filter(l => (scoreOf ? (+scoreOf(l.qualification) || 0) >= C.qualifiedScore : l.qualification === 'qualified') || quoted.has(l.id)).length,
+      quotations: shownQ.length, quoteMinor: shownQ.reduce((s,q) => s + (+(q.base || {}).totalMinor || 0),0),
+      openMinor: open.reduce((s,q) => s + (+(q.base || {}).totalMinor || 0),0), contracts: shownO.length, contractMinor: shownO.reduce((s,o) => s + (+o.totalMinor || 0),0), cashMinor: cash,
+      oids: shownO.map(o => o.oid), cohortLeads: cohort.length, cohortQuotedLeads: cohort.filter(l => quoted.has(l.id)).length, cohortQuotations: cohortQ.length, cohortWonQuotations: cohortWonQ.length,
+      leadToQuote: cohort.length ? Math.round(cohort.filter(l => quoted.has(l.id)).length / cohort.length * 100) : null,
+      quoteToContract: cohortQ.length ? Math.round(cohortWonQ.length / cohortQ.length * 100) : null,
+      avgContractMinor: shownO.length ? Math.round(shownO.reduce((s,o) => s + (+o.totalMinor || 0),0)/shownO.length) : null,
+      avgCloseDays: closeDays.length ? Math.round(closeDays.reduce((s,n)=>s+n,0)/closeDays.length) : null };
+  }
+  function attribution({ campaigns = [], leads = [], subs = [], orders = [], touches = [], spend = [], cfg = null, from = null, to = null, mode = 'activity', scoreOf = null }) {
     const out = {};
     for (const c of campaigns) {
-      const sourced = leads.filter((l) => l.campaignId === c.id && inRange(l.createdAt, from, to));
-      const infIds = new Set(touches.filter((t) => t.campaignId === c.id && t.leadId && leadById[t.leadId] && leadById[t.leadId].campaignId !== c.id && inRange(t.at, from, to)).map((t) => t.leadId));
-      const tally = (ls) => { const qs = ls.flatMap((l) => byLead[l.id] || []).filter((s) => s.issuedAt || s.status !== "draft");
-        const won = qs.filter((s) => s.oid && ordersBy[s.oid] && ordersBy[s.oid].status !== "cancelled"), seen = new Set(), wonU = won.filter((s) => (seen.has(s.oid) ? false : seen.add(s.oid)));
-        const contract = wonU.reduce((a, s) => a + (+ordersBy[s.oid].totalMinor || 0), 0), cash = wonU.reduce((a, s) => a + (ordersBy[s.oid].payments || []).filter((p) => p.status === "verified").reduce((x, p) => x + (+p.amountMinor || 0), 0), 0);
-        const open = qs.filter((s) => !s.oid && !["rejected", "withdrawn", "lost"].includes(s.status));
-        return { leads: ls.length, qualified: ls.filter(qualified).length, quotations: qs.length, quoteMinor: qs.reduce((a, s) => a + (+(s.base && s.base.totalMinor) || 0), 0), openMinor: open.reduce((a, s) => a + (+(s.base && s.base.totalMinor) || 0), 0),
-          contracts: wonU.length, contractMinor: contract, cashMinor: cash, oids: wonU.map((s) => s.oid) }; };
-      const sp = spend.filter((x) => x.campaignId === c.id && inRange(x.date, from, to)).reduce((a, x) => a + (+x.amountMinor || 0), 0);
-      const S = tally(sourced), I = tally([...infIds].map((id) => leadById[id]));
-      out[c.id] = { id: c.id, name: c.name, sourced: S, influenced: I, spendMinor: sp, hasSpend: spend.some((x) => x.campaignId === c.id),
-        costPerQualified: sp && S.qualified ? Math.round(sp / S.qualified) : null, roas: sp && S.contractMinor ? Math.round((S.contractMinor / sp) * 100) / 100 : null,
-        touches: touches.filter((t) => t.campaignId === c.id && inRange(t.at, from, to)).length };
-    }
-    return out;
+      const sourced = leads.filter(l => l.campaignId === c.id), influencedIds = new Set(touches.filter(t => t.campaignId === c.id && t.leadId && byEnd(t.at,to)).map(t=>t.leadId));
+      const common = {subs,orders,cfg,from,to,mode,scoreOf};
+      const S = measure({...common,leads:sourced}), I = measure({...common,leads:leads.filter(l => l.campaignId !== c.id && influencedIds.has(l.id))});
+      const costs = spend.filter(x => x.campaignId === c.id && inRange(x.date,from,to)), sp = costs.reduce((s,x)=>s+(+x.amountMinor||0),0);
+      out[c.id] = {id:c.id,name:c.name,sourced:S,influenced:I,spendMinor:sp,hasSpend:costs.length>0,costPerQualified:sp>0&&S.qualified?Math.round(sp/S.qualified):null,
+        roas:mode==='activity'&&sp>0&&S.contractMinor?Math.round(S.contractMinor/sp*100)/100:null,touches:touches.filter(t=>t.campaignId===c.id&&inRange(t.at,from,to)).length};
+    } return out;
   }
-  /** Contracts with more than one campaign involved: the recorded interactions, not a single "cause". */
-  function multiTouch({ leads = [], subs = [], orders = [], touches = [] }) {
-    const out = []; const leadById = Object.fromEntries(leads.map((l) => [l.id, l]));
-    for (const o of orders.filter((x) => x.status !== "cancelled")) { const s = subs.find((x) => x.oid === o.oid); if (!s || !s.leadId) continue; const l = leadById[s.leadId] || {};
-      const camps = new Set([l.campaignId].concat(touches.filter((t) => t.leadId === s.leadId).map((t) => t.campaignId)).filter(Boolean));
-      if (camps.size > 1) out.push({ oid: o.oid, leadId: s.leadId, firstSource: l.campaignId || null, campaigns: [...camps], interactions: touches.filter((t) => t.leadId === s.leadId).length }); }
-    return out;
+  function funnel(input) {
+    const {leads = [], groupBy = l=>l.orgType||'other'} = input, groups = {};
+    for(const l of leads)(groups[groupBy(l)||'—'] ||= []).push(l);
+    const out={}; for(const [key,ls]of Object.entries(groups)){const m=measure({...input,leads:ls});if(m.leads||m.quotations||m.contracts||m.cashMinor)out[key]=m;}return out;
   }
-  /** Funnel and segment reports from the same records (measured values only). */
-  function funnel({ leads = [], subs = [], orders = [], from = null, to = null, cfg = null, scoreOf = null, groupBy = (l) => l.orgType || "other" }) {
-    const C = cfgOf(cfg), ordersBy = Object.fromEntries(orders.map((o) => [o.oid, o])), out = {};
-    for (const l of leads.filter((x) => inRange(x.createdAt, from, to))) {
-      const g = groupBy(l) || "—", x = (out[g] = out[g] || { leads: 0, qualified: 0, quotations: 0, quoteMinor: 0, contracts: 0, contractMinor: 0, closeDays: [] });
-      const qs = subs.filter((s) => s.leadId === l.id); x.leads++; if ((scoreOf ? (scoreOf(l.qualification) || 0) >= C.qualifiedScore : false) || qs.length) x.qualified++;
-      x.quotations += qs.length; x.quoteMinor += qs.reduce((a, s) => a + (+(s.base && s.base.totalMinor) || 0), 0);
-      for (const s of qs.filter((q) => q.oid && ordersBy[q.oid] && ordersBy[q.oid].status !== "cancelled")) { x.contracts++; x.contractMinor += +ordersBy[s.oid].totalMinor || 0; const b = ordersBy[s.oid].bookedAt || ordersBy[s.oid].acceptedAt; if (b && l.createdAt) x.closeDays.push(days(String(l.createdAt).slice(0, 10), String(b).slice(0, 10))); }
-    }
-    for (const x of Object.values(out)) { x.avgContractMinor = x.contracts ? Math.round(x.contractMinor / x.contracts) : null; x.avgCloseDays = x.closeDays.length ? Math.round(x.closeDays.reduce((a, b) => a + b, 0) / x.closeDays.length) : null; x.leadToQuote = x.leads ? Math.round((x.quotations ? Math.min(x.leads, x.quotations) : 0) / x.leads * 100) : null; x.quoteToContract = x.quotations ? Math.round(x.contracts / x.quotations * 100) : null; delete x.closeDays; }
-    return out;
+  function multiTouch({leads=[],subs=[],orders=[],touches=[],from=null,to=null,mode='activity'}) {
+    const chosen=measure({leads,subs,orders,from,to,mode}).oids, out=[];
+    for(const o of orders.filter(o=>chosen.includes(o.oid))){const q=subs.find(s=>oidOf(s)===o.oid),lid=o.leadId||(q&&q.leadId),l=leads.find(l=>l.id===lid)||{};
+      const ts=touches.filter(t=>t.leadId===lid&&byEnd(t.at,orderDate(o))),campaigns=[...new Set([l.campaignId,...ts.map(t=>t.campaignId)].filter(Boolean))];
+      if(campaigns.length>1)out.push({oid:o.oid,leadId:lid,firstSource:l.campaignId||null,campaigns,interactions:ts.length});}return out;
   }
+  function filterSnapshot(S,F={}) {
+    const camps=S.campaigns.filter(c=>(!F.camp||c.id===F.camp)&&(!F.channel||(c.channels||[]).includes(F.channel))&&(!F.seg||c.segment===F.seg||(c.segments||[]).includes(F.seg)));
+    const selected=!!(F.camp||F.channel),campIds=new Set(camps.map(c=>c.id)),loc=String(F.loc||'').toLowerCase();
+    const leadIdsForOwner=new Set(S.subs.filter(q=>q.ownerId===F.sp).map(q=>q.leadId));
+    const leads=S.leads.filter(l=>(!selected||campIds.has(l.campaignId)||S.touches.some(t=>t.leadId===l.id&&campIds.has(t.campaignId)&&byEnd(t.at,F.to)))&&(!F.seg||(ORG_TO_SEG[l.orgType]||'other')===F.seg)&&(!loc||String(l.location||'').toLowerCase().includes(loc))&&(!F.sp||l.ownerUid===F.sp||l.assignedTo===F.sp||leadIdsForOwner.has(l.id)));
+    const ids=new Set(leads.map(l=>l.id));
+    const subs=S.subs.filter(q=>ids.has(q.leadId)&&(!F.sp||q.ownerId===F.sp));
+    const orders=S.orders.filter(o=>(ids.has(o.leadId)||subs.some(q=>oidOf(q)===o.oid||q.pid===o.pid))&&(!F.sp||o.ownerId===F.sp));
+    const accounts=S.accounts.filter(a=>(!selected||campIds.has(a.campaignId)||ids.has(a.leadId))&&(!F.seg||a.segment===F.seg)&&(!loc||String(a.location||'').toLowerCase().includes(loc))&&(!F.sp||a.ownerUid===F.sp));
+    const restricted=selected||F.seg||loc||F.sp,partners=S.partners.filter(p=>!restricted||(p.referrals||[]).some(r=>ids.has(r.leadId)));
+    const aids=new Set(accounts.map(a=>a.id)),pids=new Set(partners.map(p=>p.id));
+    const touches=S.touches.filter(t=>(!selected||campIds.has(t.campaignId))&&(ids.has(t.leadId)||aids.has(t.accountId)||pids.has(t.partnerId))&&(!F.sp||ids.has(t.leadId)||accounts.some(a=>a.id===t.accountId&&a.ownerUid===F.sp)));
+    return {camps,leads,subs,orders,accounts,partners,touches,spend:S.spend.filter(x=>campIds.has(x.campaignId)),spendComparable:!F.sp&&!loc};
+  }
+  function followUpStats(accounts,{from=null,to=null,today=today0()}={}) {
+    const cutoff=to&&to<today?to:today,entries=[];
+    for(const a of accounts){const done=a.followUpCompletions||[],seen=new Set();
+      for(const x of done){const key=`${x.due}|${x.action}`;if(!seen.has(key)&&inRange(x.due,from,cutoff)){seen.add(key);entries.push({due:x.due,completed:byEnd(x.completedAt,to||today),onTime:String(x.completedAt||'').slice(0,10)<=x.due});}}
+      if(a.nextDue&&inRange(a.nextDue,from,cutoff)&&!seen.has(`${a.nextDue}|${a.nextAction||''}`))entries.push({due:a.nextDue,completed:false,onTime:false});
+    }return {due:entries.length,completed:entries.filter(x=>x.completed).length,onTime:entries.filter(x=>x.completed&&x.onTime).length};
+  }
+  const CAMP_APPROVAL_FIELDS=['name','objective','segment','segments','products','ownerUid','start','end','budgetMinor','channels','cta','destination','location','source'];
+  const CONTENT_APPROVAL_FIELDS=['kind','channel','date','title','caption','brief','cta','destination','assets'];
+  const APPROVAL_FIELDS=['approvedBy','approvedAt','approvalFingerprint'];
+  const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x??null;
+  const fingerprint=(r,kind='campaign')=>JSON.stringify((kind==='content'?CONTENT_APPROVAL_FIELDS:CAMP_APPROVAL_FIELDS).map(k=>stable(r&&r[k])));
+  const hasApproval=(r,kind='campaign')=>!!(r&&r.approvedBy&&r.approvedAt&&r.approvalFingerprint===fingerprint(r,kind));
+  function clearApproval(r){for(const k of APPROVAL_FIELDS)delete r[k];return r;}
+  function prepareApproval(old,next,{kind='campaign',admin=false,approve=false,by,at}={}){
+    const approved=kind==='campaign'?['approved','live']:['approved','published'],changed=old&&fingerprint(old,kind)!==fingerprint(next,kind);
+    if(changed&&APPROVAL_FIELDS.some(k=>old[k])){clearApproval(next);if(approved.includes(next.status))next.status=kind==='campaign'?'awaiting':'review';}
+    if(admin&&(approve||(next.status==='approved'&&(!old||old.status!=='approved')))){next.status='approved';next.approvedBy=by;next.approvedAt=at;next.approvalFingerprint=fingerprint(next,kind);}
+    if(approved.includes(next.status)&&!hasApproval(next,kind))throw new Error('Approve this version before it runs or is published.');
+    return next;
+  }
+  function approvalGuard(old,next,{admin=false,uid}={}){
+    const check=(a,b,kind)=>{
+      const fieldsChanged=APPROVAL_FIELDS.some(k=>(a&&a[k]||null)!==(b[k]||null));
+      if(fieldsChanged&&APPROVAL_FIELDS.some(k=>b[k])&&(!admin||b.approvedBy!==uid))return 'Only an administrator can approve a specific version.';
+      const states=kind==='campaign'?['approved','live']:['approved','published'];
+      if(states.includes(b.status)){
+        if(!hasApproval(b,kind))return 'The current version needs administrator approval.';
+        if(!admin&&(!hasApproval(a,kind)||a.approvalFingerprint!==b.approvalFingerprint))return 'An administrator must approve this version first.';
+        if(a&&fingerprint(a,kind)!==fingerprint(b,kind)&&b.approvedAt===a.approvedAt)return 'Changed material needs a new approval.';
+      }
+      return null;
+    };
+    let err=check(old,next,'campaign');if(err)return err;
+    const prior=new Map(((old&&old.content)||[]).map(c=>[c.id,c]));
+    for(const c of next.content||[]){err=check(prior.get(c.id),c,'content');if(err)return err;}
+    return null;
+  }
+
   /** Stalled quotations: issued, not decided, no update for N days. */
-  const stalled = (subs, n = 21, today = today0()) => subs.filter((s) => !s.oid && ["submitted", "issued"].includes(s.status || "submitted") && (s.issuedAt || s.at) && days(String(s.updatedAt || s.issuedAt || s.at).slice(0, 10), today) > n);
+  const stalled = (subs, n = 21, today = today0()) => subs.filter((s) => !oidOf(s) && ["submitted", "issued"].includes(s.status || "submitted") && (s.issuedAt || s.at) && days(String(s.updatedAt || s.issuedAt || s.at).slice(0, 10), today) > n);
 
   /* ---------------- draft copy from real catalogue data ---------------- */
   function suggest(kind, { campaign = {}, products = [], company = "Dupedia", segment = null } = {}) {
@@ -136,5 +199,5 @@
   /** Simple campaign source code used in links and lead records: CMP-YYMM-XXX. */
   const sourceCode = (name, d = new Date()) => `CMP-${d.toISOString().slice(2, 4)}${d.toISOString().slice(5, 7)}-${(String(name || "X").replace(/[^A-Za-z]/g, "").toUpperCase() + "XXX").slice(0, 3)}${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
 
-  root.DPGrowth = { SEGMENTS, ORG_TO_SEG, SEG_TO_ORG, CHANNELS, CAMP_STATUS, CONTENT_KINDS, CONTENT_STATUS, STAGES, PART_TYPES, PART_STATUS, TOUCH, DEFAULT_CFG, cfgOf, scoreAccount, attribution, multiTouch, funnel, stalled, suggest, sourceCode, inRange };
-})(typeof self !== "undefined" ? self : this);
+  root.DPGrowth = { SEGMENTS, ORG_TO_SEG, SEG_TO_ORG, CHANNELS, CAMP_STATUS, CONTENT_KINDS, CONTENT_STATUS, STAGES, PART_TYPES, PART_STATUS, TOUCH, DEFAULT_CFG, cfgOf, scoreAccount, measure, filterSnapshot, followUpStats, fingerprint, hasApproval, prepareApproval, approvalGuard, clearApproval, attribution, multiTouch, funnel, stalled, suggest, sourceCode, inRange };
+})(typeof self !== "undefined" ? self : globalThis);
