@@ -288,7 +288,7 @@
         lm.disabled = true;
         try {
           const preview = await M().toLeadMine(id, { preview: true });
-          const message = preview.existed ? `A matching lead already exists: ${preview.leadName}. It will be linked to this account. Its original first source is preserved; this campaign is recorded as a later interaction. Sales owner: ${nm(preview.ownerUid)}.` : `A new qualified lead will be assigned to ${nm(preview.ownerUid)}, with this account's campaign as its first source.`;
+          const message = preview.existed ? `A matching lead already exists: ${preview.leadName}. It will be linked to this account. Its original first source is preserved; this campaign is recorded as a later interaction. Sales owner: ${preview.ownerName || nm(preview.ownerUid)}.` : `A new qualified lead will be assigned to ${preview.ownerName || nm(preview.ownerUid)}, with this account's campaign as its first source.`;
           if (!(await U.ask("Review Sales handoff", esc(message), [{label:"Cancel",value:false,cls:"ghost"},{label:preview.existed?"Link existing lead":"Assign to Sales",value:true}]))) return;
           const r = await M().toLeadMine(id, { expectedLeadId: preview.leadId, expectedVersion: preview.accountVersion });
           U.closeModal(); U.toast(r.alreadyLinked ? "Sales handoff already complete." : r.existed ? "Existing lead linked; first source preserved and Sales ownership confirmed." : "Lead created and assigned to Sales."); renderRadar();
@@ -312,7 +312,7 @@
     const f = await U.form(`Log interaction — ${link.label || ""}`, [{ id: "kind", label: "What happened", type: "select", value: "meeting", options: Object.entries(G().TOUCH).map(([k, l]) => ({ value: k, label: l })) }, { id: "at", label: "When", type: "date", value: today() },
       { id: "camp", label: "Campaign involved (if any)", type: "select", value: link.campaignId || "", options: [{ value: "", label: "— none —" }].concat(camps.map((c) => ({ value: c.id, label: c.name }))) }, { id: "note", label: "Notes", type: "textarea" }, { id: "outcome", label: "Outcome" }, { id: "na", label: "Next action (optional)" }, { id: "nd", label: "Next action due", type: "date" }], { submit: "Record" });
     if (!f) return;
-    try { await M().logTouch({ kind: f.kind, at: new Date(f.at + "T12:00:00").toISOString(), campaignId: f.camp || null, leadId: link.leadId || null, accountId: link.accountId || null, partnerId: link.partnerId || null, note: f.note, outcome: f.outcome, nextAction: f.na, nextDue: f.nd || null }); U.toast("Recorded."); done && done(); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); }
+    try { await M().logTouch({ kind: f.kind, at: f.at === today() ? new Date().toISOString() : new Date(f.at + "T12:00:00").toISOString(), campaignId: f.camp || null, leadId: link.leadId || null, accountId: link.accountId || null, partnerId: link.partnerId || null, note: f.note, outcome: f.outcome, nextAction: f.na, nextDue: f.nd || null }); U.toast("Recorded."); done && done(); } catch (e) { U.toast(e.message, { err: true, ms: 7000 }); }
   }
   /** Import researched accounts from CSV / Excel with fixed column names (company, project, segment, location, website, source, verified, stage, procurement, products, notes). */
   function importDialog() {
