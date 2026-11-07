@@ -21,6 +21,7 @@ import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic
 import { usageSummary } from "./usage.js";
 import { readiness } from "./readiness.js";
 import { queueLeads, engineStep, engineTick } from "./enrich.js";
+import { scheduleTick } from "./schedule.js";
 import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
@@ -929,6 +930,7 @@ export default {
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sweep(env).then((r) => console.log("sweep:", JSON.stringify(r))).catch((e) => console.error("sweep failed:", e && (e.stack || e)))
+      .then(() => scheduleTick(env)).then((r) => console.log("mi-schedule:", JSON.stringify(r))).catch((e) => console.error("mi-schedule failed:", e && (e.stack || e)))
       .then(() => researchTick(env)).then((r) => console.log("research:", JSON.stringify(r).slice(0, 500))).catch((e) => console.error("research tick failed:", e && (e.stack || e)))
       .then(() => engineTick(env)).then((r) => console.log("mi-engine:", JSON.stringify(r).slice(0, 300))).catch((e) => console.error("mi-engine tick failed:", e && (e.stack || e))));
   },

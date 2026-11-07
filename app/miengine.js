@@ -23,7 +23,23 @@
     notsold: { label: "Not sold", effect: "Excluded, with the reason recorded." },
     unset: { label: "Not confirmed", effect: "Counts as no product fit until an administrator decides." },
   };
-  const DEFAULT_CFG = { version: 0, capability: {}, personalMin: 20, enrichPerDay: 8, stepsPerRun: 2, updatedAt: null, updatedBy: null };
+  /* Research schedule (UTC hour of the hourly :28 run; days 0 = Sunday). 06 UTC = 08:00 Cairo in winter, 09:00 in summer. Egypt works Sunday to Thursday. */
+  const SCHEDULE_JOBS = [["fx", "Currency Update", 3], ["news", "Market News Monitor", 4], ["opportunities", "Daily Opportunity Discovery", 5], ["materials", "Material-Price Update", 6], ["weekly", "Weekly Market Position Report", 4]];
+  const DEFAULT_SCHEDULE = { fx: { on: true, hour: 6, days: [0, 1, 2, 3, 4] }, news: { on: true, hour: 6, days: [0, 2, 4] }, opportunities: { on: true, hour: 7, days: [1, 3] }, materials: { on: true, hour: 7, days: [0] }, weekly: { on: true, hour: 8, days: [4] } };
+  const DEFAULT_CFG = { version: 0, capability: {}, personalMin: 20, enrichPerDay: 5, stepsPerRun: 2, autoAdd: true, people: true, schedule: DEFAULT_SCHEDULE, updatedAt: null, updatedBy: null };
+  function scheduleOf(s) {
+    const out = {};
+    for (const [k] of SCHEDULE_JOBS) {
+      const d = DEFAULT_SCHEDULE[k], v = (s && s[k]) || {};
+      const days = Array.isArray(v.days) ? [...new Set(v.days.map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort() : d.days;
+      out[k] = { on: v.on === undefined ? d.on : !!v.on, hour: intIn(v.hour, d.hour, 0, 23), days };
+    }
+    return out;
+  }
+  /** The cron text the existing Automation Health screen reads (mi/schedule), so it shows the schedule and the next run. */
+  const cronOf = (j) => `28 ${j.hour} * * ${j.days.length ? j.days.join(",") : "*"}`;
+  /** Search credits a month for a schedule (about 4.3 weeks; planning figure from each job's usual searches). */
+  const scheduleCredits = (s) => SCHEDULE_JOBS.reduce((a, [k, , c]) => a + (s[k].on ? Math.round(s[k].days.length * 4.3 * c) : 0), 0);
   const intIn = (v, d, lo, hi) => { const x = parseInt(v, 10); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
   /** A stored settings document (or nothing) with every default filled in. Unknown statuses count as "Not confirmed". */
   function cfgOf(doc) {
@@ -33,6 +49,8 @@
     d.personalMin = intIn(d.personalMin, DEFAULT_CFG.personalMin, 1, 1000);
     d.enrichPerDay = intIn(d.enrichPerDay, DEFAULT_CFG.enrichPerDay, 0, 50);   // leads researched per day (about 2 search credits each)
     d.stepsPerRun = intIn(d.stepsPerRun, DEFAULT_CFG.stepsPerRun, 1, 10);       // research steps per hourly run (Workers Free: keep small)
+    d.autoAdd = d.autoAdd !== false; d.people = d.people !== false;             // owner's request 7 Nov 2026: fill in website and e-mail; look for people on LinkedIn
+    d.schedule = scheduleOf(d.schedule);
     return d;
   }
 
@@ -161,7 +179,7 @@
   const near = (text, i, len) => text.slice(Math.max(0, i - 70), i + len + 70).replace(/\s+/g, " ").trim();
   const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
   // Egyptian numbers only, written with their leading 0 or +20: mobile 01x + 8 digits, Cairo 02 + 8, Alexandria 03 + 7
-  const PHONE = /(?<![\d+])(?:(?:\+|00)20[\s.-]?\(?0?|\(?0)(?:1[0125]\)?(?:[\s.-]?\d){8}|2\)?(?:[\s.-]?\d){8}|3\)?(?:[\s.-]?\d){7})(?!\d)/g;
+  const PHONE = /(?<![\d+])(?:(?:\+|00)20[\s.-]?\(?0?|\(\+2\)\s?0|\(?0)(?:1[0125]\)?(?:[\s.-]?\d){8}|2\)?(?:[\s.-]?\d){8}|3\)?(?:[\s.-]?\d){7})(?!\d)/g;   // also "(+2)02 …" as SODIC writes it
   const HOTLINE = /(?:hotline|call us|الخط الساخن|خط ساخن)[^0-9]{0,20}(1\d{4})(?!\d)/gi;   // pages often put the number on the next line
   /** Published e-mail addresses and phone numbers found on one page, each with the exact sentence around it. No names of people. */
   function contactRoutes(text, url, officialHost) {
@@ -172,17 +190,52 @@
       seen.add(v); const own = !!officialHost && (dom === officialHost || dom.endsWith("." + officialHost) || officialHost.endsWith("." + dom));
       out.push({ kind: "email", value: v, own, sourceUrl: url, quote: near(raw, m.index, m[0].length) });
     }
-    const phone = (shown, i, len) => { const d = shown.replace(/\D/g, ""), k = d.replace(/^(00)?20/, "0").replace(/^(?=[123]\d{7,9}$)/, "0"); if (k.length < 5 || seen.has(k)) return; seen.add(k); out.push({ kind: "phone", value: shown.trim(), key: k, sourceUrl: url, quote: near(raw, i, len) }); };
+    const phone = (shown, i, len) => { const d = shown.replace(/\D/g, "").replace(/^20(?=0)/, ""), k = d.replace(/^(00)?20/, "0").replace(/^(?=[123]\d{7,9}$)/, "0"); if (k.length < 5 || seen.has(k)) return; seen.add(k); out.push({ kind: "phone", value: shown.trim(), key: k, sourceUrl: url, quote: near(raw, i, len) }); };
     for (const m of t.matchAll(PHONE)) { const d = m[0].replace(/\D/g, ""); if (d.length >= 9) phone(m[0], m.index, m[0].length); }
     for (const m of t.matchAll(HOTLINE)) phone(m[1], m.index + m[0].lastIndexOf(m[1]), m[1].length);
     return out.slice(0, 12);
   }
+  /** The Lead Mine's own rule for a phone field (app/leadops.js saveContact): a 5-digit hotline does not fit, so it is kept as a note. */
+  const fitsPhoneField = (v) => /^[+()0-9\s-]{6,24}$/.test(String(v || "")) && String(v).replace(/\D/g, "").length >= 7;
   /** True when the quoted sentence really appears in the source text (spacing, case and Arabic letter forms ignored). */
   function quoteFound(quote, text) {
     const q = fold(quote).replace(/["'“”‘’«»]/g, "").replace(/\s+/g, " ").trim();
     return q.length >= 12 && fold(text).replace(/["'“”‘’«»]/g, "").replace(/\s+/g, " ").includes(q);
   }
 
-  const api = { CATEGORIES, STATUSES, DEFAULT_CFG, cfgOf, fold, normName, hasWord, aliasIndex, canon, verdicts, rankLead, newestDate, hostOf, officialSite, contactRoutes, quoteFound };
+  /* ---------------- LinkedIn, from public search results only (X FORCE never opens LinkedIn pages) ---------------- */
+  const DEFAULT_TITLES = ["procurement", "projects", "landscape", "general manager", "facility", "development"];
+  /** Words for the people search: the job titles recorded on the lead, else the usual buyers of play areas. */
+  function peopleTitles(lead) {
+    const own = String((lead && lead.titles) || "").split(/[;,/]/).map((x) => x.replace(/\(.*?\)/g, "").trim().toLowerCase()).filter((x) => x.length >= 4 && x.length <= 40);
+    return (own.length ? own : DEFAULT_TITLES).slice(0, 4);
+  }
+  const GENERIC = new Set(["egypt", "misr", "developers", "developer", "development", "holding", "holdings", "properties", "property", "real", "estate", "international", "hotels", "hotel", "resorts", "schools", "school", "education", "construction", "contracting", "engineering", "investment", "investments", "urban", "city", "مصر", "عقاريه", "للاستثمار"]);
+  /** Every distinctive word of the organisation's name appears as a whole word in the text ("ORA" is not found in "corporate"). */
+  function orgMatches(text, orgName) {
+    const t = new Set(normName(text).split(" ")), all = normName(orgName).split(" ").filter((w) => w.length >= 3), key = all.filter((w) => !GENERIC.has(w));
+    const need = key.length ? key : all; return need.length > 0 && need.every((w) => t.has(w));
+  }
+  /** A sign the person works in Egypt: an Egyptian LinkedIn address, or Egypt, Cairo or an Egyptian area in their result. */
+  const inEgypt = (u, text) => /^https:\/\/eg\.linkedin\.com\//i.test(u) || [].concat(GEO.egypt, GEO.target).some((a) => hasWord(fold(text), a));
+  /** People and the company page among LinkedIn search results, kept only when the result names this organisation. People must
+   *  also show an Egyptian link: "Mountain View" is also a city in California, whose staff appeared in a real test. */
+  function linkedinFrom(results, orgName) {
+    const people = [], seen = new Set(); let company = null;
+    for (const r of results || []) {
+      const u = String(r.url || ""), title = String(r.title || "").replace(/[‎‏]/g, "").replace(/\s*[|·]\s*LinkedIn.*$/i, "").trim(), text = `${title} ${r.content || ""}`;
+      if (!/^https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\//i.test(u) || !orgMatches(text, orgName)) continue;
+      if (/linkedin\.com\/company\//i.test(u)) { if (!company) company = { url: u.split("?")[0], title: title.slice(0, 160) }; continue; }
+      if (!/linkedin\.com\/in\//i.test(u) || !inEgypt(u, text)) continue;
+      const parts = title.split(/\s+[-–|]\s+/), name = (parts[0] || "").trim();
+      if (!name || name.length > 60 || /linkedin/i.test(name) || seen.has(u)) continue; seen.add(u);
+      const clean = (s) => String(s || "").replace(/&amp;/g, "&").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/[#*]+/g, " ").replace(/[‎‏]/g, "").replace(/\s+/g, " ").trim();
+      people.push({ name: clean(name), headline: clean(parts.slice(1).join(" · ")).slice(0, 160), url: u.split("?")[0], snippet: clean(r.content).slice(0, 220) });
+      if (people.length >= 6) break;
+    }
+    return { people, company };
+  }
+
+  const api = { CATEGORIES, STATUSES, DEFAULT_CFG, SCHEDULE_JOBS, DEFAULT_SCHEDULE, scheduleOf, cronOf, scheduleCredits, cfgOf, fold, normName, hasWord, aliasIndex, canon, verdicts, rankLead, newestDate, hostOf, officialSite, contactRoutes, quoteFound, fitsPhoneField, peopleTitles, linkedinFrom };
   root.DPMiEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : self);
