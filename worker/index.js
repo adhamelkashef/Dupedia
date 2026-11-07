@@ -16,6 +16,7 @@ import "../app/fab.js";
 import "../app/holidays.js";
 import "../app/jobs13.js";
 import "../app/growth.js";
+import { growthSales, growthHandoff, growthInteraction } from "./growth.js";
 import { computeSweep } from "./sweep.js";
 import { researchConfig, runRequestJob, researchTick, missingMessage, secretCheck } from "./research.js";
 import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
@@ -802,6 +803,10 @@ async function route(req, env, ctx) {
   // 1.4.5 — a temporary password only lets you choose your own: nothing else answers until it is changed
   if (acc.must_change && !["/api/me", "/api/password", "/api/logout"].includes(p)) return json(403, { error: "must_change", message: "Choose a new password first." });
   const admin = isAdminAcc(acc);
+  const growthAuth = { isAdmin: isAdminAcc, role: staffRoleBase };
+  if (p === "/api/growth/sales" && M === "GET") return json(200, await growthSales(env, acc, growthAuth));
+  if (p === "/api/growth/handoff" && M === "POST") return json(200, await growthHandoff(env, acc, await body(req), growthAuth));
+  if (p === "/api/growth/interaction" && M === "POST") return json(200, await growthInteraction(env, acc, await body(req), growthAuth));
   if (p === "/api/me") return json(200, { uid: acc.uid, name: acc.name, username: acc.username, level: levelOf(acc), owner: !!acc.owner, mustChange: !!acc.must_change });
   if (p === "/api/logout" && M === "POST") { const t = cookies(req).xf_s; if (t) await env.DB.prepare("DELETE FROM sessions WHERE th = ?").bind(await sha256(t)).run(); return json(200, { ok: true }, { "Set-Cookie": cookie(req, "", 0) }); }
   if (p === "/api/changes" && M === "GET") return json(200, await changes(env, acc, new URL(req.url).searchParams.get("since")));
