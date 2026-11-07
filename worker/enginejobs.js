@@ -23,10 +23,10 @@ const save = (env, id, d) => env.DB.prepare("UPDATE docs SET data = ?, v = v + 1
 const read = async (env, id) => { const r = await env.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(pathOf(id)).first(); return r ? JSON.parse(r.data) : null; };
 
 /** Adds a job unless one with this key exists. Returns {id, created}. */
-export async function addJob(env, { key, kind, input = null, maxTries = 3 }, t = Date.now()) {
+export async function addJob(env, { key, kind, input = null, maxTries = 3, stage = null }, t = Date.now()) {
   if (!key || !kind) throw new Error("A job needs a key and a kind.");
   const id = await jobId(key);
-  const d = { id, key: clip(key, 300), kind: clip(kind, 40), input, status: "queued", tries: 0, maxTries, createdAt: nowIso(t), nextAt: nowIso(t), startedAt: null, finishedAt: null, result: null, error: null, log: [] };
+  const d = { id, key: clip(key, 300), kind: clip(kind, 40), input, stage, status: "queued", tries: 0, maxTries, createdAt: nowIso(t), nextAt: nowIso(t), startedAt: null, finishedAt: null, result: null, error: null, log: [] };
   const r = await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING RETURNING v").bind(pathOf(id), PARENT, JSON.stringify(d), nowIso()).first();
   return { id, created: !!r };
 }
@@ -63,6 +63,7 @@ export async function endJob(env, id, holder, outcome, t = Date.now()) {
   const d = await read(env, id); if (!d) return null;
   const entry = { at: nowIso(t), outcome: outcome.status };
   if (outcome.status === "done") Object.assign(d, { status: "done", result: outcome.result == null ? null : outcome.result, error: null, finishedAt: nowIso(t) });
+  else if (outcome.status === "next") { Object.assign(d, { status: "queued", stage: outcome.stage, tries: 0, error: null, nextAt: nowIso(t) }); entry.stage = outcome.stage; }   // a step finished; the next one starts with fresh tries
   else if (outcome.status === "wait") { Object.assign(d, { status: "waiting", tries: Math.max(0, d.tries - 1), error: clip(outcome.reason, 300), nextAt: nowIso(outcome.untilMs || t + BACKOFF_MS) }); entry.reason = d.error; }
   else {
     const reason = clip(outcome.reason || "Unknown failure", 300), out = d.tries >= d.maxTries; entry.reason = reason;

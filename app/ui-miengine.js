@@ -4,8 +4,8 @@
 (function (root) {
   "use strict";
   const U = DPUI, { $, $$, esc, App } = U, E = DPMiEngine;
-  const S = { tab: "ready", counts: null };
-  const TABS = [["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"]];
+  const S = { tab: "leads", counts: null, lf: "todo", lp: 0 };
+  const TABS = [["leads", "Existing leads"], ["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"]];
   const STATE = { ready: ["Ready", "ok"], partial: ["Partly", "warn"], none: ["Not yet", "err"] };
   const num = (x) => (Number(x) || 0).toLocaleString("en-US");
   const dt = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -42,8 +42,80 @@
     $("#me-sw").onclick = async () => { const f = await U.form(on ? "Switch the engine off" : "Switch the engine on", [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: on ? "Switch off" : "Switch on", intro: "Applies from the next research run. Saved records are not changed." }); if (!f) return; try { await setSwitch(!on, f.r); U.toast(on ? "Engine switched off." : "Engine switched on."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
     $$("[data-mt]", V).forEach((b) => (b.onclick = () => { S.tab = b.dataset.mt; render(); }));
     const B = $("#me-body");
-    try { await ({ ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab })[S.tab](B); }
+    try { await ({ leads: leadsTab, ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab })[S.tab](B); }
     catch (e) { B.innerHTML = `<div class="note err">Could not load (${esc(e.message || e.code)}).</div>`; }
+  }
+
+  /* ---------------- Phase 2a: existing leads ---------------- */
+  const RS = { queued: ["Queued", ""], running: ["Researching", "info"], waiting: ["Waiting", "warn"], review: ["Results to review", "ok"], nothing: ["Nothing found", ""], failed: ["Failed", "err"], done: ["Reviewed", "ok"] };
+  const LF = [["todo", "Not researched"], ["review", "Results to review"], ["active", "In progress"], ["done", "Reviewed"], ["all", "All"]];
+  async function leadsTab(B) {
+    const on = !!App.config.settings.miEngine, cfg = await loadCfg();
+    const [leads, enr] = await Promise.all([DPLeads.listLeads(), DPStore.tryList("mix/enrich/e")]);
+    const E2 = Object.fromEntries(enr.map((x) => [x.id, x.data])), now = Date.now();
+    const rows = leads.filter((l) => !["archived", "merged", "inactive"].includes(l.status)).map((l) => Object.assign({ l, e: E2[l.id] || null }, E.rankLead(l, now))).sort((a, b) => b.score - a.score);
+    rows.forEach((r, i) => (r.rank = i + 1));
+    const st = (r) => (r.e ? r.e.status : "todo"), pick = { todo: (r) => !r.e, review: (r) => st(r) === "review", active: (r) => ["queued", "running", "waiting", "failed"].includes(st(r)), done: (r) => ["done", "nothing"].includes(st(r)), all: () => true }[S.lf];
+    const vis = rows.filter(pick), page = vis.slice(S.lp * 50, S.lp * 50 + 50), cnt = (k) => rows.filter({ todo: (r) => !r.e, review: (r) => st(r) === "review", active: (r) => ["queued", "running", "waiting", "failed"].includes(st(r)), done: (r) => ["done", "nothing"].includes(st(r)), all: () => true }[k]).length;
+    B.innerHTML = `<div class="stack">${on ? "" : `<div class="note warn small">The engine is off. Ranking works, but research starts only when it is on.</div>`}
+      <div class="card stack"><div class="row between"><div><h3>${rows.length} open leads, ranked</h3><p class="small muted">Best first for research: product fit, evidence, earlier qualification, location, ways to reach, and how recent the evidence is. A ranking, not a probability. Research finds the official website, published business phone numbers and e-mails, and current projects, each with its source. Up to ${cfg.enrichPerDay} leads a day, about 2 search credits each. Nothing is added to a lead until you approve it.</p></div>
+        <div class="row"><button class="btn ghost sm" id="le-step"${on ? "" : " disabled"}>Run the next steps now</button><button class="btn lime sm" id="le-top"${on ? "" : " disabled"}>Research the top 10 not yet researched</button></div></div>
+      <div class="chips">${LF.map(([k, l]) => `<button type="button" class="chip${S.lf === k ? " is-on" : ""}" data-lf="${k}">${esc(l)}<em> ${cnt(k)}</em></button>`).join("")}</div>
+      ${page.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th class="r">#</th><th class="r">Score</th><th>Lead</th><th>Why</th><th>Missing</th><th>Research</th><th></th></tr></thead><tbody>${page.map((r) => { const top = r.parts.slice().sort((a, b) => b.pts / b.max - a.pts / a.max).slice(0, 2), s = r.e ? RS[r.e.status] || [r.e.status, ""] : null;
+        return `<tr><td class="r num tiny muted">${r.rank}</td><td class="r num"><b>${r.score}</b></td><td class="small"><b>${esc(r.l.name || "—")}</b><div class="tiny muted">${esc([DPLeads.ORG_TYPES[r.l.orgType] || r.l.orgType, r.l.location].filter(Boolean).join(" · "))}</div></td>
+          <td class="tiny">${top.map((p) => esc(`${p.label}: ${p.why}`)).join("<br>")}</td><td class="tiny muted">${esc(r.missing.join(", ") || "—")}<div>${esc(r.next)}</div></td>
+          <td>${s ? `<span class="pill ${s[1]}">${esc(s[0])}</span>${r.e.error ? `<div class="tiny muted">${esc(r.e.error)}</div>` : ""}` : `<span class="tiny muted">Not yet</span>`}</td>
+          <td class="r">${r.e && ["review", "done", "nothing", "failed"].includes(r.e.status) ? `<button class="btn ghost xs" data-lr="${esc(r.l.id)}">Results</button>` : !r.e ? `<label class="check tiny"><input type="checkbox" data-lq="${esc(r.l.id)}"${on ? "" : " disabled"}> pick</label>` : ""}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="small muted">Nothing in this view.</p>`}
+      <div class="row between"><span class="tiny muted">${vis.length ? `${S.lp * 50 + 1}–${Math.min(vis.length, S.lp * 50 + 50)} of ${vis.length}` : ""}</span><div class="row">${S.lp ? `<button class="btn ghost xs" id="le-prev">Previous</button>` : ""}${vis.length > (S.lp + 1) * 50 ? `<button class="btn ghost xs" id="le-next">Next</button>` : ""}<button class="btn ghost sm" id="le-pick"${on ? "" : " disabled"}>Research the picked leads</button></div></div></div>
+      <div class="card stack"><h3>Research limits</h3><div class="row"><label class="field"><span>Leads researched per day</span><input class="in sm num" id="le-pd" type="number" min="0" max="50" value="${cfg.enrichPerDay}"></label><label class="field"><span>Steps per hourly run</span><input class="in sm num" id="le-sr" type="number" min="1" max="10" value="${cfg.stepsPerRun}"></label><button class="btn ghost sm" id="le-save">Save…</button></div>
+        <p class="tiny muted">Each lead takes up to three steps. Cloudflare's free plan allows little processing per run, so keep steps per run small; "Run the next steps now" moves research along while this page is open.</p></div></div>`;
+    $$("[data-lf]", B).forEach((b) => (b.onclick = () => { S.lf = b.dataset.lf; S.lp = 0; render(); }));
+    const pg = (d) => () => { S.lp += d; render(); }; if ($("#le-prev")) $("#le-prev").onclick = pg(-1); if ($("#le-next")) $("#le-next").onclick = pg(1);
+    const queue = async (ids) => { if (!ids.length) return U.toast("Pick at least one lead.", { err: true }); try { const r = await root.XFServer.miQueue(ids); U.toast(`${r.queued.length} queued${r.already.length ? `, ${r.already.length} already researched this month` : ""}.`); render(); } catch (e) { U.toast(e.message, { err: true }); } };
+    $("#le-top").onclick = () => queue(rows.filter((r) => !r.e).slice(0, 10).map((r) => r.l.id));
+    $("#le-pick").onclick = () => queue($$("[data-lq]", B).filter((c) => c.checked).map((c) => c.dataset.lq).slice(0, 20));
+    $("#le-step").onclick = async (ev) => { const b = ev.currentTarget; b.disabled = true; let n = 0;
+      try { for (let i = 0; i < 12; i++) { b.textContent = `Working… ${n} step(s)`; const r = await root.XFServer.miStep(); if (r.idle || r.busy) break; n++; if (r.waiting) { U.toast("Today's lead research limit is reached.", { err: true }); break; } } U.toast(n ? `${n} step(s) done.` : "Nothing is waiting."); } catch (e) { U.toast(e.message, { err: true }); }
+      render(); };
+    $("#le-save").onclick = async () => { const f = await U.form("Save research limits", [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: "Save" }); if (!f) return;
+      try { await saveCfg({ enrichPerDay: +$("#le-pd").value, stepsPerRun: +$("#le-sr").value }, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
+    $$("[data-lr]", B).forEach((b) => (b.onclick = () => results(rows.find((r) => r.l.id === b.dataset.lr))));
+  }
+  const link = (u, t) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t || E.hostOf(u))}</a>`;
+  /** One lead's research: what was found, with its source, and what to add to the lead (marked unverified until someone checks it). */
+  function results(r) {
+    const e = r.e, lc = (DPLeadOps.LT.contacts || {})[r.l.id] || {}, cur = Object.assign({}, r.l.contact || {}, lc.contact || {}), hasWeb = !!(r.l.website || lc.website);
+    const ph = e.contacts.filter((c) => c.kind === "phone"), em = e.contacts.filter((c) => c.kind === "email"), done = e.status === "done";
+    U.openModal(`<h2>${esc(r.l.name)}</h2><p class="small muted">Researched ${esc(dt(e.finishedAt || e.updatedAt))} · ${e.credits || 0} search credit(s). Everything below was read from public pages; check before you rely on it.</p>
+      ${(e.notes || []).map((n) => `<div class="note small">${esc(n)}</div>`).join("")}${e.error ? `<div class="note err small">${esc(e.error)}</div>` : ""}
+      <div class="stack" style="margin-top:10px"><h3>Official website</h3>${e.site ? `<label class="check small"><input type="checkbox" id="rs-web"${hasWeb || done ? " disabled" : " checked"}> ${link("https://" + e.site.host + "/", e.site.host)} <span class="tiny muted">${esc(e.site.how)}${hasWeb ? " · the lead already has a website" : ""}</span></label>` : `<p class="small muted">Not found.</p>`}
+      <h3>Published contact routes</h3>${e.contacts.length ? `<p class="tiny muted">Choose at most one phone and one e-mail. They are added as unverified: someone must call or write to confirm them.</p>${[["phone", ph, cur.phone], ["email", em, cur.email]].map(([k, list, have]) => list.map((c, i) => `<label class="check small" style="align-items:flex-start"><input type="radio" name="rs-${k}" value="${i}"${have || done ? " disabled" : ""}> <span><b>${esc(c.value)}</b>${c.kind === "email" && !c.own ? ` <span class="pill warn">not on the company's own domain</span>` : ""}<br><span class="tiny muted">“${esc(c.quote)}” · ${link(c.sourceUrl)}</span></span></label>`).join("") + (list.length && have ? `<p class="tiny muted">The lead already has a ${k === "phone" ? "phone number" : "e-mail"}: ${esc(have)}</p>` : "")).join("")}` : `<p class="small muted">None found.</p>`}
+      <h3>Current projects</h3>${e.projects.length ? e.projects.map((p, i) => `<label class="check small" style="align-items:flex-start"><input type="checkbox" data-rp="${i}"${done ? " disabled" : " checked"}> <span><b>${esc(p.project)}</b><br><span class="tiny muted">“${esc(p.quote)}” · ${link(p.url)}${p.publishedAt ? ` · ${esc(p.publishedAt)}` : ""}</span></span></label>`).join("") : `<p class="small muted">None found with a source sentence.</p>`}
+      <details><summary class="small">Search results (${e.sources.length})</summary>${e.sources.map((s) => `<p class="tiny">${link(s.url, s.title)}${s.publishedAt ? ` · ${esc(s.publishedAt)}` : ""}</p>`).join("")}</details>
+      ${done ? `<div class="note small">Reviewed ${esc(dt(e.decided && e.decided.at))} by ${esc(DPAuth.nameSync(e.decided && e.decided.by) || "")}${e.decided && e.decided.added && e.decided.added.length ? `: added ${esc(e.decided.added.join(", "))}` : ": nothing added"}.</div>` : ""}
+      <p class="small" id="rs-err" style="color:var(--red)"></p><div class="acts"><button class="btn ghost" id="rs-close">Close</button>${done ? "" : `<button class="btn ghost" id="rs-none">Nothing useful</button><button class="btn lime" id="rs-add">Add the selected to the lead</button>`}</div></div>`, (m) => {
+      $("#rs-close", m).onclick = () => U.closeModal();
+      const finish = async (added, patch) => { const err = $("#rs-err", m); err.textContent = "";
+        try {
+          if (patch) await DPLeadOps.saveContact(r.l.id, patch, "Added from Market Intelligence research (unverified)");
+          await DPStore.set(`mix/enrich/e/${r.l.id}`, Object.assign({}, e, { status: "done", decided: { at: new Date().toISOString(), by: DPAuth.A.me.id, added } }));
+          await DPAuth.auditLog("Lead research reviewed", { kind: "mi", target: r.l.id, detail: added.length ? "Added: " + added.join(", ") : "Nothing added" }).catch(() => {});
+          U.closeModal(); U.toast(added.length ? "Added to the lead, marked unverified." : "Marked as reviewed."); render();
+        } catch (x) { err.textContent = x.message; } };
+      if ($("#rs-none", m)) $("#rs-none", m).onclick = () => finish([], null);
+      if ($("#rs-add", m)) $("#rs-add", m).onclick = () => {
+        const added = [], patch = { contact: {} }, pi = $('[name="rs-phone"]:checked', m), ei = $('[name="rs-email"]:checked', m), src = [];
+        if ($("#rs-web", m) && $("#rs-web", m).checked) { patch.website = "https://" + e.site.host + "/"; added.push("website"); }
+        if (pi) { const c = ph[+pi.value]; patch.contact.phone = c.value; patch.contact.phoneVerified = false; src.push(c.sourceUrl); added.push("phone"); }
+        if (ei) { const c = em[+ei.value]; patch.contact.email = c.value; patch.contact.emailVerified = false; src.push(c.sourceUrl); added.push("e-mail"); }
+        if (src.length) patch.contact.source = [...new Set(src)].join(" ");
+        const proj = $$("[data-rp]", m).filter((c) => c.checked).map((c) => e.projects[+c.dataset.rp]);
+        if (proj.length) { const have = lc.extraSources || []; patch.extraSources = have.concat(proj.filter((p) => !have.some((h) => h.url === p.url)).map((p) => ({ url: p.url, date: p.publishedAt || new Date().toISOString().slice(0, 10), note: `${p.project}: “${p.quote}”` }))); added.push(`${proj.length} project(s)`); }
+        if (!Object.keys(patch.contact).length) delete patch.contact;
+        if (!added.length) return finish([], null);
+        finish(added, patch);
+      };
+    }, { wide: true });
   }
 
   /* ---------------- data readiness ---------------- */

@@ -49,6 +49,8 @@
     notif: (b) => api("/api/notif", { method: "POST", body: JSON.stringify(b) }),
     researchStatus: () => api("/api/research/status"),
     miReadiness: () => api("/api/mi/readiness"),
+    miQueue: (leadIds) => api("/api/mi/enrich/queue", { method: "POST", body: JSON.stringify({ leadIds }) }),
+    miStep: () => api("/api/mi/enrich/step", { method: "POST", body: "{}" }),
     resetAccount: (uid, mode, o) => api("/api/accounts/" + encodeURIComponent(uid) + "/reset", { method: "POST", body: JSON.stringify(Object.assign({ mode }, o || {})) }),
     researchRun: (id, job) => api("/api/research/run", { method: "POST", body: JSON.stringify({ id, job: job || null }) }),
     logout: () => api("/api/logout", { method: "POST", body: "{}" }).finally(toLogin),

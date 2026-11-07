@@ -20,6 +20,7 @@ import { researchConfig, runRequestJob, researchTick, missingMessage, secretChec
 import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
 import { usageSummary } from "./usage.js";
 import { readiness } from "./readiness.js";
+import { queueLeads, engineStep, engineTick } from "./enrich.js";
 import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
@@ -902,6 +903,11 @@ async function route(req, env, ctx) {
       depths: Object.fromEntries(Object.entries(DEPTHS).map(([k, d]) => [k, { label: d.label, searches: d.queries, pages: d.extract, maxCredits: creditEstimate(k) }])) }); }
   // Market Intelligence 2.0 — Data Readiness: read-only counts, no names or money. Administrators only (this block is after the admin check).
   if (p === "/api/mi/readiness" && M === "GET") { const c = await env.DB.prepare("SELECT json_extract(data,'$.personalMin') m FROM docs WHERE path = 'mix/enginecfg'").first(); return json(200, await readiness(env, now(), c && c.m)); }
+  // Market Intelligence 2.0, Phase 2a — research of existing leads (administrators only; nothing runs while the switch is off)
+  if (p === "/api/mi/enrich/queue" && M === "POST") { const b = await body(req), r = await queueLeads(env, b.leadIds, acc.uid);
+    if (r.ok && r.queued.length) await auditSrv(env, acc.uid, "Lead research queued", r.queued.slice(0, 20).join(", "), `${r.queued.length} lead(s)`);
+    return json(r.ok ? 200 : 400, r); }
+  if (p === "/api/mi/enrich/step" && M === "POST") { const r = await engineStep(env, acc.uid + ":" + Math.random().toString(36).slice(2)); return json(200, r); }
   // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
   if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
     if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);
@@ -923,7 +929,8 @@ export default {
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sweep(env).then((r) => console.log("sweep:", JSON.stringify(r))).catch((e) => console.error("sweep failed:", e && (e.stack || e)))
-      .then(() => researchTick(env)).then((r) => console.log("research:", JSON.stringify(r).slice(0, 500))).catch((e) => console.error("research tick failed:", e && (e.stack || e))));
+      .then(() => researchTick(env)).then((r) => console.log("research:", JSON.stringify(r).slice(0, 500))).catch((e) => console.error("research tick failed:", e && (e.stack || e)))
+      .then(() => engineTick(env)).then((r) => console.log("mi-engine:", JSON.stringify(r).slice(0, 300))).catch((e) => console.error("mi-engine tick failed:", e && (e.stack || e))));
   },
 };
 export { sweep };
