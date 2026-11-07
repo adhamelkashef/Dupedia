@@ -14,6 +14,7 @@
     for (const [p, d] of Object.entries(docs)) {
       // 1. reminders that fell due
       let m = p.match(/^rem\/([^/]+)\/r\/([^/]+)$/);
+      if (m && d.ref && ["radar","partners"].includes(d.ref.kind)) continue; // Growth record owns this due date; legacy personal copies never alert.
       if (m && d.status === "open") { const due = d.snoozedUntil && d.snoozedUntil > d.due ? d.snoozedUntil : d.due;
         if (due && due <= now) add(m[1], { id: `rem-${m[2]}-${due.replace(/[^0-9]/g, "").slice(0, 12)}`, type: "reminder", title: `Reminder: ${d.title}`, body: d.notes ? String(d.notes).slice(0, 140) : "It is due now.", link: { view: "reminders" }, priority: d.priority === "urgent" ? "urgent" : null, mandatory: true }); continue; }
       // 2. manufacturing deadlines

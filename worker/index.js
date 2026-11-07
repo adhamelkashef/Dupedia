@@ -142,6 +142,14 @@ async function checkNewLead(env, acc, d) {
    owner (sales) may update only the follow-up fields; interactions are append-only and stamped with their author. */
 const MKT_OWNER_FIELDS = ["nextAction", "nextDue", "notes", "qualification", "confirmedNeed", "confirmedNeedBy", "priorityOverride", "feedback", "feedbackLog", "history", "updatedAt", "updatedBy", "referrals", "meetings", "followUp", "followUpCompletions"];
 async function mktGuard(env, acc, p, old, next) {
+  if (p === "mkt/cfg") {
+    if (!isAdminAcc(acc)) return "Only an administrator changes the marketing settings.";
+    const error = globalThis.DPGrowth.validateCfg(next); if (error) return error;
+    if (!String(next.changeReason || "").trim()) return "Give the reason for changing scoring settings.";
+    next.updatedBy = acc.uid; next.updatedAt = now();
+  }
+  if (/^mkt\/radar\/a\/[^/]+$/.test(p) && next.verifiedAt && (!globalThis.DPGrowth.validDay(next.verifiedAt) || next.verifiedAt > now().slice(0,10))) return "Source verification must be a valid date on or before today.";
+  if (/^mkt\/touch\/t\/[^/]+$/.test(p) && (!next.at || !Number.isFinite(Date.parse(next.at)) || Date.parse(next.at) > Date.now()+60000)) return "Interaction dates must be valid and cannot be in the future.";
   if (/^mkt\/camp\/c\/[^/]+$/.test(p)) {
     const error = globalThis.DPGrowth.approvalGuard(old, next, { admin: isAdminAcc(acc), uid: acc.uid });
     if (error) return error;
