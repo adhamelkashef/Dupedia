@@ -24,6 +24,8 @@ for (const [code, rec] of Object.entries(SHIPPED)) t(`shipped model passes the c
 t("shipped models never claim more than they are", () => { for (const r of Object.values(SHIPPED)) { assert.strictEqual(r.accuracy, "approximate"); assert.ok(r.source.length > 10); assert.ok(!r.reviewedBy); } });
 t("every shipped file is listed, and every listed file exists", () => { const files = fs.readdirSync(path.join(ROOT, "models")).filter((f) => f.endsWith(".glb")).map((f) => "models/" + f).sort(); assert.deepStrictEqual(Object.values(SHIPPED).map((r) => r.file).sort(), files); });
 
+t("library covers every referenced product except the two paused references", () => { assert.strictEqual(Object.keys(SHIPPED).length, 57); assert.deepStrictEqual(Object.keys(CAT.BY).filter(c => !SHIPPED[c]).sort(), ["SW-A411", "SW-E110"]); });
+
 t("a good model passes", () => { const c = S3.checkModel(S3.glbInfo(makeGlb()), PRODUCT); assert.strictEqual(c.ok, true); });
 t("one that is too long, wide or tall is refused, naming the difference", () => {
   for (const [args, word] of [[{ min: [-1.2, 0, -1], max: [1.2, 2, 1] }, "Length"], [{ min: [-1, 0, -1.2], max: [1, 2, 1.2] }, "Width"], [{ min: [-1, 0, -1], max: [1, 2.2, 1] }, "Height"]]) { const c = S3.checkModel(S3.glbInfo(makeGlb(args)), PRODUCT); assert.strictEqual(c.ok, false); assert.ok(c.problems[0].startsWith(word), c.problems[0]); }
@@ -50,7 +52,7 @@ t("the scene hands the 3D view a model, its exact position and turn, and keeps t
   const o = { id: "a", kind: "product", code: "SW-A409", x: 12, y: 9, rot: 30, z: 0.5 }, sc = plain(S3.buildScene(project([o]), { modelFor: (c) => S3.libraryRecord(c, SHIPPED, {}) })), it = sc.items.find((i) => i.role === "product");
   assert.strictEqual(it.model.file, "models/SW-A409.glb"); assert.strictEqual(it.accuracy, "approximate"); assert.deepStrictEqual([it.x, it.y, it.rot, it.y0], [12, 9, 30, 0.5]); assert.deepStrictEqual(it.poly, plain(M.shapes(o).foot));
 });
-t("a product with no model stays a block-out, and says so", () => { const it = plain(S3.buildScene(project([{ id: "a", kind: "product", code: "SW-E101", x: 12, y: 12, rot: 0 }]), { modelFor: (c) => S3.libraryRecord(c, SHIPPED, {}) })).items.find((i) => i.role === "product"); assert.strictEqual(it.model, null); assert.strictEqual(it.accuracy, "block-out"); });
+t("a product with no model stays a block-out, and says so", () => { const it = plain(S3.buildScene(project([{ id: "a", kind: "product", code: "SW-E101", x: 12, y: 12, rot: 0 }]), { modelFor: (c) => S3.libraryRecord(c, {}, {}) })).items.find((i) => i.role === "product"); assert.strictEqual(it.model, null); assert.strictEqual(it.accuracy, "block-out"); });
 t("a chosen colour reaches the block-out only if the library really lists it", () => {
   const rec = { file: null, accuracy: "block-out", colours: [{ id: "red", name: "Red", hex: "#FF0000" }], materials: [] }, one = (finish) => plain(S3.buildScene(project([Object.assign({ id: "a", kind: "product", code: "SW-A409", x: 12, y: 12, rot: 0 }, finish ? { finish } : {})]), { modelFor: () => rec })).items.find((i) => i.role === "product").color;
   assert.strictEqual(one("red"), "#FF0000"); assert.notStrictEqual(one("green"), "#FF0000"); assert.strictEqual(one(null), one("green"));
