@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');const ROOT=path.join(__dirname,'..');
-let role='admin',count=0;const records=new Map(),clone=x=>x==null?x:JSON.parse(JSON.stringify(x));const c={console,Date,Map};c.self=c;
+let role='admin',count=0;const records=new Map(),clone=x=>x==null?x:JSON.parse(JSON.stringify(x));const c={console,Date,Map,URL};c.self=c;
 c.DPAuth={A:{get me(){return{id:role,role}},directory:[]},isAdmin:()=>role==='admin',nameSync:()=>role,auditLog:async()=>{}};
 c.DPStore={tryGet:async p=>clone(records.get(p)),get:async p=>clone(records.get(p)),set:async(p,v)=>records.set(p,clone(v)),create:async(p,v)=>{records.set(p,clone(v));return{created:true}},tryList:async()=>[]};
 vm.createContext(c);for(const f of ['growth','mkt'])vm.runInContext(fs.readFileSync(path.join(ROOT,`app/${f}.js`),'utf8'),c);
