@@ -31,7 +31,7 @@
   /* ---------------- campaigns & content ---------------- */
   const campaigns = async () => (await list("mkt/camp/c")).sort((a, b) => String(b.start || b.createdAt).localeCompare(String(a.start || a.createdAt)));
   const getCampaign = (id) => DS().tryGet(`mkt/camp/c/${id}`).then((c) => (c ? Object.assign({ id }, c) : null));
-  async function saveCampaign(c) {
+  async function saveCampaign(c, { approve = false } = {}) {
     reqMkt(); if (!String(c.name || "").trim()) throw new Error("Name the campaign."); if (!String(c.objective || "").trim()) throw new Error("State the objective (e.g. 15 qualified site visits from schools).");
     if (c.start && c.end && c.end < c.start) throw new Error("The end date is before the start date.");
     const id = c.id || rid("cp-"), path = `mkt/camp/c/${id}`, prev = await DS().tryGet(path);
@@ -39,9 +39,7 @@
       products: (c.products || []).slice(0, 40), ownerUid: c.ownerUid || (prev && prev.ownerUid) || me().id, start: c.start || null, end: c.end || null, budgetMinor: c.budgetMinor != null && c.budgetMinor !== "" ? Math.max(0, Math.round(+c.budgetMinor)) : null,
       channels: (c.channels || []).filter((x) => G().CHANNELS[x]), status: G().CAMP_STATUS[c.status] ? c.status : (prev && prev.status) || "draft", cta: String(c.cta || "").slice(0, 200), destination: String(c.destination || "").slice(0, 300),
       location: String(c.location || "").slice(0, 120), source: (prev && prev.source) || G().sourceCode(c.name), content: (prev && prev.content) || [], updatedAt: now(), updatedBy: me().id, createdAt: (prev && prev.createdAt) || now(), createdBy: (prev && prev.createdBy) || me().id });
-    // a running campaign with spend or outside messaging needs an administrator's approval first
-    if (["approved", "live"].includes(rec.status) && !isAdmin() && !(prev && ["approved", "live", "paused"].includes(prev.status))) throw new Error("An administrator approves a campaign before it runs (budget and external messaging).");
-    if (rec.status === "approved" && (!prev || prev.status !== "approved")) Object.assign(rec, { approvedBy: me().id, approvedAt: now() });
+    G().prepareApproval(prev, rec, { admin: isAdmin(), approve, by: me().id, at: now() });
     hist(rec, prev ? "Edited" : "Created", rec.status); await DS().set(path, rec);
     if (!prev && rec.ownerUid !== me().id && NT()) await NT().deliver(rec.ownerUid, { id: `mkt-owner-${id}`, type: "lead", title: "Campaign assigned to you", body: rec.name, link: { view: "campaigns", opts: { id } } }).catch(() => {});
     if (rec.status === "awaiting" && (!prev || prev.status !== "awaiting") && NT()) await NT().deliver("@admins", { id: `mkt-appr-${id}-${Date.now().toString(36)}`, type: "lead", title: "Campaign awaiting approval", body: `${rec.name}${rec.budgetMinor ? " — planned budget EGP " + (rec.budgetMinor / 100).toLocaleString("en-US") : ""}`, link: { view: "campaigns", opts: { id } } }).catch(() => {});
@@ -53,17 +51,18 @@
     if (!G().CONTENT_KINDS[item.kind]) throw new Error("Choose the content type."); if (!item.date) throw new Error("Choose the planned date.");
     const id = item.id || rid("ct-"), prev = (c.content || []).find((x) => x.id === id) || {};
     const st = G().CONTENT_STATUS[item.status] ? item.status : prev.status || "draft";
-    if (["approved", "published"].includes(st) && prev.status !== st && !isAdmin() && !(st === "published" && prev.status === "approved")) throw new Error("An administrator approves content before it is published.");
     const rec = Object.assign({}, prev, { id, kind: item.kind, channel: G().CHANNELS[item.channel] ? item.channel : "other", date: item.date, title: String(item.title || "").slice(0, 140), caption: String(item.caption || "").slice(0, 4000),
       brief: String(item.brief || "").slice(0, 4000), cta: String(item.cta || c.cta || "").slice(0, 200), destination: String(item.destination || c.destination || "").slice(0, 300), status: st, assets: prev.assets || [], updatedAt: now(), updatedBy: me().id },
       st === "approved" && prev.status !== "approved" ? { approvedBy: me().id, approvedAt: now() } : {}, st === "published" && prev.status !== "published" ? { publishedRecordedBy: me().id, publishedAt: item.publishedAt || now(), url: item.url || "" } : {});
+    G().prepareApproval(prev.id ? prev : null, rec, { kind: "content", admin: isAdmin(), by: me().id, at: now() });
+    if (rec.status !== "published" && st === "published") { delete rec.publishedAt; delete rec.publishedRecordedBy; }
     c.content = (c.content || []).filter((x) => x.id !== id).concat([rec]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
     hist(c, prev.id ? "Content edited" : "Content added", `${G().CONTENT_KINDS[rec.kind]} · ${rec.date} · ${G().CONTENT_STATUS[st]}`); c.updatedAt = now(); await DS().set(path, c);
-    if (st === "review" && prev.status !== "review" && NT()) await NT().deliver("@admins", { id: `mkt-rev-${cid}-${id}`, type: "lead", title: "Content waiting for approval", body: `${c.name}: ${rec.title || G().CONTENT_KINDS[rec.kind]} (${rec.date})`, link: { view: "campaigns", opts: { id: cid } } }).catch(() => {});
+    if (rec.status === "review" && prev.status !== "review" && NT()) await NT().deliver("@admins", { id: `mkt-rev-${cid}-${id}`, type: "lead", title: "Content waiting for approval", body: `${c.name}: ${rec.title || G().CONTENT_KINDS[rec.kind]} (${rec.date})`, link: { view: "campaigns", opts: { id: cid } } }).catch(() => {});
     return rec;
   }
   async function addAsset(cid, contentId, file) { reqMkt(); const fid = rid("as-"); await root.DPOrders.putFile(`mkt/camp/c/${cid}/f/${fid}`, file); const path = `mkt/camp/c/${cid}`, c = await DS().get(path);
-    const it = (c.content || []).find((x) => x.id === contentId); if (!it) throw new Error("Content item not found."); it.assets = (it.assets || []).concat([{ id: fid, name: file.name, type: file.type, size: file.size, at: now() }]); await DS().set(path, c); return it; }
+    const it = (c.content || []).find((x) => x.id === contentId); if (!it) throw new Error("Content item not found."); it.assets = (it.assets || []).concat([{ id: fid, name: file.name, type: file.type, size: file.size, at: now() }]); G().prepareApproval(Object.assign({}, it, { assets: it.assets.slice(0, -1) }), it, { kind: "content", admin: isAdmin(), by: me().id, at: now() }); await DS().set(path, c); return it; }
   const asset = (cid, fid) => root.DPOrders.getFile(`mkt/camp/c/${cid}/f/${fid}`);
 
   /* ---------------- Project Radar ---------------- */
@@ -74,7 +73,7 @@
     if (!String(a.company != null ? a.company : (prev && prev.company) || "").trim()) throw new Error("Enter the company name.");
     for (const c of a.contacts || []) if ((c.phone || c.email) && !String(c.source || "").trim()) throw new Error(`Contact ${c.name || ""}: record where the phone / e-mail comes from — never enter invented details.`);
     for (const s of a.sources || []) if (s.url && !/^https?:\/\//.test(s.url)) throw new Error("Source links must start with https://");
-    const ownerFields = ["nextAction", "nextDue", "notes", "qualification", "confirmedNeed", "priorityOverride", "feedback"];
+    const ownerFields = ["nextAction", "nextDue", "notes", "qualification", "confirmedNeed", "priorityOverride", "feedback", "followUpCompletions"];
     const base = Object.assign({}, prev || {});
     const src = !isMkt() && owner ? Object.fromEntries(ownerFields.filter((k) => k in a).map((k) => [k, a[k]])) : a;
     const rec = Object.assign(base, src, { company: String((src.company != null ? src.company : base.company) || "").trim().slice(0, 160), segment: G().SEGMENTS[(src.segment || base.segment)] ? (src.segment || base.segment) : "other",
@@ -133,6 +132,18 @@
     p.referrals = (p.referrals || []).filter((r) => r.leadId !== leadId).concat([{ leadId, note: String(note).slice(0, 300), at: now(), by: me().id }]); hist(p, "Referral recorded", leadId); await DS().set(path, p);
     await logTouch({ partnerId: pid, leadId, kind: "referral", note }); return p; }
 
+  async function completeFollowUp(kind, id, outcome) {
+    if (!String(outcome || "").trim()) throw new Error("Record the follow-up outcome.");
+    const account = kind === "radar", path = `mkt/${account ? "radar/a" : "part/p"}/${id}`, rec = await DS().get(path);
+    if (!rec || (!isMkt() && rec.ownerUid !== me().id)) throw new Error("Only the owner or Marketing can complete this follow-up.");
+    const due = account ? rec.nextDue : rec.followUp;
+    if (!due) throw new Error("Set a follow-up date first.");
+    const entry = { id: rid("fu-"), due, action: rec.nextAction || "", completedAt: now(), completedBy: me().id, outcome: String(outcome).trim().slice(0,600) };
+    const patch = { followUpCompletions: (rec.followUpCompletions || []).concat([entry]), nextAction: "", [account ? "nextDue" : "followUp"]: null };
+    if (account) return saveAccount({ id, ...patch });
+    return savePartner({ ...rec, id, ...patch });
+  }
+
   /* ---------------- interactions (append-only) ---------------- */
   const touches = async () => list("mkt/touch/t");
   async function logTouch(t) {
@@ -150,12 +161,12 @@
     const [C, camps, accs, parts, tch, leads] = await Promise.all([cfg(true), campaigns(), accounts(), partners(), touches(), root.DPLeads.listLeads()]);
     let subs = [], orders = [], spend = [], full = false;
     if (admin || fin) { full = true;
-      [subs, orders] = await Promise.all([admin ? root.DPSales.allSubmissions().catch(() => []) : Promise.resolve([]), root.DPSales.listOrders().catch(() => [])]);
+      [subs, orders] = await Promise.all([admin ? root.DPSales.allSubmissions() : Promise.resolve([]), root.DPSales.listOrders()]);
       if (!admin) { full = false; }
-      const txs = root.DPFin ? await root.DPFin.txs().catch(() => []) : [];
-      spend = txs.filter((t) => t.status === "verified" && t.direction === "out" && t.links && t.links.campaign).map((t) => ({ campaignId: t.links.campaign, amountMinor: t.type === "reversal" ? -t.amountMinor : t.amountMinor, date: t.date, ref: t.ref })); }
+      const txs = root.DPFin ? await root.DPFin.txs() : [];
+      spend = txs.filter((t) => t.status === "verified" && (t.direction === "out" || (t.type === "reversal" && t.direction === "in")) && t.links && t.links.campaign).map((t) => ({ campaignId: t.links.campaign, amountMinor: t.direction === "in" ? -t.amountMinor : t.amountMinor, date: t.date, ref: t.ref })); }
     return { cfg: C, campaigns: camps, accounts: accs, partners: parts, touches: tch, leads, subs, orders, spend, full };
   }
 
-  root.DPMkt = { cfg, saveCfg, isMkt, campaigns, getCampaign, saveCampaign, saveContent, addAsset, asset, accounts, saveAccount, importAccounts, toLeadMine, partners, savePartner, addReferral, touches, logTouch, snapshot };
+  root.DPMkt = { cfg, saveCfg, isMkt, campaigns, getCampaign, saveCampaign, saveContent, addAsset, asset, accounts, saveAccount, importAccounts, toLeadMine, partners, savePartner, addReferral, completeFollowUp, touches, logTouch, snapshot };
 })(typeof self !== "undefined" ? self : this);

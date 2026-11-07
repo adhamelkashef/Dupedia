@@ -15,6 +15,7 @@ import "../app/fincalc.js";
 import "../app/fab.js";
 import "../app/holidays.js";
 import "../app/jobs13.js";
+import "../app/growth.js";
 import { computeSweep } from "./sweep.js";
 import { researchConfig, runRequestJob, researchTick, missingMessage, secretCheck } from "./research.js";
 import { createTopic, stepTopic, MARKETS, DEPTHS, creditEstimate } from "./topic.js";
@@ -138,20 +139,25 @@ async function checkNewLead(env, acc, d) {
 }
 /* 1.4 — Growth & Marketing Center. Writers: administrators and the Marketing role; a Radar account's or partnership's
    owner (sales) may update only the follow-up fields; interactions are append-only and stamped with their author. */
-const MKT_OWNER_FIELDS = ["nextAction", "nextDue", "notes", "qualification", "confirmedNeed", "confirmedNeedBy", "priorityOverride", "feedback", "feedbackLog", "history", "updatedAt", "updatedBy", "referrals", "meetings", "followUp"];
+const MKT_OWNER_FIELDS = ["nextAction", "nextDue", "notes", "qualification", "confirmedNeed", "confirmedNeedBy", "priorityOverride", "feedback", "feedbackLog", "history", "updatedAt", "updatedBy", "referrals", "meetings", "followUp", "followUpCompletions"];
 async function mktGuard(env, acc, p, old, next) {
+  if (/^mkt\/camp\/c\/[^/]+$/.test(p)) {
+    const error = globalThis.DPGrowth.approvalGuard(old, next, { admin: isAdminAcc(acc), uid: acc.uid });
+    if (error) return error;
+  }
+  if (/^mkt\/(radar\/a|part\/p)\/[^/]+$/.test(p)) {
+    const before = (old && old.followUpCompletions) || [], after = next.followUpCompletions || [];
+    if (!Array.isArray(after) || after.length < before.length || before.some((x,i) => JSON.stringify(x) !== JSON.stringify(after[i]))) return "Follow-up completion history cannot be rewritten.";
+    const added = after.slice(before.length), due = old && (old.nextDue || old.followUp);
+    if (added.length > 1 || added.some(x => !due || x.due !== due || x.action !== (old.nextAction || "") || (next.nextDue || next.followUp) === due)) return "Complete the current due action once before scheduling another.";
+    for (const x of added) if (x.completedBy !== acc.uid || !x.id || !x.due || !x.completedAt || !String(x.outcome || "").trim() || !Number.isFinite(Date.parse(x.completedAt)) || Date.parse(x.completedAt) > Date.now() + 60000 || Date.parse(x.completedAt) < Date.now() - 300000) return "Complete the follow-up now as yourself with its due date and outcome.";
+  }
   if (isAdminAcc(acc)) return null;
   if (p === "mkt/cfg") return "Only an administrator changes the marketing settings.";
   const base = await staffRoleBase(env, acc.uid), mkt = base === "marketing";
   if (/^mkt\/touch\/t\/[^/]+$/.test(p)) { if (old) return "Recorded interactions cannot be changed."; if (next.by !== acc.uid) return "An interaction must be recorded as yours."; if (next.data && MONEY.test(JSON.stringify(next.data))) return "No amounts here."; return null; }
   if (/^mkt\/camp\/c\/[^/]+$/.test(p)) {
     if (!mkt) return "Only Marketing and administrators manage campaigns.";
-    // approvals belong to the administrator: Marketing cannot approve a campaign or approve / publish content itself
-    if (["approved", "live"].includes(next.status) && !(old && ["approved", "live", "paused"].includes(old.status))) return "An administrator approves a campaign before it runs.";
-    const was = Object.fromEntries(((old && old.content) || []).map((c) => [c.id, c.status]));
-    for (const c of next.content || []) if (c.status === "approved" && was[c.id] !== "approved" && was[c.id] !== "published") return "An administrator approves content before it is published.";
-    for (const c of next.content || []) if (c.status === "published" && !["approved", "published"].includes(was[c.id])) return "Only approved content can be recorded as published.";
-    if (old && old.approvedBy !== next.approvedBy) return "The approval record cannot be changed.";
     return null; }
   if (/^mkt\/camp\/c\/[^/]+\/f\//.test(p)) return mkt ? null : "Only Marketing and administrators add campaign assets.";
   if (/^mkt\/(radar\/a|part\/p)\/[^/]+$/.test(p)) {
