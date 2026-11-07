@@ -163,7 +163,8 @@
     const weightsTotal = () => { $("#ss-total",box).textContent = "Score weights (total " + $$("[data-w]",box).reduce((n,x)=>n+(Number(x.value)||0),0) + ")"; };
     $$("[data-w]",box).forEach(x=>x.oninput=weightsTotal);
     $("#ss-ok", box).onclick = async () => { const w = {}; $$("[data-w]", box).forEach((x) => (w[x.dataset.w] = x.value.trim() === "" ? NaN : Number(x.value)));
-      try { await M().saveCfg({ weights: w, priorityA: +$("#ss-a", box).value, priorityB: +$("#ss-b", box).value, qualifiedScore: +$("#ss-q", box).value, stallDays: +$("#ss-st", box).value }, $("#ss-r", box).value); U.toast("Saved."); renderGrowth(); } catch (e) { U.toast(e.message, { err: true }); } };
+      const number = id => { const v=$(id,box).value; return v.trim()==="" ? NaN : Number(v); };
+      try { await M().saveCfg({ weights: w, priorityA: number("#ss-a"), priorityB: number("#ss-b"), qualifiedScore: number("#ss-q"), stallDays: number("#ss-st") }, $("#ss-r", box).value); U.toast("Saved."); renderGrowth(); } catch (e) { U.toast(e.message, { err: true }); } };
   }
 
   /* ================= Campaigns & content ================= */
