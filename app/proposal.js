@@ -1,7 +1,7 @@
 /* Dupedia Site Planner 2.0 — client documents (jsPDF, vector, embedded brand fonts):
    proposal (adaptive, 7 sections), printable quotation, A3 technical drawing.
    The plan is drawn with the same renderer and symbols as the editor (DPPlan via the Pen PDF backend).
-   Brand: Playful Classic — cream/white, charcoal, lime; no division colour on corporate documents; lime corner mark once per page. */
+   Brand: architectural editorial — cream/white, charcoal and electric lime, with the Dupedia descriptor wordmark. */
 /* global DPModel, DPCat, DPPricing, DPPlan, DPPen, DPSymbols, DPGeom, DPIO, DPUI, DP_FONT_COVER */
 (function (root) {
   "use strict";
@@ -101,6 +101,10 @@
   function hline(D, x1, x2, y, color = C.line, lw = 0.2) { const d = D.doc; d.setDrawColor(...rgb(color)); d.setLineWidth(lw); d.line(x1, y, x2, y); }
   /** The brand corner mark: a lime quarter circle in the top-right corner. */
   function cornerMark(D, r = 15) { const P = D.pen(); P.begin().moveTo(D.W, 0).lineTo(D.W - r, 0).arc(D.W, 0, r, Math.PI, Math.PI / 2, true).close().fill(C.lime); }
+  function capsule(D, s, x, y, o = {}) {
+    const d = D.doc, size = o.size || 7; d.setFont("ISB", "normal"); d.setFontSize(size); const label = safe(String(s).toUpperCase(), "sansBold"), w = d.getTextWidth(label) + 8;
+    d.setFillColor(...rgb(o.fill || C.ink)); d.roundedRect(x, y, w, 7, 3.5, 3.5, "F"); txt(D, label, x + 4, y + 4.75, { size, font: "sansBold", color: o.color || C.white }); return w;
+  }
   /** Building-block band (square, quarter, half, circle). */
   function blocks(D, x, y, u, dark = C.ink) {
     const P = D.pen();
@@ -124,8 +128,9 @@
   /* ---------------- page furniture ---------------- */
   function frame(D, X, section, num) {
     const { p } = X;
-    drawLogo(D, logoC, 13, 6.5, 13);  // compact logo: brand minimum 25 mm wide
-    eyebrow(D, `${String(num).padStart(2, "0")} · ${section}`, 44, 14.6);
+    drawLogo(D, logoC, 14, 7, 9.5);
+    const P = D.pen(); P.begin().rect(14, 20.5, 28, 1.4).fill(C.lime);
+    eyebrow(D, `${String(num).padStart(2, "0")} · ${section}`, 73, 14.6);
     txt(D, `${p.meta.name}${p.meta.ref ? "  ·  " + p.meta.ref : ""}`, D.W - 24, 14.6, { size: 7.5, color: C.pebble, align: "right" });
     cornerMark(D, 13);
     hline(D, 14, D.W - 14, D.H - 11.5, C.line, 0.25);
@@ -176,16 +181,20 @@
     else { rect(D, vx, vy, vw, vh, C.white); drawPlan(D, X, { x: vx + 8, y: vy + 10, w: vw - 16, h: vh - 18 }, { mode: "presentation", dims: false, labels: false, zones: true }); }
     P.restore();
     cornerMark(D, 16);
-    drawLogo(D, logoP, 14, 12, 32);  // ESTD logo: brand minimum 60 mm wide
-    eyebrow(D, "Playground design proposal", 16, 64);
+    drawLogo(D, logoP, 16, 14, 18);
+    P.begin().rect(16, 39, 34, 2).fill(C.lime);
+    const edition = capsule(D, "Client edition", 16, 47, { fill: C.ink });
+    if (p.meta.ref) capsule(D, p.meta.ref, 16 + edition + 3, 47, { fill: C.lime, color: C.ink });
+    eyebrow(D, "Play environment proposal", 16, 63);
     // title: wrap within the left column
-    d.setFont("FR", "normal"); d.setFontSize(27); const lines = d.splitTextToSize(safe(p.meta.name, "serif"), 122).slice(0, 4);
-    let y = 76; lines.forEach((l) => { txt(D, l, 16, y, { size: 27, font: "serif" }); y += 10.2; });
+    d.setFont("FR", "normal"); d.setFontSize(28); const lines = d.splitTextToSize(safe(p.meta.name, "serif"), 120).slice(0, 4);
+    let y = 76; lines.forEach((l) => { txt(D, l, 16, y, { size: 28, font: "serif" }); y += 10.6; });
     y += 2; txt(D, "for ", 16, y, { size: 15, font: "serif", color: C.graphite }); txt(D, p.meta.client || "Client", 16 + d.getTextWidth("for "), y, { size: 15, font: "serifItalic", color: C.graphite });
     y += 13;
     const kv = [["Location", p.meta.location], ["Reference", p.meta.ref], ["Date", fmtDate(X.date)], ["Prepared by", p.meta.preparedBy]].filter(([, v]) => v);
     kv.forEach(([k, v]) => { eyebrow(D, k, 16, y); txt(D, v, 50, y, { size: 9.5, maxW: 90 }); y += 7.2; });
     if (p.meta.clientLogo) { const im = await imgData(p.meta.clientLogo, "image/png", 600); if (im) { const h = 13, w = Math.min(46, h * im.w / im.h); eyebrow(D, "Prepared for", 16, D.H - 46); D.doc.addImage(im.data, "PNG", 16, D.H - 42, w, w * im.h / im.w, undefined, "FAST"); } }
+    txt(D, String((p.meta.client || "Client").toUpperCase()), 16, D.H - 34, { size: 6.6, font: "sansBold", color: C.pebble, charSpace: 0.7 });
     // bottom band
     rect(D, 0, D.H - 26, D.W, 26, C.ink); blocks(D, 16, D.H - 18, 9, C.white);
     txt(D, "Serious about ", 70, D.H - 11, { size: 13, font: "serif", color: C.white }); txt(D, "play.", 70 + (d.setFont("FR", "normal"), d.setFontSize(13), d.getTextWidth("Serious about ")), D.H - 11, { size: 13, font: "serifItalic", color: C.lime });
@@ -332,12 +341,16 @@
     const startPage = (cont) => { if (pages) D.doc.addPage(); pages++; frame(D, X, "Commercial quotation", n); heading(D, cont ? "Commercial quotation, continued" : "Commercial quotation", 14, 31, 18, cont ? null : "quotation");
       if (X.sample) txt(D, "Illustrative prices for demonstration only", D.W - 14, 31, { size: 8, font: "sansBold", color: C.red, align: "right" });
       else txt(D, `All prices in ${cur}${r.taxPct ? `, ${r.taxLabel} shown separately` : ""}`, D.W - 14, 31, { size: 8, color: C.pebble, align: "right" });
-      y = tableRows(D, cols, [], x0, 41); };
+      if (!cont) {
+        rect(D, x0, 38, tw, 18, C.ink); eyebrow(D, "Project investment", x0 + 6, 45, C.white); txt(D, PR.fmtMoney(r.total, cur), x0 + tw - 6, 50, { size: 21, font: "serif", color: C.lime, align: "right" });
+        txt(D, `${lines.length} priced line${lines.length === 1 ? "" : "s"} · ${Object.keys(byCat).length} work package${Object.keys(byCat).length === 1 ? "" : "s"}`, x0 + 6, 51, { size: 7.2, color: C.white });
+      }
+      y = tableRows(D, cols, [], x0, cont ? 41 : 64); };
     startPage(false);
     const limit = D.H - 22;
     for (const row of rows) {
       if (y > limit - 8) startPage(true);
-      if (row.cat) { rect(D, x0, y - 4.3, tw, 6.4, C.stone); txt(D, PR.CAT_LABEL[row.cat].toUpperCase(), x0 + 1.5, y, { size: 7, font: "sansBold", charSpace: 0.35 }); y += 6.8; continue; }
+      if (row.cat) { rect(D, x0, y - 4.3, tw, 6.4, C.stone); rect(D, x0, y - 4.3, 2.2, 6.4, C.lime); txt(D, PR.CAT_LABEL[row.cat].toUpperCase(), x0 + 5, y, { size: 7, font: "sansBold", charSpace: 0.35 }); y += 6.8; continue; }
       if (row.sub) { txt(D, `Subtotal ${PR.CAT_LABEL[row.sub].toLowerCase()}`, x0 + tw - 56, y, { size: 7.6, color: C.graphite, align: "right" }); txt(D, PR.fmtMoney(r.cats[row.sub].totalMinor, cur, { symbol: false }), x0 + tw - 1.5, y, { size: 7.8, font: "sansBold", align: "right" }); y += 8.5; continue; }
       const l = row.l; const exl = l.status === "exception";
       const cells = [String(row.i), l.code || "", l.name + (l.basis ? `  ·  ${l.basis}` : ""), l.kind === "derived" || l.unit === "lot" ? "1" : PR.fmtQty(l.qty, l.unit), l.unit === "m3" ? "m3" /* the PDF fonts have ² but not ³ */ : PR.UNIT_LABEL[l.unit] || l.unit,
