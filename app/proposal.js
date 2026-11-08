@@ -9,7 +9,7 @@
   const C = { ink: "#262626", graphite: "#45453F", pebble: "#5E5E58", stone: "#EAE8E1", cream: "#FBFAF6", lime: "#B8D241", limeInk: "#5B6B12", white: "#FFFFFF", line: "#D9D7CF", red: "#B3261E" };
   const FONTS = { sans: "IS", sansBold: "ISB", serif: "FR", serifItalic: "FRI" };
   const PT = 0.3527777778;  // mm per point
-  let fontData = null, logoP = null, logoC = null;
+  let fontData = null, logoP = null, logoC = null, logoPW = null, logoCW = null;
 
   /* ---------------- assets (no fetch(): everything arrives by <script>, so it works in sandboxed artifact frames) ----------------
      Root cause of "The proposal could not be built: Load failed" (v2.0): the builder read its font files with fetch().
@@ -36,7 +36,8 @@
       progress && progress("Loading logos");
       if (!A().logos) await loadScript("pdfassets/logos.js").catch(() => null);
       const L = A().logos || {};
-      logoP = L.primary ? Object.assign({ fmt: "PNG" }, L.primary) : null; logoC = L.compact ? Object.assign({ fmt: "PNG" }, L.compact) : null;   // null → text wordmark fallback
+      logoP = L.primary ? Object.assign({ fmt: "PNG" }, L.primary) : null; logoC = L.compact ? Object.assign({ fmt: "PNG" }, L.compact) : null;
+      logoPW = L.primaryWhite ? Object.assign({ fmt: "PNG" }, L.primaryWhite) : logoP; logoCW = L.compactWhite ? Object.assign({ fmt: "PNG" }, L.compactWhite) : logoC;   // null → text wordmark fallback
     }
   }
   /** Product photo for the schedule: script-shipped JPEG → canvas copy of the page image (same-origin hosts) → null (placeholder). */
@@ -71,7 +72,7 @@
     for (const [n, d] of fontData) { doc.addFileToVFS(n + ".ttf", d); doc.addFont(n + ".ttf", n, "normal"); }
     doc.setFont("IS", "normal"); doc.setLineHeightFactor(1.32); return doc;
   }
-  const brandLogo = () => logoP;
+  const brandLogo = (tone = "charcoal") => tone === "white" ? logoPW : logoP;
   function newDoc(format = "a4") {
     const { jsPDF } = root.jspdf; const doc = new jsPDF({ orientation: "landscape", unit: "mm", format, compress: true });
     for (const [n, d] of fontData) { doc.addFileToVFS(n + ".ttf", d); doc.addFont(n + ".ttf", n, "normal"); }

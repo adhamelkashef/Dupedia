@@ -421,7 +421,7 @@ async function dbOp(env, acc, b) {
 }
 
 /* ======================= pages ======================= */
-/* 2.0 "Snap" (Session 3) — sign-in, setup, password pages. A charcoal deck (tonal light) with the logo on its white plate and a
+/* 2.0 "Snap" (Session 3) — sign-in, setup, password pages. A charcoal deck with the white vector wordmark and a
    block band that snaps into place; the form on cream. Same fields, same endpoints, same rules as before. The logo is never
    animated or given effects; only the blocks move. Shares the app's design system (app/xf-tokens.css, app/xf-components.css). */
 const BAND = `<svg class="band" viewBox="0 0 480 240" aria-hidden="true" focusable="false">
@@ -440,7 +440,7 @@ body{margin:0;background:var(--x-bg);color:var(--x-fg);font:400 15px/1.5 var(--x
 .wrap{min-height:100%;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(400px,1fr)}
 /* the deck */
 .deck{position:relative;overflow:hidden;background:var(--x-deck-light);color:var(--x-on-deck);display:flex;flex-direction:column;gap:32px;padding:max(40px,env(safe-area-inset-top,0px)) 48px 0 max(48px,env(safe-area-inset-left,0px))}
-.deck .plate{align-self:flex-start;background:#fff;border-radius:var(--x-r-sm);padding:14px 18px;line-height:0}
+.deck .plate{align-self:flex-start;line-height:0}
 .deck .plate img{width:240px;height:auto;display:block}
 .deck h2{font:600 clamp(40px,5vw,64px)/1 var(--x-f-display);font-variation-settings:"SOFT" 100;letter-spacing:-.025em;margin:0;max-width:12ch;color:var(--x-on-deck)}
 .deck h2 em{font-style:italic;font-weight:500}
@@ -489,10 +489,10 @@ form>button[disabled]::after{content:"";position:absolute;left:50%;top:50%;width
 .done a.btn{display:flex;align-items:center;justify-content:center;min-height:50px;font-weight:600;border-radius:999px;background:var(--x-lime);color:#262626;text-decoration:none}
 .done a.btn:focus-visible{outline:none;box-shadow:var(--x-focus)}
 body.leaving form{transition:opacity var(--x-d-md),transform var(--x-d-md) var(--x-exit);opacity:0;transform:translateY(-8px) scale(.98)}
-/* signing in: the logo stays still on its plate; the block band waits, then fills when the server says yes */
+/* signing in: the logo stays still; the block band waits, then fills when the server says yes */
 .sx{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;background:var(--x-bg);opacity:0;transition:opacity var(--x-d-sm) var(--x-settle)}
 .sx.on{opacity:1}.sx[hidden]{display:none}
-.sx .plate{background:#fff;border-radius:var(--x-r-sm);padding:14px 18px;line-height:0;box-shadow:0 0 0 1px var(--x-line)}
+.sx .plate{line-height:0}
 .sx .plate img{width:min(260px,64vw);height:auto;display:block}
 .sx .x-band{--_s:30px}
 .sx.ok .x-band i{background:#262626;animation:x-blockin var(--x-d-md) var(--x-snap) both}
@@ -505,7 +505,7 @@ body.leaving form{transition:opacity var(--x-d-md),transform var(--x-d-md) var(-
 @media (max-width:900px){
   .wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .deck{padding:max(20px,env(safe-area-inset-top,0px)) 20px 0 max(20px,env(safe-area-inset-left,0px));gap:14px;flex-direction:row;flex-wrap:wrap;align-items:flex-end;min-height:0}
-  .deck .plate{padding:9px 12px}.deck .plate img{width:140px}
+  .deck .plate img{width:140px}
   .deck h2{font-size:30px;flex:1 1 100%;max-width:none;margin-bottom:2px}
   .deck p,.deck .ver{display:none}
   .deck .band{flex:1 1 100%;width:100%;max-width:none;height:56px;margin-top:4px}
@@ -513,7 +513,7 @@ body.leaving form{transition:opacity var(--x-d-md),transform var(--x-d-md) var(-
 }
 @media (max-width:480px){form{padding:28px 20px 22px}h1{font-size:28px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}}
-</style></head><body><main class="wrap">${side ? `<section class="deck" aria-label="Dupedia X FORCE"><span class="plate"><img src="/brand/logo_compact.png" alt="Dupedia" width="240" height="124"></span>
+</style></head><body><main class="wrap">${side ? `<section class="deck" aria-label="Dupedia X FORCE"><span class="plate"><img src="/brand/logo_wordmark_white.svg" alt="Dupedia"></span>
 <h2>Serious about <em>play.</em></h2><p>Sales, site plans, factory, finance and market intelligence. One system for the whole company.</p><span class="ver"><i></i>X FORCE 2.0</span>${BAND}</section>` : ""}
 <section class="panel">${inner}</section></main></body></html>`;
 const EYE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
@@ -524,7 +524,7 @@ const LOGIN = PAGE("Sign in · X FORCE", `<form id="f" novalidate><h1>Welcome to
 <label>Password<span class="fld"><input id="pw" name="password" type="password" autocomplete="current-password" required>${PEEK}</span></label>
 <button>Sign in</button><a class="fgt" href="/forgot">Forgot your password?</a>
 <div class="help"><p class="tiny">Accounts are created by an administrator. Five failed attempts lock the account for 15 minutes.</p></div></form>
-<div class="sx" id="sx" hidden role="status" aria-live="polite"><span class="plate"><img src="/brand/logo_compact.png" alt="Dupedia" width="260" height="134"></span>
+<div class="sx" id="sx" hidden role="status" aria-live="polite"><span class="plate"><img src="/brand/logo_wordmark_charcoal.svg" alt="Dupedia"></span>
 <div class="x-band x-band--wait" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="st" id="sx-t">Checking your account…</p><p class="sub2" id="sx-s"></p><p class="tag">Serious about play.</p></div>
 <script src="/xf-login.js"></script>`);
 const SETUP = PAGE("Set up · X FORCE", `<form id="f" data-setup="1" novalidate><h1>Set up X FORCE</h1><p class="sub">Create the owner account. This page closes for good afterwards.</p>

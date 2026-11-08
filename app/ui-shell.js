@@ -67,7 +67,7 @@
   }
 
   /* ---------------- sign-in gate ---------------- */
-  const brandBlock = `<div class="gbrand"><img src="brand/logo_primary.png" alt="Dupedia" width="240"><div class="blocks" aria-hidden="true"><i class="sq"></i><i class="qc"></i><i class="hf"></i><i class="ci"></i></div></div>`;
+  const brandBlock = `<div class="gbrand"><img src="brand/logo_wordmark_charcoal.svg" alt="Dupedia" width="240"><div class="blocks" aria-hidden="true"><i class="sq"></i><i class="qc"></i><i class="hf"></i><i class="ci"></i></div></div>`;
   function gateShell(inner) {
     $("#app").hidden = true; const g = $("#gate"); g.hidden = false; if (root.XFSplash) XFSplash.hide();
     g.innerHTML = `<div class="gwrap"><section class="gcard corner">${brandBlock}<span class="eyebrow">X FORCE 1.1 · Dupedia internal</span>${inner}</section>
