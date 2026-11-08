@@ -26,7 +26,6 @@
   /* the deck: charcoal frame (rail, hero band, ID card). Tonal light = two close charcoal tones. */
   --x-deck:#262626; --x-deck-2:#2E2E2B; --x-deck-line:rgba(255,255,255,.12); --x-on-deck:#F3F1EA; --x-on-deck-2:#BDBBB2;
   --x-deck-light:linear-gradient(180deg,var(--x-deck),var(--x-deck-2));
-  --x-plate:#FFFFFF;   /* the logo's plate: always white, in every theme */
 
   /* ---- state (semantic colour is separate from the department colour) ---- */
   --x-ok:#3E6B12; --x-ok-bg:#EAF3D9; --x-warn:#8A5A00; --x-warn-bg:#FFF4D6; --x-err:#B3261E; --x-err-bg:#FBEAE8; --x-info:#1F5FA8; --x-info-bg:#E8F0FA;

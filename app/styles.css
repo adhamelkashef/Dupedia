@@ -41,7 +41,7 @@ p{margin:0}
 
 /* ---------- header ---------- */
 .top{display:flex;align-items:center;gap:14px;padding:8px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));background:var(--surface);border-bottom:1px solid var(--line);min-width:0;position:relative;z-index:20}
-.brand{border:0;background:#fff;padding:0;border-radius:8px;cursor:pointer;line-height:0;margin:-4px 0}
+.brand{border:0;background:transparent;padding:0;cursor:pointer;line-height:0;margin:-4px 0}
 .brand img{width:120px;height:auto;display:block}  /* compact logo: brand minimum 120 px wide */
 .htitle{display:flex;flex-direction:column;gap:2px}
 .t1{font:600 17px/1.1 var(--f-display);font-variation-settings:"SOFT" 100}
@@ -75,7 +75,9 @@ p{margin:0}
 .gcard{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:30px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow)}
 .gcard h1{font-size:32px}
 .gbrand{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:4px}
-.gbrand img{width:240px;height:auto;background:#fff;border-radius:10px}   /* primary logo, above the 60 mm / 227 px brand minimum */
+.gbrand img{width:240px;height:auto}   /* primary logo, above the 60 mm / 227 px brand minimum */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .brand img,:root:not([data-theme="light"]) .gbrand img{content:url("../brand/logo_wordmark_white.svg")}}
+:root[data-theme="dark"] .brand img,:root[data-theme="dark"] .gbrand img{content:url("../brand/logo_wordmark_white.svg")}
 .gside{align-self:center;display:flex;flex-direction:column;gap:14px;color:var(--fg2)}
 .gside h2{font-size:30px;color:var(--fg)}
 .gside ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}

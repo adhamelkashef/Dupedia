@@ -1,5 +1,5 @@
 /* X FORCE 2.0 "Snap" — unified loader (Session 2).
-   The logo stays still on its white plate (the brand: the logo never changes); the block band below it fills.
+   The transparent vector logo stays still; the block band below it fills.
    Honesty rules, enforced here rather than left to each caller:
    • A percentage is shown ONLY from a measured loaded/total pair (bytes, rows). Without a total the loader falls back to a
      wait state. It never shows 100% before done() is called.
@@ -11,7 +11,7 @@
   const doc = root.document;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const reduced = () => !!(root.XF && root.XF.motion && root.XF.motion.reduced());
-  const LOGO = "brand/logo_compact.png";   // brand: the primary logo (with ESTD 1989) only from 400 px wide; the compact one below that
+  const LOGO = "brand/logo_wordmark_charcoal.svg";
   const T = { slow: "Still working. This is taking longer than usual.", timeout: "No answer for 60 seconds. It may still finish in the background.", retry: "Retry", wait: "Keep waiting", cancel: "Cancel", close: "Close" };
 
   /**
@@ -30,7 +30,7 @@
     const el = doc.createElement("div");
     el.className = "x-loader " + (screen ? "x-loader--screen" : "x-loader--inline");
     el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite");
-    el.innerHTML = `${opts.logo === false || !screen ? "" : `<span class="x-loader__plate"><img src="${LOGO}" alt="Dupedia" width="240" height="124"></span>`}
+    el.innerHTML = `${opts.logo === false || !screen ? "" : `<span class="x-loader__plate"><img src="${LOGO}" alt="Dupedia"></span>`}
       <div class="x-band x-band--wait" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div class="x-loader__pct x-num" hidden></div>
       <div class="x-bar" hidden><b></b></div>

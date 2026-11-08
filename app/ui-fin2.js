@@ -261,7 +261,7 @@
     if (/[؀-ۿ]/.test(JSON.stringify([d.customer, d.notes, d.lines, d.project]))) U.toast("Arabic text cannot be drawn in this PDF font — use Print (Save as PDF) for Arabic documents.", { ms: 8000 });
     const doc = DPProposal.portraitDoc(), S = (s) => DPProposal.safe(String(s == null ? "" : s), "sans"), W = 210, Hh = 297, cur = d.currency || "EGP", M = (v) => S(H.money2(v || 0, cur));
     const ink = [38, 38, 38], graphite = [69, 69, 63], pebble = [100, 100, 92], stone = [239, 237, 230], cream = [251, 250, 246], lime = [184, 210, 65], white = [255, 255, 255], red = [179, 38, 30];
-    const logo = DPProposal.brandLogo(), label = S(Fn().KINDS[d.kind].toUpperCase()), no = S(d.number || "DRAFT"); let y = 0;
+    const logo = DPProposal.brandLogo("white"), label = S(Fn().KINDS[d.kind].toUpperCase()), no = S(d.number || "DRAFT"); let y = 0;
     const text = (value, x, yy, o = {}) => { doc.setFont(o.bold ? "ISB" : "IS", "normal"); doc.setFontSize(o.size || 8); doc.setTextColor(...(o.color || ink)); const clean = Array.isArray(value) ? value.map(S) : S(value); doc.text(clean, x, yy, { align: o.align || "left", maxWidth: o.maxWidth }); };
     const rule = (yy, color = stone, width = 0.25) => { doc.setDrawColor(...color); doc.setLineWidth(width); doc.line(14, yy, W - 14, yy); };
     const footer = () => {
@@ -269,7 +269,7 @@
     };
     const header = (first = false) => {
       doc.setFillColor(...ink); doc.rect(0, 0, W, first ? 54 : 31, "F"); doc.setFillColor(...lime); doc.rect(W - 7, 0, 7, first ? 54 : 31, "F");
-      if (logo && logo.data) { try { const lw = first ? 58 : 45, lh = lw * logo.h / logo.w; doc.setFillColor(...white); doc.roundedRect(14, first ? 12 : 8, lw + 6, lh + 5, 2, 2, "F"); doc.addImage(logo.data, logo.fmt || "PNG", 17, first ? 14.5 : 10.5, lw, lh, undefined, "FAST"); } catch (e) {} }
+      if (logo && logo.data) { try { const lw = first ? 62 : 48, lh = lw * logo.h / logo.w; doc.addImage(logo.data, logo.fmt || "PNG", 14, first ? 14 : 9.5, lw, lh, undefined, "FAST"); } catch (e) {} }
       else text(d.company.name || "Dupedia", 14, first ? 25 : 18, { size: first ? 18 : 13, bold: true, color: white });
       text(label, W - 16, first ? 20 : 14, { size: first ? 15 : 10, bold: true, color: white, align: "right" });
       text(no, W - 16, first ? 29 : 21, { size: first ? 9 : 7, color: lime, align: "right" });

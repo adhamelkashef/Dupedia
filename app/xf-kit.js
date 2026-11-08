@@ -233,13 +233,13 @@
     host.innerHTML = `<button type="button" class="x-idcard" data-name="${esc(name)}" style="--_w:340px">
       <div class="x-idcard__flip">
         <div class="x-idcard__face x-idcard__back">
-          <span class="x-idcard__plate"><img src="brand/logo_compact.png" alt="Dupedia"></span>
+          <span class="x-idcard__plate"><img src="brand/logo_wordmark_white.svg" alt="Dupedia"></span>
           <div class="x-idcard__photo">${pic ? `<img alt="" src="${esc(pic)}">` : esc(initials)}</div>
           <p class="x-idcard__name">${esc(name)}</p>
           <p class="x-idcard__title">${esc([rec.title || me.title, rec.department || me.department].filter(Boolean).join(" · ") || me.roleLabel || "")}</p>
           <div class="x-idcard__row"><dl><div><dt>Employee ID</dt><dd>${esc(hr.employeeId || "—")}</dd></div><div><dt>Since</dt><dd>${esc(year)}</dd></div></dl>${XF.mark(deptKey)}</div>
         </div>
-        <div class="x-idcard__face x-idcard__front"><img src="brand/logo_compact.png" alt="Dupedia"><p>Serious about play.</p></div>
+        <div class="x-idcard__face x-idcard__front"><img src="brand/logo_wordmark_charcoal.svg" alt="Dupedia"><p>Serious about play.</p></div>
       </div></button>`;
     XF.motion.idcard(host.firstElementChild);
   }
