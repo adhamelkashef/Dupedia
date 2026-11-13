@@ -1,0 +1,1112 @@
+diff --git a/app/ci.js b/app/ci.js
+new file mode 100644
+index 0000000..63bba4b
+--- /dev/null
++++ b/app/ci.js
+@@ -0,0 +1,180 @@
++/* X FORCE — Commercial Intelligence, Phase 0 (COMMERCIAL_INTELLIGENCE_BLUEPRINT.md, kept outside the repository).
++   Pure functions shared by the app, the Worker and the tests. No storage, no DOM.
++
++   config/settings.ci        the switches: { ai: bool, envelopes: bool }. Missing or off = everything behaves exactly as before.
++   mix/aicfg                 AI routing: which provider and model does each task; daily caps (administrators only)
++   mix/ailog/l/<id>          one line per AI call while the "ai" switch is on (administrators only, kept 90 days)
++   mix/enginecfg             gains optional fields: leadTimes, safetyDays, salesCycle, stageOpening, envelopes
++
++   The repository is public, so every commercial number (lead times, sales cycles, credit shares) starts blank here and is
++   entered by an administrator. Nothing below is a company figure. */
++(function (root) {
++  "use strict";
++
++  /* ---------------- switches ---------------- */
++  const FLAGS = [
++    ["ai", "AI routing and call log", "Each AI task uses the provider chosen below, data classes are enforced, and every call is logged. Off: every AI call goes to Gemini exactly as before."],
++    ["envelopes", "Search credit envelopes", "Each kind of research may spend only its monthly share of search credits. Off: only the existing daily and monthly caps apply."],
++  ];
++  function flagsOf(settings) {
++    const c = (settings && settings.ci) || {}, out = {};
++    for (const [k] of FLAGS) out[k] = c[k] === true;
++    return out;
++  }
++
++  /* ---------------- data classes ---------------- */
++  const DATA_CLASSES = {
++    P0: "Public web text and public facts",
++    P1: "Internal counts and stages, no names or money",
++    P2: "Prices, values, customer notes, targets",
++    P3: "Personal data (employees, named contacts)",
++  };
++  /* What each provider may receive. Fixed in code on purpose: an administrator can switch a provider off, never widen this.
++     Gemini's free tier may use and human-review inputs, so it gets public text only. */
++  const PROVIDERS = {
++    gemini: { label: "Gemini (free tier)", classes: ["P0"], paid: false, secret: "GEMINI_API_KEY" },
++    workersai: { label: "Cloudflare Workers AI", classes: ["P0", "P1"], paid: false, secret: "AI binding" },
++    claude: { label: "Claude API (paid)", classes: ["P0", "P1"], paidClasses: ["P2"], paid: true, secret: "ANTHROPIC_API_KEY" },
++    compat: { label: "Other provider (OpenAI-style API)", classes: ["P0"], paid: true, secret: "AI_COMPAT_API_KEY" },
++  };
++  const TASKS = {
++    extract: { label: "Read facts from public pages", cls: "P0" },
++    explain: { label: "Two-sentence explanations", cls: "P0" },
++    draft: { label: "Draft headlines and captions", cls: "P0" },
++    route: { label: "Turn a question into a stored query", cls: "P0" },
++    reason: { label: "Summaries of internal figures", cls: "P1" },
++  };
++  const DEFAULT_AICFG = {
++    version: 0,
++    tasks: { extract: { provider: "gemini", fallback: "" }, explain: { provider: "gemini", fallback: "" }, draft: { provider: "gemini", fallback: "" }, route: { provider: "gemini", fallback: "" }, reason: { provider: "", fallback: "" } },
++    providers: { gemini: { on: true, model: "" }, workersai: { on: false, model: "", dailyCalls: 0 }, claude: { on: false, model: "", dailyCalls: 0, allowP2: false }, compat: { on: false, model: "", dailyCalls: 0 } },
++    updatedAt: null, updatedBy: null,
++  };
++  const intIn = (v, d, lo, hi) => { const x = parseInt(v, 10); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
++  const model = (s) => String(s == null ? "" : s).replace(/[^A-Za-z0-9._:/@-]/g, "").slice(0, 120);
++  function aicfgOf(doc) {
++    const d = doc || {}, out = { version: intIn(d.version, 0, 0, 1e6), tasks: {}, providers: {}, updatedAt: d.updatedAt || null, updatedBy: d.updatedBy || null };
++    for (const k of Object.keys(PROVIDERS)) {
++      const p = (d.providers || {})[k] || {}, def = DEFAULT_AICFG.providers[k];
++      out.providers[k] = { on: p.on === undefined ? def.on : p.on === true, model: model(p.model) };
++      if (k !== "gemini") out.providers[k].dailyCalls = intIn(p.dailyCalls, 0, 0, 100000);
++      if (k === "claude") out.providers[k].allowP2 = p.allowP2 === true;
++    }
++    for (const k of Object.keys(TASKS)) {
++      const t = (d.tasks || {})[k] || {}, def = DEFAULT_AICFG.tasks[k];
++      const pick = (v, dv) => (v === "" ? "" : PROVIDERS[v] ? v : dv);
++      out.tasks[k] = { provider: pick(t.provider, def.provider), fallback: pick(t.fallback, def.fallback) };
++    }
++    return out;
++  }
++  /** May this provider receive data of this class? P3 never goes to any provider. */
++  function classAllowed(provider, cls, cfg) {
++    const p = PROVIDERS[provider]; if (!p || !DATA_CLASSES[cls] || cls === "P3") return false;
++    if (p.classes.includes(cls)) return true;
++    return !!(p.paidClasses && p.paidClasses.includes(cls) && cfg && cfg.providers[provider] && cfg.providers[provider].allowP2);
++  }
++  /** The providers to try for a task, in order, each with its model, or {error}. Only switched-on providers allowed for the class. */
++  function routeFor(task, cls, cfg) {
++    const t = TASKS[task]; if (!t) return { error: `Unknown AI task "${task}".` };
++    if (!DATA_CLASSES[cls]) return { error: `Unknown data class "${cls}".` };
++    if (cls === "P3") return { error: "Personal data is never sent to an AI provider." };
++    const c = aicfgOf(cfg), plan = [], seen = new Set();
++    for (const p of [c.tasks[task].provider, c.tasks[task].fallback]) {
++      if (!p || seen.has(p)) continue; seen.add(p);
++      if (!c.providers[p].on) continue;
++      if (!classAllowed(p, cls, c)) continue;
++      plan.push({ provider: p, model: c.providers[p].model });
++    }
++    if (!plan.length) return { error: `No switched-on AI provider may do "${t.label}" with ${cls} data. Choose one under AI routing.` };
++    return { plan };
++  }
++
++  /* ---------------- project stages (the engine's list; Project Radar keeps its own for now) ---------------- */
++  const STAGES = [
++    ["announced", "Announced / planning"], ["design", "Design"], ["tender", "Tender / procurement"], ["construction", "Under construction"],
++    ["finishing", "Landscape and finishing works"], ["handover", "Near handover"], ["preopening", "Pre-opening"], ["operating", "Operating (upgrade)"], ["unknown", "Unknown"]];
++  const STAGE_KEYS = STAGES.map((s) => s[0]);
++  const stageOf = (v) => { const s = String(v || "").trim().toLowerCase(); return STAGES.find(([k, l]) => k === s || l.toLowerCase() === s) ? STAGES.find(([k, l]) => k === s || l.toLowerCase() === s)[0] : "unknown"; };
++
++  /* Customer types: the same keys as the Growth Center's segments (app/growth.js SEGMENTS), so one vocabulary is used. */
++  const CUSTOMER_TYPES = [["developer", "Real-estate developers"], ["compound", "Residential compounds"], ["school", "International & private schools"], ["club", "Clubs & sports facilities"],
++    ["hotel", "Hotels & resorts"], ["operator", "Amusement & entertainment operators"], ["consultant", "Architects & landscape consultants"], ["contractor", "Contractors & procurement"],
++    ["mall", "Shopping malls"], ["government", "Government & municipalities"], ["other", "Other"]];
++
++  /* ---------------- timing settings (stored in mix/enginecfg) ---------------- */
++  const CATEGORY_KEYS = () => (root.DPMiEngine ? root.DPMiEngine.CATEGORIES.map((c) => c[0]) : []);
++  const dayCount = (v, max) => (v === null || v === undefined || v === "" ? null : (Number.isInteger(+v) && +v >= 0 && +v <= max ? +v : undefined));
++  /** Blank stays blank (null): a missing figure is shown as missing, never filled with a guess. */
++  function timingOf(cfg) {
++    const c = cfg || {}, out = { leadTimes: {}, salesCycle: {}, stageOpening: {}, safetyDays: null, periodEnd: null };
++    for (const k of CATEGORY_KEYS()) { const v = dayCount((c.leadTimes || {})[k], 730); out.leadTimes[k] = v === undefined ? null : v; }
++    for (const [k] of CUSTOMER_TYPES) { const v = dayCount((c.salesCycle || {})[k], 1095); out.salesCycle[k] = v === undefined ? null : v; }
++    for (const k of STAGE_KEYS) { if (k === "unknown") continue; const v = dayCount((c.stageOpening || {})[k], 3650); out.stageOpening[k] = v === undefined ? null : v; }
++    const s = dayCount(c.safetyDays, 365); out.safetyDays = s === undefined ? null : s;
++    out.periodEnd = validDay(c.periodEnd) ? c.periodEnd : null;
++    return out;
++  }
++  /** Problems in a timing patch before it is saved (null when fine). */
++  function validateTiming(t) {
++    const bad = (obj, max) => Object.entries(obj || {}).find(([, v]) => dayCount(v, max) === undefined);
++    let b;
++    if ((b = bad(t.leadTimes, 730))) return `Lead time for ${b[0]} must be a whole number of days from 0 to 730, or blank.`;
++    if ((b = bad(t.salesCycle, 1095))) return `Sales cycle for ${b[0]} must be a whole number of days from 0 to 1095, or blank.`;
++    if ((b = bad(t.stageOpening, 3650))) return `Days to opening for the ${b[0]} stage must be a whole number from 0 to 3650, or blank.`;
++    if (dayCount(t.safetyDays, 365) === undefined) return "The safety margin must be a whole number of days from 0 to 365, or blank.";
++    if (t.periodEnd && !validDay(t.periodEnd)) return "The target period end must be a date (YYYY-MM-DD), or blank.";
++    return null;
++  }
++  const validDay = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T12:00:00Z").toISOString().slice(0, 10) === d;
++  const addDays = (day, n) => new Date(Date.parse(day + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
++  const diffDays = (a, b) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
++
++  /** Approach-by date and window for one opportunity. A calculation, never AI.
++   *  input: { opening (YYYY-MM-DD, published), stage, stageSince (YYYY-MM-DD, when the stage was evidenced), category, customerType }
++   *  Returns { window, opening, openingBasis, latestOrder, approachBy, fitsPeriod, basis:[lines], missing:[lines] }.
++   *  window: early | open | lastcall | closed | unknown. */
++  function approachBy(input, cfg, today) {
++    const T = timingOf(cfg), i = input || {}, basis = [], missing = [], st = stageOf(i.stage);
++    let opening = null, openingBasis = null;
++    if (validDay(i.opening)) { opening = i.opening; openingBasis = "published"; basis.push(`Opening ${opening}, as published.`); }
++    else if (st !== "unknown" && T.stageOpening[st] != null) {
++      const from = validDay(i.stageSince) ? i.stageSince : today;
++      opening = addDays(from, T.stageOpening[st]); openingBasis = "estimate";
++      basis.push(`Opening estimated: ${T.stageOpening[st]} days after the ${STAGES.find((s) => s[0] === st)[1].toLowerCase()} stage (${from}). Estimate.`);
++    } else missing.push(st === "unknown" ? "No opening date and no known stage." : `No opening date, and no days-to-opening figure for the ${st} stage.`);
++    const lead = T.leadTimes[i.category], cycle = T.salesCycle[i.customerType];
++    if (lead == null) missing.push(i.category ? `No lead time entered for ${i.category}.` : "No product category.");
++    if (cycle == null) missing.push(i.customerType ? `No sales cycle entered for ${i.customerType}.` : "No customer type.");
++    if (T.safetyDays == null) missing.push("No safety margin entered.");
++    const out = { window: "unknown", opening, openingBasis, latestOrder: null, approachBy: null, fitsPeriod: null, basis, missing };
++    if (!opening || lead == null || T.safetyDays == null) return out;
++    out.latestOrder = addDays(opening, -(lead + T.safetyDays));
++    basis.push(`Latest order date: opening − ${lead} days lead time − ${T.safetyDays} days margin.`);
++    if (cycle == null) { out.window = diffDays(today, out.latestOrder) < 0 ? "closed" : "unknown"; return out; }
++    out.approachBy = addDays(out.latestOrder, -cycle);
++    basis.push(`Approach by: latest order date − ${cycle} days sales cycle.`);
++    const toApproach = diffDays(today, out.approachBy), toOrder = diffDays(today, out.latestOrder);
++    out.window = toOrder < 0 ? "closed" : toApproach < 0 ? "lastcall" : toApproach <= 90 ? "open" : "early";
++    if (T.periodEnd) out.fitsPeriod = diffDays(addDays(today, cycle), T.periodEnd) >= 0;
++    return out;
++  }
++  const WINDOWS = { early: "Early", open: "Open", lastcall: "Last call", closed: "Closed", unknown: "Unknown" };
++
++  /* ---------------- search credit envelopes (stored in mix/enginecfg.envelopes) ---------------- */
++  const STREAMS = [["jobs", "Scheduled research (news, currency, opportunities, materials, weekly)"], ["leads", "Lead and contact research"], ["topic", "Topic research"]];
++  function envelopesOf(cfg) {
++    const e = (cfg && cfg.envelopes) || {}, out = {};
++    for (const [k] of STREAMS) { const v = e[k]; out[k] = v === null || v === undefined || v === "" ? null : Number.isInteger(+v) && +v >= 0 && +v <= 1000000 ? +v : null; }
++    return out;
++  }
++  function validateEnvelopes(e, monthCap) {
++    for (const [k, v] of Object.entries(e || {})) if (!(v === null || v === "" || (Number.isInteger(+v) && +v >= 0 && +v <= 1000000))) return `The share for ${k} must be a whole number of credits, or blank.`;
++    const sum = Object.values(e || {}).reduce((a, v) => a + (v === null || v === "" ? 0 : +v), 0);
++    if (monthCap != null && sum > monthCap) return `The shares add up to ${sum} credits, more than the monthly cap of ${monthCap}.`;
++    return null;
++  }
++
++  const api = { FLAGS, flagsOf, DATA_CLASSES, PROVIDERS, TASKS, DEFAULT_AICFG, aicfgOf, classAllowed, routeFor, STAGES, STAGE_KEYS, stageOf, CUSTOMER_TYPES,
++    timingOf, validateTiming, approachBy, WINDOWS, STREAMS, envelopesOf, validateEnvelopes, validDay, addDays };
++  root.DPCi = api;
++})(typeof self !== "undefined" ? self : globalThis);
+diff --git a/app/export.js b/app/export.js
+index 81b99ee..79c6c84 100644
+--- a/app/export.js
++++ b/app/export.js
+@@ -15,7 +15,7 @@
+     "eng/U/o", "engx/U/o", "engx/U/o/*/f", "engx/U/o/*/f/*/c", "engx/U/o/*/h", "engx/U/wid", "engx/U/wid/*/c", "commissions/U/r", "commissions/U/r/*/po", "commissions/U/r/*/po/*/c",
+     "notif/U/n", "outbox/U/e", "requests/U/cc", "handoff/U/o", "wall/U/m", "wall/U/f", "wall/U/f/*/c", "askceo/U/m", "askceo/U/f", "askceo/U/f/*/c", "askceo/U/meta",
+     "mi", "mi/opps/o", "mi/state/jobs", "mi/req/r", "mi/runs/r", "mix", "mix/mat/m", "mix/quotes/q", "mix/quotes/q/*/c", "mix/fx/r", "mix/news/n", "mix/reports/w", "mix/reports/p",
+-    "mix/enginev/v", "mix/alias/a", "mix/disc/j", "mix/disc/c", "mix/opp/o", "mix/assign/a", "mix/outcome/o", "plan/U/o", "mix/enrich/e"];
++    "mix/enginev/v", "mix/aicfgv/v", "mix/alias/a", "mix/disc/j", "mix/disc/c", "mix/opp/o", "mix/assign/a", "mix/outcome/o", "plan/U/o", "mix/enrich/e"];
+   async function pool(items, n, fn) { const out = []; let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })); return out; }
+   async function full({ onProgress } = {}) {
+     if (!root.DPAuth.isAdmin()) throw new Error("Administrators only.");
+diff --git a/app/geo-eg.js b/app/geo-eg.js
+new file mode 100644
+index 0000000..cf7c344
+--- /dev/null
++++ b/app/geo-eg.js
+@@ -0,0 +1,92 @@
++/* X FORCE — Commercial Intelligence, Phase 0: a small gazetteer of Egypt, used to place opportunities on the map at an honest precision.
++   Pure functions, no storage, no outside calls. Needs app/miengine.js (fold, hasWord) to be loaded first.
++
++   GOVS   the 27 governorates: English and Arabic names, the capital's approximate centre
++   AREAS  named cities, new towns and coastal areas that matter for Dupedia, each in one governorate, with an approximate centre
++   locate(text) → { precision: "area" | "governorate" | "foreign" | "unknown", gov, area, lat, lng, note }
++
++   Centres are approximate (about 0.01°) and only for drawing a map ring: they are never shown as an address. A project is
++   placed exactly only when a source gives coordinates or an administrator places it (a later phase). */
++(function (root) {
++  "use strict";
++  const E = () => root.DPMiEngine;
++
++  // [key, English name, Arabic name, lat, lng, other names]
++  const GOVS = [
++    ["cairo", "Cairo", "القاهرة", 30.044, 31.236, []], ["giza", "Giza", "الجيزة", 30.013, 31.209, []], ["alexandria", "Alexandria", "الإسكندرية", 31.200, 29.918, ["alex"]],
++    ["qalyubia", "Qalyubia", "القليوبية", 30.466, 31.184, ["qaliubiya", "kalyubia"]], ["sharqia", "Sharqia", "الشرقية", 30.587, 31.502, ["sharkia"]],
++    ["dakahlia", "Dakahlia", "الدقهلية", 31.041, 31.378, ["daqahliya"]], ["gharbia", "Gharbia", "الغربية", 30.787, 31.000, []], ["monufia", "Monufia", "المنوفية", 30.553, 31.009, ["menoufia", "menofia"]],
++    ["beheira", "Beheira", "البحيرة", 31.036, 30.469, ["behira"]], ["kafrelsheikh", "Kafr El Sheikh", "كفر الشيخ", 31.111, 30.940, ["kafr el-sheikh"]], ["damietta", "Damietta", "دمياط", 31.417, 31.814, []],
++    ["portsaid", "Port Said", "بورسعيد", 31.265, 32.302, ["port-said", "بور سعيد"]], ["ismailia", "Ismailia", "الإسماعيلية", 30.596, 32.272, []], ["suez", "Suez", "السويس", 29.966, 32.550, []],
++    ["northsinai", "North Sinai", "شمال سيناء", 31.132, 33.798, ["arish", "العريش"]], ["southsinai", "South Sinai", "جنوب سيناء", 28.241, 33.622, []],
++    ["redsea", "Red Sea", "البحر الأحمر", 27.258, 33.812, []], ["matrouh", "Matrouh", "مطروح", 31.354, 27.237, ["marsa matruh", "marsa matrouh", "mersa matruh", "مرسى مطروح"]],
++    ["newvalley", "New Valley", "الوادي الجديد", 25.439, 30.546, ["kharga", "الخارجة"]], ["faiyum", "Faiyum", "الفيوم", 29.308, 30.842, ["fayoum", "fayum"]],
++    ["benisuef", "Beni Suef", "بني سويف", 29.074, 31.097, ["beni-suef"]], ["minya", "Minya", "المنيا", 28.110, 30.750, ["minia"]], ["asyut", "Asyut", "أسيوط", 27.181, 31.183, ["assiut"]],
++    ["sohag", "Sohag", "سوهاج", 26.556, 31.695, []], ["qena", "Qena", "قنا", 26.164, 32.727, []], ["luxor", "Luxor", "الأقصر", 25.687, 32.639, []], ["aswan", "Aswan", "أسوان", 24.089, 32.899, []],
++  ];
++  // [key, governorate, English name, Arabic name, lat, lng, other names]
++  const AREAS = [
++    ["newcairo", "cairo", "New Cairo", "القاهرة الجديدة", 30.030, 31.470, ["fifth settlement", "5th settlement", "tagamoa", "التجمع الخامس"]],
++    ["madinaty", "cairo", "Madinaty", "مدينتي", 30.100, 31.640, []], ["shorouk", "cairo", "El Shorouk", "الشروق", 30.140, 31.620, ["shorouk city", "el-shorouk"]],
++    ["mostakbal", "cairo", "Mostakbal City", "مستقبل سيتي", 30.100, 31.560, ["future city", "مدينة المستقبل"]],
++    ["nac", "cairo", "New Administrative Capital", "العاصمة الإدارية الجديدة", 30.020, 31.760, ["new capital", "administrative capital", "العاصمة الإدارية"]],
++    ["badr", "cairo", "Badr City", "مدينة بدر", 30.140, 31.720, []], ["heliopolis", "cairo", "Heliopolis", "مصر الجديدة", 30.090, 31.330, []],
++    ["nasrcity", "cairo", "Nasr City", "مدينة نصر", 30.060, 31.330, []], ["maadi", "cairo", "Maadi", "المعادي", 29.960, 31.250, []],
++    ["zayed", "giza", "Sheikh Zayed", "الشيخ زايد", 30.050, 30.980, ["sheikh zayed city", "zayed city", "new zayed", "زايد الجديدة"]],
++    ["october", "giza", "6th of October", "السادس من أكتوبر", 29.940, 30.910, ["6th of october city", "sixth of october", "october city", "مدينة 6 أكتوبر", "مدينة السادس من أكتوبر"]],
++    ["newgiza", "giza", "New Giza", "نيو جيزة", 30.010, 31.040, []],
++    ["northcoast", "matrouh", "North Coast", "الساحل الشمالي", 30.950, 28.800, ["sahel"]],
++    ["sidiabdelrahman", "matrouh", "Sidi Abdel Rahman", "سيدي عبد الرحمن", 30.970, 28.700, ["sidi abd el rahman", "sidi abdelrahman"]],
++    ["alamein", "matrouh", "New Alamein", "العلمين الجديدة", 30.830, 28.950, ["el alamein", "alamein", "العلمين"]],
++    ["rasalhekma", "matrouh", "Ras El Hekma", "رأس الحكمة", 31.150, 27.820, ["ras el-hekma", "ras al hekma", "ras elhekma"]],
++    ["sokhna", "suez", "Ain Sokhna", "العين السخنة", 29.600, 32.320, ["ain el sokhna", "el sokhna", "sokhna", "السخنة"]],
++    ["galala", "suez", "Galala", "الجلالة", 29.400, 32.380, ["el galala", "galala city"]],
++    ["hurghada", "redsea", "Hurghada", "الغردقة", 27.258, 33.812, []], ["gouna", "redsea", "El Gouna", "الجونة", 27.390, 33.680, ["gouna"]],
++    ["sahlhasheesh", "redsea", "Sahl Hasheesh", "سهل حشيش", 27.050, 33.890, []], ["somabay", "redsea", "Soma Bay", "سوما باي", 26.850, 33.980, []],
++    ["safaga", "redsea", "Safaga", "سفاجا", 26.750, 33.940, []], ["marsaalam", "redsea", "Marsa Alam", "مرسى علم", 25.070, 34.890, []],
++    ["sharm", "southsinai", "Sharm El Sheikh", "شرم الشيخ", 27.915, 34.330, ["sharm el-sheikh", "sharm"]], ["dahab", "southsinai", "Dahab", "دهب", 28.500, 34.510, []],
++    ["borgelarab", "alexandria", "Borg El Arab", "برج العرب", 30.870, 29.580, ["new borg el arab", "برج العرب الجديدة"]],
++    ["obour", "qalyubia", "El Obour", "العبور", 30.230, 31.480, ["obour city", "el-obour"]],
++    ["ramadan10", "sharqia", "10th of Ramadan", "العاشر من رمضان", 30.300, 31.750, ["tenth of ramadan", "10th of ramadan city"]],
++    ["newmansoura", "dakahlia", "New Mansoura", "المنصورة الجديدة", 31.500, 31.300, []], ["mansoura", "dakahlia", "Mansoura", "المنصورة", 31.041, 31.378, []],
++    ["newdamietta", "damietta", "New Damietta", "دمياط الجديدة", 31.440, 31.680, []],
++  ];
++  // Places outside Egypt that appear in Egyptian real-estate news. Checked before anything else.
++  const FOREIGN = ["saudi", "saudi arabia", "ksa", "riyadh", "jeddah", "neom", "uae", "dubai", "abu dhabi", "qatar", "doha", "kuwait", "oman", "bahrain", "jordan", "libya", "tripoli", "benghazi",
++    "iraq", "morocco", "usa", "united states", "virginia", "california", "uk", "london",
++    "السعودية", "المملكة العربية السعودية", "الرياض", "جدة", "نيوم", "الإمارات", "دبي", "أبوظبي", "أبو ظبي", "قطر", "الدوحة", "الكويت", "عمان", "البحرين", "الأردن", "ليبيا", "العراق", "المغرب"];
++  const EGYPT = ["egypt", "egyptian", "مصر", "جمهورية مصر العربية"];
++
++  const govByKey = Object.fromEntries(GOVS.map((g) => [g[0], g]));
++  const words = (list) => list.slice().sort((a, b) => b.length - a.length);
++  let IDX = null;
++  function index() {
++    if (IDX) return IDX;
++    const areas = [], govs = [];
++    for (const a of AREAS) for (const n of words([a[2], a[3]].concat(a[6]))) areas.push([n, a]);
++    for (const g of GOVS) for (const n of words([g[1], g[2]].concat(g[5]))) govs.push([n, g]);
++    areas.sort((x, y) => y[0].length - x[0].length); govs.sort((x, y) => y[0].length - x[0].length);
++    return (IDX = { areas, govs });
++  }
++  const hit = (text, w) => E().hasWord(text, w);
++
++  function locate(raw) {
++    const text = E().fold(raw || "").replace(/[-–—_,،.;:()/]+/g, " ").replace(/\s+/g, " ").trim();
++    const none = { precision: "unknown", gov: null, area: null, lat: null, lng: null, note: "" };
++    if (!text) return Object.assign(none, { note: "No location given." });
++    const egypt = EGYPT.some((w) => hit(text, w)), foreign = FOREIGN.find((w) => hit(text, w));
++    const { areas, govs } = index();
++    const a = areas.find(([w]) => hit(text, w)), g = govs.find(([w]) => hit(text, w));
++    if (foreign && !egypt) return Object.assign(none, { precision: "foreign", note: `Outside Egypt (${foreign}).` });
++    if (a) { const [key, gov, en, , lat, lng] = a[1]; return { precision: "area", gov, area: key, lat, lng, note: `${en}, ${govByKey[gov][1]}. Area centre, approximate.` }; }
++    if (g) {
++      const [key, en, , lat, lng] = g[1];
++      // "Red Sea" alone is also Saudi Arabia's coast: placed in Egypt's governorate only when Egypt is named.
++      if (key === "redsea" && !egypt) return Object.assign(none, { note: "Red Sea, country not stated." });
++      return { precision: "governorate", gov: key, area: null, lat, lng, note: `${en} governorate. Not placed more precisely.` };
++    }
++    return Object.assign(none, { note: egypt ? "Egypt, place not recognised." : "Place not recognised." });
++  }
++
++  root.DPGeo = { GOVS: GOVS.map(([key, en, ar, lat, lng]) => ({ key, en, ar, lat, lng })), AREAS: AREAS.map(([key, gov, en, ar, lat, lng]) => ({ key, gov, en, ar, lat, lng })), locate };
++})(typeof self !== "undefined" ? self : globalThis);
+diff --git a/app/ui-miengine.js b/app/ui-miengine.js
+index d8efc93..359f225 100644
+--- a/app/ui-miengine.js
++++ b/app/ui-miengine.js
+@@ -1,11 +1,11 @@
+ /* X FORCE — Market Intelligence 2.0, Phase 1: the administrators' screen (Data Readiness, product capability, company names,
+    job ledger, the switch). Reached from Mission Control → Automation Health. Nothing here is visible to other roles. */
+-/* global DPUI, DPStore, DPAuth, DPMiEngine */
++/* global DPUI, DPStore, DPAuth, DPMiEngine, DPCi */
+ (function (root) {
+   "use strict";
+   const U = DPUI, { $, $$, esc, App } = U, E = DPMiEngine;
+   const S = { tab: "leads", counts: null, lf: "todo", lp: 0 };
+-  const TABS = [["leads", "Existing leads"], ["sched", "Research schedule"], ["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"]];
++  const TABS = [["leads", "Existing leads"], ["sched", "Research schedule"], ["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"], ["ci", "Commercial intelligence"]];
+   const STATE = { ready: ["Ready", "ok"], partial: ["Partly", "warn"], none: ["Not yet", "err"] };
+   const num = (x) => (Number(x) || 0).toLocaleString("en-US");
+   const dt = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—");
+@@ -42,7 +42,7 @@
+     $("#me-sw").onclick = async () => { const f = await U.form(on ? "Switch the engine off" : "Switch the engine on", [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: on ? "Switch off" : "Switch on", intro: "Applies from the next research run. Saved records are not changed." }); if (!f) return; try { await setSwitch(!on, f.r); U.toast(on ? "Engine switched off." : "Engine switched on."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
+     $$("[data-mt]", V).forEach((b) => (b.onclick = () => { S.tab = b.dataset.mt; render(); }));
+     const B = $("#me-body");
+-    try { await ({ leads: leadsTab, sched: schedTab, ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab })[S.tab](B); }
++    try { await ({ leads: leadsTab, sched: schedTab, ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab, ci: ciTab })[S.tab](B); }
+     catch (e) { B.innerHTML = `<div class="note err">Could not load (${esc(e.message || e.code)}).</div>`; }
+   }
+ 
+@@ -202,6 +202,104 @@
+       ${rows.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th>Created</th><th>Job</th><th>Status</th><th class="r">Tries</th><th>Next</th><th>Detail</th></tr></thead><tbody>${rows.map((j) => `<tr><td class="small">${esc(dt(j.createdAt))}</td><td class="small">${esc(j.kind)}<div class="tiny muted">${esc(j.key)}</div></td><td><span class="pill ${P[j.status] || ""}">${esc(j.status)}</span></td><td class="r num">${j.tries || 0}/${j.maxTries || 0}</td><td class="small">${["queued", "waiting"].includes(j.status) ? esc(dt(j.nextAt)) : "—"}</td><td class="small muted">${esc(j.error || "")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">No jobs yet.</p>`}</div>`;
+   }
+ 
++
++  /* ---------------- Commercial Intelligence, Phase 0: switches, AI routing, timing, credit shares ---------------- */
++  const C = () => root.DPCi;
++  const api = (u, o) => root.XFServer.api(u, o);
++  async function setFlag(k, on, reason) {
++    if (!U.isAdmin()) throw new Error("Administrators only."); if (!String(reason || "").trim()) throw new Error("Give a reason.");
++    const cur = (await DPStore.getConfig("settings")) || {}, ci = Object.assign({}, cur.ci || {}, { [k]: !!on });
++    await DPStore.setConfig("settings", Object.assign({}, cur, { ci }));
++    App.config.settings.ci = ci;
++    await DPAuth.auditLog(`Commercial intelligence: ${k} switched ${on ? "on" : "off"}`, { kind: "mi", reason }).catch(() => {});
++  }
++  async function saveAi(next, reason) {
++    if (!U.isAdmin()) throw new Error("Administrators only."); if (!String(reason || "").trim()) throw new Error("Give a reason for the change.");
++    const prev = C().aicfgOf(await DPStore.tryGet("mix/aicfg")), at = new Date().toISOString(), version = (prev.version || 0) + 1;
++    const doc = Object.assign(C().aicfgOf(next), { version, updatedAt: at, updatedBy: DPAuth.A.me.id });
++    if (prev.version) await DPStore.set(`mix/aicfgv/v/${prev.version}`, Object.assign({}, prev, { replacedAt: at, replacedBy: DPAuth.A.me.id }));
++    await DPStore.set("mix/aicfg", doc);
++    await DPAuth.auditLog("AI routing changed", { kind: "mi", reason, detail: `Version ${version}`, before: { tasks: prev.tasks }, after: { tasks: doc.tasks } }).catch(() => {});
++  }
++  const ask = (title, intro) => U.form(title, [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: "Save", intro: intro || "" });
++  async function ciTab(B) {
++    const K = C(), flags = K.flagsOf(App.config.settings), cfg = await loadCfg(), ai = K.aicfgOf(await DPStore.tryGet("mix/aicfg"));
++    const [st, rs, logs] = await Promise.all([api("/api/ci/status").catch(() => null), api("/api/research/status").catch(() => null), DPStore.tryList("mix/ailog/l")]);
++    const T = K.timingOf(cfg), env = K.envelopesOf(cfg), monthCap = rs && rs.usage ? rs.usage.tavily.monthCap : null, log = logs.map((x) => x.data).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
++    const provOpts = (sel, none) => `<option value=""${!sel ? " selected" : ""}>${esc(none)}</option>` + Object.entries(K.PROVIDERS).map(([k, p]) => `<option value="${k}"${sel === k ? " selected" : ""}>${esc(p.label)}</option>`).join("");
++    const nIn = (attr, v, label, max) => `<input class="in sm num" style="width:84px" type="number" min="0" max="${max}" step="1" ${attr} value="${v == null ? "" : v}" aria-label="${esc(label)}" placeholder="—">`;
++    B.innerHTML = `<div class="stack">
++      <div class="card stack"><h3>Switches</h3><p class="small muted">Commercial Intelligence is built in phases. Each part stays off until you switch it on; off means X FORCE behaves exactly as before.</p>
++        <div class="tablewrap"><table class="mtable"><thead><tr><th>Part</th><th>State</th><th>What it does</th><th></th></tr></thead><tbody>${K.FLAGS.map(([k, l, d]) => `<tr><td class="small"><b>${esc(l)}</b></td><td><span class="pill ${flags[k] ? "ok" : ""}">${flags[k] ? "On" : "Off"}</span></td><td class="small">${esc(d)}</td><td class="r"><button class="btn ghost xs" data-cif="${k}">${flags[k] ? "Switch off…" : "Switch on…"}</button></td></tr>`).join("")}</tbody></table></div></div>
++
++      <div class="card stack"><div class="row between"><h3>AI routing</h3><span class="tiny muted">Version ${ai.version || "not saved yet"}${ai.updatedAt ? ` · ${esc(dt(ai.updatedAt))} by ${esc(DPAuth.nameSync(ai.updatedBy) || "")}` : ""}</span></div>
++        ${flags.ai ? "" : `<div class="note warn small">The switch is off: every AI call goes to Gemini as before. These choices apply once AI routing is switched on.</div>`}
++        <p class="small muted">Each kind of data may go only to providers allowed for it. Public web text (P0) may go anywhere. Gemini's free tier receives public text only, because Google may use and review what it is sent. Personal data (P3) never goes to any provider. The text of prompts and answers is not kept.</p>
++        <div class="tablewrap"><table class="mtable"><thead><tr><th>Task</th><th>Data</th><th>Provider</th><th>If it fails</th></tr></thead><tbody>${Object.entries(K.TASKS).map(([k, t]) => `<tr><td class="small"><b>${esc(t.label)}</b></td><td class="small">${t.cls}</td><td><select class="in sm" data-aip="${k}" aria-label="${esc(t.label)} provider">${provOpts(ai.tasks[k].provider, "None (off)")}</select></td><td><select class="in sm" data-aif="${k}" aria-label="${esc(t.label)} fallback">${provOpts(ai.tasks[k].fallback, "No fallback")}</select></td></tr>`).join("")}</tbody></table></div>
++        <div class="tablewrap"><table class="mtable"><thead><tr><th>Provider</th><th>Connected</th><th>On</th><th>Model</th><th class="r">Calls a day</th><th class="r">Used today</th><th>May receive</th><th></th></tr></thead><tbody>${Object.entries(K.PROVIDERS).map(([k, p]) => {
++          const pc = ai.providers[k], con = st ? st.connected[k] : null;
++          return `<tr><td class="small"><b>${esc(p.label)}</b><div class="tiny muted">${esc(p.secret)}</div></td><td><span class="pill ${con ? "ok" : con === false ? "warn" : ""}">${con ? "Yes" : con === false ? "No" : "?"}</span></td>
++            <td><input type="checkbox" data-aion="${k}"${pc.on ? " checked" : ""} aria-label="${esc(p.label)} on"></td>
++            <td><input class="in sm" style="min-width:150px" data-aim="${k}" value="${esc(pc.model)}" placeholder="${k === "gemini" ? "as set in Cloudflare" : "model name"}" aria-label="${esc(p.label)} model"></td>
++            <td class="r">${k === "gemini" ? `<span class="tiny muted">existing cap</span>` : nIn(`data-aic="${k}"`, pc.dailyCalls, p.label + " calls a day", 100000)}</td>
++            <td class="r num">${k === "gemini" ? (rs && rs.usage ? num(rs.usage.gemini.today) : "—") : st ? num(st.aiToday[k]) : "—"}</td>
++            <td class="small">${p.classes.join(", ")}${k === "claude" ? `<label class="check tiny"><input type="checkbox" data-aip2${pc.allowP2 ? " checked" : ""}> also P2</label>` : ""}</td>
++            <td class="r"><button class="btn ghost xs" data-ait="${k}">Test</button></td></tr>`; }).join("")}</tbody></table></div>
++        <p class="tiny muted">A test sends one fixed public sentence and counts as one call. Paid providers are never used unless switched on here, with a daily limit above 0.</p>
++        <div class="row"><button class="btn lime sm" id="ai-save">Save a new version…</button></div></div>
++
++      <div class="card stack"><h3>Timing</h3><p class="small muted">Used to work out when to approach each project: latest order date = opening − lead time − safety margin; approach by = latest order date − sales cycle. Blank figures stay blank, and the result then says what is missing.</p>
++        <div class="grid2">
++          <div><h4 class="small">Lead time by product category (days)</h4><table class="mtable"><tbody>${E.CATEGORIES.map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-tlt="${k}"`, T.leadTimes[k], l + " lead time", 730)}</td></tr>`).join("")}
++            <tr><td class="small"><b>Safety margin (days)</b></td><td class="r">${nIn('id="t-safe"', T.safetyDays, "Safety margin", 365)}</td></tr>
++            <tr><td class="small"><b>Target period ends</b></td><td class="r"><input class="in sm" type="date" id="t-end" value="${T.periodEnd || ""}" aria-label="Target period end"></td></tr></tbody></table></div>
++          <div><h4 class="small">Sales cycle by customer type (days)</h4><table class="mtable"><tbody>${K.CUSTOMER_TYPES.map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-tsc="${k}"`, T.salesCycle[k], l + " sales cycle", 1095)}</td></tr>`).join("")}</tbody></table>
++            <h4 class="small">Usual days from each stage to opening</h4><p class="tiny muted">Used only when no opening date is published; the result is marked as an estimate.</p><table class="mtable"><tbody>${K.STAGES.filter(([k]) => k !== "unknown").map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-tso="${k}"`, T.stageOpening[k], l + " days to opening", 3650)}</td></tr>`).join("")}</tbody></table></div>
++        </div>
++        <div class="row"><button class="btn lime sm" id="t-save">Save a new version…</button></div>
++        <div class="card stack"><h4 class="small">Try it</h4><div class="row wrap">
++          <select class="in sm" id="tt-cat" aria-label="Category">${E.CATEGORIES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
++          <select class="in sm" id="tt-ct" aria-label="Customer type">${K.CUSTOMER_TYPES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
++          <select class="in sm" id="tt-st" aria-label="Stage">${K.STAGES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
++          <label class="tiny">Published opening <input class="in sm" type="date" id="tt-op"></label></div><div class="small" id="tt-out"></div><p class="tiny muted">Uses the saved figures.</p></div></div>
++
++      <div class="card stack"><h3>Search credit shares</h3>
++        ${flags.envelopes ? "" : `<div class="note warn small">The switch is off: only the existing daily and monthly caps apply. Use is counted per kind of research either way, so you can see it before choosing shares.</div>`}
++        <p class="small muted">Each kind of research may spend only its share of the month's search credits${monthCap != null ? ` (cap ${num(monthCap)})` : ""}. Blank means no share for that kind: it is limited only by the existing caps.</p>
++        <div class="tablewrap"><table class="mtable"><thead><tr><th>Kind of research</th><th class="r">Share (credits a month)</th><th class="r">Used this month</th></tr></thead><tbody>${K.STREAMS.map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-env="${k}"`, env[k], l + " share", 1000000)}</td><td class="r num">${st ? num(st.streams[k]) : "—"}</td></tr>`).join("")}</tbody></table></div>
++        <p class="tiny muted">Use is counted from the day this version was uploaded; earlier searches are not split by kind.</p>
++        <div class="row"><button class="btn lime sm" id="e-save">Save a new version…</button></div></div>
++
++      <div class="card stack"><h3>AI calls</h3><p class="small muted">Recorded while AI routing is on, and for every provider test. The last 30 calls; kept 90 days. No prompt or answer text is kept.</p>
++        ${log.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th>When</th><th>Task</th><th>Data</th><th>Provider</th><th>Model</th><th class="r">Tokens</th><th class="r">Time</th><th>Result</th></tr></thead><tbody>${log.map((l) => `<tr><td class="small">${esc(dt(l.at))}</td><td class="small">${esc(l.task)}</td><td class="small">${esc(l.cls || "")}</td><td class="small">${esc(l.provider || "—")}</td><td class="tiny">${esc(l.model || "")}</td><td class="r num">${l.tokens ? num(l.tokens) : "—"}</td><td class="r num">${l.ms != null ? (l.ms / 1000).toFixed(1) + " s" : "—"}</td><td class="small">${l.ok ? `<span class="pill ok">Answered</span>` : `<span class="pill err">${esc(l.code || "Failed")}</span> <span class="tiny muted">${esc(l.error || "")}</span>`}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">No calls recorded yet.</p>`}</div>
++    </div>`;
++
++    $$("[data-cif]", B).forEach((b) => (b.onclick = async () => { const k = b.dataset.cif, on = !flags[k], f = await U.form(`${on ? "Switch on" : "Switch off"}: ${K.FLAGS.find((x) => x[0] === k)[1]}`, [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: on ? "Switch on" : "Switch off" }); if (!f) return;
++      try { await setFlag(k, on, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } }));
++    $("#ai-save").onclick = async () => { const next = { tasks: {}, providers: {} };
++      for (const k of Object.keys(K.TASKS)) next.tasks[k] = { provider: $(`[data-aip="${k}"]`, B).value, fallback: $(`[data-aif="${k}"]`, B).value };
++      for (const k of Object.keys(K.PROVIDERS)) { next.providers[k] = { on: $(`[data-aion="${k}"]`, B).checked, model: $(`[data-aim="${k}"]`, B).value.trim() }; if (k !== "gemini") next.providers[k].dailyCalls = +$(`[data-aic="${k}"]`, B).value || 0; }
++      next.providers.claude.allowP2 = $("[data-aip2]", B).checked;
++      const f = await ask("Save AI routing", next.providers.claude.allowP2 ? "Prices, values and customer notes (P2) will be allowed to go to the paid Claude API." : ""); if (!f) return;
++      try { await saveAi(next, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
++    $$("[data-ait]", B).forEach((b) => (b.onclick = async () => { b.disabled = true; b.textContent = "Testing…";
++      try { const r = await api("/api/ci/ai/test", { method: "POST", body: JSON.stringify({ provider: b.dataset.ait }) }); U.toast(r.ok ? `Answered in ${(r.ms / 1000).toFixed(1)} s (${r.model}).` : r.message, r.ok ? {} : { err: true }); }
++      catch (e) { U.toast(e.message, { err: true }); } render(); }));
++    const blank = (x) => (x.value === "" ? null : +x.value);
++    $("#t-save").onclick = async () => { const t = { leadTimes: {}, salesCycle: {}, stageOpening: {}, safetyDays: blank($("#t-safe", B)), periodEnd: $("#t-end", B).value || null };
++      $$("[data-tlt]", B).forEach((x) => (t.leadTimes[x.dataset.tlt] = blank(x))); $$("[data-tsc]", B).forEach((x) => (t.salesCycle[x.dataset.tsc] = blank(x))); $$("[data-tso]", B).forEach((x) => (t.stageOpening[x.dataset.tso] = blank(x)));
++      const err = K.validateTiming(t); if (err) return U.toast(err, { err: true });
++      const f = await ask("Save timing figures"); if (!f) return; try { await saveCfg(t, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
++    $("#e-save").onclick = async () => { const e2 = {}; $$("[data-env]", B).forEach((x) => (e2[x.dataset.env] = blank(x)));
++      const err = K.validateEnvelopes(e2, monthCap); if (err) return U.toast(err, { err: true });
++      const f = await ask("Save search credit shares"); if (!f) return; try { await saveCfg({ envelopes: e2 }, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
++    const W = { early: "", open: "ok", lastcall: "warn", closed: "err", unknown: "" };
++    const tryIt = () => { const r = K.approachBy({ category: $("#tt-cat", B).value, customerType: $("#tt-ct", B).value, stage: $("#tt-st", B).value, opening: $("#tt-op", B).value || null }, cfg, new Date().toISOString().slice(0, 10));
++      $("#tt-out", B).innerHTML = `<span class="pill ${W[r.window]}">${esc(K.WINDOWS[r.window])}</span>${r.approachBy ? ` Approach by <b>${esc(r.approachBy)}</b>.` : ""}${r.latestOrder ? ` Latest order date ${esc(r.latestOrder)}.` : ""}${r.fitsPeriod === true ? " Can sign within the target period." : r.fitsPeriod === false ? " Cannot sign within the target period." : ""}
++        <ul class="tiny">${r.basis.concat(r.missing.map((m) => "Missing: " + m)).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`; };
++    ["#tt-cat", "#tt-ct", "#tt-st", "#tt-op"].forEach((s) => ($(s, B).onchange = tryIt)); tryIt();
++  }
++
+   U.register("miengine", render);
+   root.DPMiEngineUI = { render };
+ })(typeof self !== "undefined" ? self : this);
+diff --git a/index.html b/index.html
+index f1d6c38..d6951eb 100644
+--- a/index.html
++++ b/index.html
+@@ -170,6 +170,8 @@ try{sessionStorage.removeItem("xf.splash");}catch(e){}el.hidden=false;arm();})()
+ <script src="app/askceo.js"></script>
+ <script src="app/intel.js"></script>
+ <script src="app/miengine.js"></script>
++<script src="app/ci.js"></script>
++<script src="app/geo-eg.js"></script>
+ <script src="app/export.js"></script>
+ <script src="app/planrender.js"></script>
+ <script src="app/canvas.js"></script>
+diff --git a/qa/ci_p0.test.mjs b/qa/ci_p0.test.mjs
+new file mode 100644
+index 0000000..1265007
+--- /dev/null
++++ b/qa/ci_p0.test.mjs
+@@ -0,0 +1,243 @@
++/* X FORCE Commercial Intelligence, Phase 0: AI router and data classes, switches, search credit shares, the Egypt gazetteer, timing.
++   No network: every provider is a fake fetch. Made-up records only (this repository is public).
++   Run:  node --test qa/ci_p0.test.mjs */
++import test from "node:test";
++import assert from "node:assert/strict";
++import { fakeD1 } from "./fake-d1.mjs";
++import { aiJson, aiReady, aiTest, aiSwitch } from "../worker/ai.js";
++import { reserveTavily, settleTavily, streamKey, streamUsage, CapError } from "../worker/usage.js";
++import { ProviderError } from "../worker/providers.js";
++
++globalThis.self = globalThis;
++await import("../app/store.js");
++await import("../app/miengine.js");
++await import("../app/growth.js");
++await import("../app/ci.js");
++await import("../app/geo-eg.js");
++const K = globalThis.DPCi, G = globalThis.DPGeo, RULES = globalThis.DPStore;
++
++const realFetch = globalThis.fetch;
++test.afterEach(() => { globalThis.fetch = realFetch; });
++const KEYS = { GEMINI_API_KEY: "gem-test-not-a-real-key", GEMINI_BASE_URL: "https://gemini.test", GEMINI_TIMEOUT_MS: "300", AI_TIMEOUT_MS: "300",
++  ANTHROPIC_API_KEY: "sk-ant-test-not-a-real-key-000000", ANTHROPIC_BASE_URL: "https://claude.test", AI_COMPAT_API_KEY: "compat-test-key-0000", AI_COMPAT_BASE_URL: "https://compat.test/v1" };
++const env = (extra = {}) => Object.assign({ DB: fakeD1() }, KEYS, extra);
++const reply = (status, body) => new Response(JSON.stringify(body), { status });
++const gem = (v) => reply(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(v) }] }, finishReason: "STOP" }], usageMetadata: { totalTokenCount: 50 }, modelVersion: "gemini-test" });
++function fake(handlers = {}) {
++  const calls = [];
++  globalThis.fetch = async (url, init) => {
++    const u = new URL(url); calls.push({ host: u.host, path: u.pathname, body: JSON.parse(init.body), headers: init.headers });
++    const h = handlers[u.host]; if (!h) throw new Error("unexpected host " + u.host); return h(JSON.parse(init.body));
++  };
++  return calls;
++}
++const put = (e, p, d) => e.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO UPDATE SET data = excluded.data").bind(p, p.slice(0, p.lastIndexOf("/")), JSON.stringify(d), new Date().toISOString()).run();
++const docs = async (e, parent) => (await e.DB.prepare("SELECT data FROM docs WHERE parent = ?").bind(parent).all()).results.map((r) => JSON.parse(r.data));
++const kv = async (e, k) => { const r = await e.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(k).first(); return r ? Number(r.v) : 0; };
++const switchOn = (e, flags) => put(e, "config/settings", { ci: flags });
++const SECRET = "PRIVATE-PROMPT-TEXT-zx81";
++
++/* ---------------- switches ---------------- */
++test("switches are off unless set to true", () => {
++  assert.deepEqual(K.flagsOf(undefined), { ai: false, envelopes: false });
++  assert.deepEqual(K.flagsOf({ ci: { ai: "yes", envelopes: 1 } }), { ai: false, envelopes: false });
++  assert.deepEqual(K.flagsOf({ ci: { ai: true } }), { ai: true, envelopes: false });
++});
++
++/* ---------------- data classes and routing ---------------- */
++test("data classes: personal data never goes anywhere; Gemini free gets public text only; paid P2 only when allowed", () => {
++  const c = K.aicfgOf(null);
++  assert.equal(K.classAllowed("gemini", "P0", c), true);
++  for (const cls of ["P1", "P2", "P3"]) assert.equal(K.classAllowed("gemini", cls, c), false, cls);
++  for (const p of Object.keys(K.PROVIDERS)) assert.equal(K.classAllowed(p, "P3", c), false, p);
++  assert.equal(K.classAllowed("claude", "P2", c), false);
++  assert.equal(K.classAllowed("claude", "P2", K.aicfgOf({ providers: { claude: { allowP2: true } } })), true);
++  assert.equal(K.classAllowed("compat", "P1", c), false, "an unnamed provider gets public text only");
++  assert.match(K.routeFor("extract", "P3", c).error, /never sent/);
++});
++test("routing: default is Gemini for public tasks; a switched-off or disallowed provider is skipped; fallback follows", () => {
++  assert.deepEqual(K.routeFor("extract", "P0", null).plan, [{ provider: "gemini", model: "" }]);
++  assert.match(K.routeFor("reason", "P1", null).error, /No switched-on/);
++  const cfg = { tasks: { extract: { provider: "compat", fallback: "gemini" }, reason: { provider: "gemini", fallback: "workersai" } }, providers: { compat: { on: true, model: "m1" }, workersai: { on: true, model: "w1" } } };
++  assert.deepEqual(K.routeFor("extract", "P0", cfg).plan.map((p) => p.provider), ["compat", "gemini"]);
++  assert.deepEqual(K.routeFor("reason", "P1", cfg).plan, [{ provider: "workersai", model: "w1" }], "Gemini is skipped for P1");
++  const off = Object.assign({}, cfg, { providers: { compat: { on: false, model: "m1" } } });
++  assert.deepEqual(K.routeFor("extract", "P0", off).plan.map((p) => p.provider), ["gemini"]);
++  assert.match(K.routeFor("nope", "P0", null).error, /Unknown AI task/);
++  const bad = K.aicfgOf({ tasks: { extract: { provider: "evil" } }, providers: { gemini: { model: "x<script>" }, claude: { dailyCalls: -5 } } });
++  assert.equal(bad.tasks.extract.provider, "gemini"); assert.equal(bad.providers.gemini.model, "xscript"); assert.equal(bad.providers.claude.dailyCalls, 0);
++});
++
++/* ---------------- the router: switch off = the old Gemini call ---------------- */
++test("switch off: the request Gemini receives is exactly geminiJson's; nothing is logged", async () => {
++  const e = env(), calls = fake({ "gemini.test": () => gem([{ a: 1 }]) });
++  assert.equal(await aiSwitch(e), false);
++  const a = await aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: SECRET });
++  const { geminiJson } = await import("../worker/providers.js"); await geminiJson(e, { system: "S", prompt: SECRET });
++  assert.equal(calls.length, 2); assert.deepEqual(calls[0].body, calls[1].body); assert.equal(calls[0].path, calls[1].path);
++  assert.equal(a.text, '[{"a":1}]'); assert.equal(a.provider, "gemini");
++  assert.equal((await docs(e, "mix/ailog/l")).length, 0);
++  assert.equal(await aiReady(e, "extract"), true); assert.equal(await aiReady(env({ GEMINI_API_KEY: "" }), "extract"), false);
++});
++test("switch off: anything but public data is refused before any call", async () => {
++  const e = env(), calls = fake({ "gemini.test": () => gem([]) });
++  await assert.rejects(aiJson(e, { task: "reason", cls: "P1", system: "S", prompt: "p" }), /Only public data/);
++  await assert.rejects(aiJson(e, { task: "bogus", cls: "P0", system: "S", prompt: "p" }), /Unknown AI task/);
++  assert.equal(calls.length, 0);
++});
++
++/* ---------------- the router: switch on ---------------- */
++test("switch on: routes to the chosen provider, counts its cap, logs without text", async () => {
++  const e = env(); await switchOn(e, { ai: true });
++  await put(e, "mix/aicfg", { tasks: { extract: { provider: "compat", fallback: "gemini" } }, providers: { compat: { on: true, model: "small-1", dailyCalls: 2 } } });
++  const calls = fake({ "compat.test": () => reply(200, { model: "small-1", choices: [{ message: { content: '{"ok":true}' }, finish_reason: "stop" }], usage: { total_tokens: 9 } }) });
++  const a = await aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: SECRET });
++  assert.equal(a.provider, "compat"); assert.equal(a.text, '{"ok":true}'); assert.equal(a.tokens, 9);
++  assert.equal(calls[0].path, "/v1/chat/completions"); assert.equal(calls[0].body.model, "small-1"); assert.equal(calls[0].headers.authorization, "Bearer " + KEYS.AI_COMPAT_API_KEY);
++  assert.equal(await kv(e, `ru:ai:compat:d:${new Date().toISOString().slice(0, 10)}`), 1);
++  const log = await docs(e, "mix/ailog/l");
++  assert.equal(log.length, 1); assert.equal(log[0].provider, "compat"); assert.equal(log[0].ok, true);
++  assert.ok(!JSON.stringify(log).includes(SECRET), "prompt text is never logged");
++});
++test("switch on: cap reached or provider down → the fallback answers; each attempt is logged", async () => {
++  const e = env(); await switchOn(e, { ai: true });
++  await put(e, "mix/aicfg", { tasks: { extract: { provider: "compat", fallback: "gemini" } }, providers: { compat: { on: true, model: "small-1", dailyCalls: 0 } } });
++  const calls = fake({ "gemini.test": () => gem({ ok: 1 }), "compat.test": () => reply(500, { error: "down" }) });
++  const a = await aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: "p" });
++  assert.equal(a.provider, "gemini"); assert.equal(calls.filter((c) => c.host === "compat.test").length, 0, "a zero cap means no call at all");
++  await put(e, "mix/aicfg", { tasks: { extract: { provider: "compat", fallback: "gemini" } }, providers: { compat: { on: true, model: "small-1", dailyCalls: 5 } } });
++  const b = await aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: "p" });
++  assert.equal(b.provider, "gemini");
++  assert.equal(await kv(e, `ru:ai:compat:d:${new Date().toISOString().slice(0, 10)}`), 0, "a failed call gives its cap back");
++  const log = await docs(e, "mix/ailog/l");
++  assert.deepEqual(log.map((l) => [l.provider, l.ok]).sort(), [["compat", false], ["compat", false], ["gemini", true], ["gemini", true]]);
++});
++test("switch on: no fallback after a fault of the request itself; personal data refused and logged", async () => {
++  const e = env(); await switchOn(e, { ai: true });
++  await put(e, "mix/aicfg", { tasks: { extract: { provider: "compat", fallback: "gemini" } }, providers: { compat: { on: true, model: "m", dailyCalls: 5 } } });
++  const calls = fake({ "compat.test": () => reply(400, { error: { message: "bad" } }), "gemini.test": () => gem([]) });
++  await assert.rejects(aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: "p" }), (x) => x instanceof ProviderError && x.code === "bad_request");
++  assert.equal(calls.filter((c) => c.host === "gemini.test").length, 0);
++  await assert.rejects(aiJson(e, { task: "extract", cls: "P3", system: "S", prompt: "p" }), /never sent/);
++  assert.ok((await docs(e, "mix/ailog/l")).some((l) => l.code === "refused"));
++});
++test("switch on: a provider cap error is a CapError the jobs treat as waiting", async () => {
++  const e = env({ GEMINI_API_KEY: "" }); await switchOn(e, { ai: true });
++  await put(e, "mix/aicfg", { tasks: { extract: { provider: "compat", fallback: "" } }, providers: { compat: { on: true, model: "m", dailyCalls: 0 } } });
++  fake({});
++  await assert.rejects(aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: "p" }), (x) => x instanceof CapError);
++});
++test("Claude and Workers AI adapters read their answers", async () => {
++  const e = env(); await switchOn(e, { ai: true });
++  await put(e, "mix/aicfg", { tasks: { extract: { provider: "claude" }, reason: { provider: "workersai" } }, providers: { claude: { on: true, model: "claude-test", dailyCalls: 3 }, workersai: { on: true, model: "@cf/test", dailyCalls: 3 } } });
++  const calls = fake({ "claude.test": () => reply(200, { model: "claude-test", content: [{ type: "text", text: '{"x":1}' }], stop_reason: "end_turn", usage: { input_tokens: 4, output_tokens: 3 } }) });
++  const a = await aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: "p" });
++  assert.equal(a.text, '{"x":1}'); assert.equal(a.tokens, 7); assert.equal(calls[0].path, "/v1/messages"); assert.equal(calls[0].headers["x-api-key"], KEYS.ANTHROPIC_API_KEY);
++  let seen = null; e.AI = { run: async (m, inp) => { seen = { m, inp }; return { response: { y: 2 }, usage: { total_tokens: 11 } }; } };
++  const b = await aiJson(e, { task: "reason", cls: "P1", system: "S", prompt: "p" });
++  assert.equal(b.provider, "workersai"); assert.equal(b.text, '{"y":2}'); assert.equal(seen.m, "@cf/test");
++});
++test("old log lines are removed after 90 days", async () => {
++  const e = env(); await switchOn(e, { ai: true }); fake({ "gemini.test": () => gem([]) });
++  await e.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES ('mix/ailog/l/old1', 'mix/ailog/l', '{}', 1, '2020-01-01T00:00:00.000Z')").run();
++  await aiJson(e, { task: "extract", cls: "P0", system: "S", prompt: "p" });
++  const paths = (await e.DB.prepare("SELECT path FROM docs WHERE parent = 'mix/ailog/l'").all()).results.map((r) => r.path);
++  assert.equal(paths.length, 1); assert.ok(!paths.includes("mix/ailog/l/old1"));
++});
++test("provider test: fixed public prompt, refused when not connected", async () => {
++  const e = env({ AI_COMPAT_API_KEY: "" }); fake({ "gemini.test": (b) => { assert.match(b.contents[0].parts[0].text, /Answer exactly/); return gem({ ok: true }); } });
++  assert.equal((await aiTest(e, "gemini")).ok, true);
++  assert.match((await aiTest(e, "compat")).message, /not connected/);
++  assert.equal((await aiTest(e, "nothing")).ok, false);
++});
++
++/* ---------------- search credit shares ---------------- */
++test("streams: use is always counted; a share limits only with the switch on", async () => {
++  const e = env(), sk = streamKey("leads");
++  const r = await reserveTavily(e, 2, "leads"); await settleTavily(e, r, 1);
++  assert.equal(await kv(e, sk), 1, "settled to what was spent");
++  await put(e, "mix/enginecfg", { envelopes: { leads: 2 } });
++  await reserveTavily(e, 2, "leads");   // switch off: the share is not applied
++  assert.equal(await kv(e, sk), 3);
++  await switchOn(e, { envelopes: true });
++  await assert.rejects(reserveTavily(e, 1, "leads"), (x) => x instanceof CapError && /month/.test(x.code));
++  assert.equal(await kv(e, sk), 3, "a refused reservation adds nothing");
++  await reserveTavily(e, 1, "jobs");    // no share for jobs: only the ordinary caps
++  assert.deepEqual(await streamUsage(e), { jobs: 1, leads: 3, topic: 0 });
++  const plain = await reserveTavily(e, 1); assert.equal(plain.streamKey, undefined, "a call without a stream works as before");
++});
++test("streams: when the daily cap refuses, the stream counter is given back", async () => {
++  const e = env({ TAVILY_DAILY_CREDITS: "1" });
++  await assert.rejects(reserveTavily(e, 2, "topic"), (x) => x.code === "tavily_day");
++  assert.equal(await kv(e, streamKey("topic")), 0);
++});
++test("share validation", () => {
++  assert.equal(K.validateEnvelopes({ jobs: 100, leads: null, topic: "" }, 900), null);
++  assert.match(K.validateEnvelopes({ jobs: 600, leads: 400 }, 900), /more than the monthly cap/);
++  assert.match(K.validateEnvelopes({ jobs: -1 }, 900), /whole number/);
++  assert.deepEqual(K.envelopesOf({ envelopes: { jobs: "50", leads: "x" } }), { jobs: 50, leads: null, topic: null });
++});
++
++/* ---------------- gazetteer ---------------- */
++test("gazetteer: areas, governorates, Arabic, and places outside Egypt", () => {
++  const L = (t) => G.locate(t);
++  assert.deepEqual([L("Sidi Abdel Rahman, North Coast").precision, L("Sidi Abdel Rahman, North Coast").area], ["area", "sidiabdelrahman"]);
++  assert.equal(L("التجمع الخامس").area, "newcairo");
++  assert.equal(L("مشروع بالساحل الشمالي").area, "northcoast");
++  assert.equal(L("مشروع في العين السخنة").gov, "suez");
++  assert.equal(L("Giza").precision, "governorate");
++  assert.equal(L("الإسكندرية").gov, "alexandria");
++  assert.equal(L("Red Sea, Saudi Arabia").precision, "foreign");
++  assert.equal(L("Riyadh").precision, "foreign");
++  assert.equal(L("Alexandria, Virginia").precision, "foreign");
++  assert.equal(L("Red Sea").precision, "unknown", "Red Sea alone may be Saudi");
++  assert.equal(L("Red Sea Governorate, Egypt").gov, "redsea");
++  assert.equal(L("Launched on 6 October 2026").precision, "unknown", "a date is not 6th of October City");
++  assert.equal(L("6th of October City").area, "october");
++  assert.equal(L("").precision, "unknown");
++  assert.equal(G.GOVS.length, 27);
++  for (const a of G.AREAS) assert.ok(G.GOVS.some((g) => g.key === a.gov), a.key);
++  for (const p of G.GOVS.concat(G.AREAS)) assert.ok(p.lat > 22 && p.lat < 32 && p.lng > 24.5 && p.lng < 37, "inside Egypt's box: " + p.key);
++});
++
++/* ---------------- stages and timing ---------------- */
++test("stages: the two new ones exist; customer types match the Growth Center", () => {
++  assert.equal(K.stageOf("finishing"), "finishing"); assert.equal(K.stageOf("Pre-opening"), "preopening"); assert.equal(K.stageOf("whatever"), "unknown");
++  assert.deepEqual(K.CUSTOMER_TYPES.map((c) => c[0]).sort(), Object.keys(globalThis.DPGrowth.SEGMENTS).sort());
++});
++test("timing: blank by default, and the result says what is missing", () => {
++  const T = K.timingOf({});
++  assert.ok(Object.values(T.leadTimes).every((v) => v === null) && T.safetyDays === null && T.periodEnd === null);
++  const r = K.approachBy({ category: "playground", customerType: "developer", stage: "construction" }, {}, "2026-11-13");
++  assert.equal(r.window, "unknown"); assert.equal(r.approachBy, null); assert.equal(r.missing.length, 4);
++});
++const CFG = { leadTimes: { playground: 60 }, safetyDays: 14, salesCycle: { developer: 150, school: 90 }, stageOpening: { construction: 300 }, periodEnd: "2027-04-30" };
++test("timing: a published opening gives the dates and window", () => {
++  const r = K.approachBy({ opening: "2027-07-01", category: "playground", customerType: "school" }, CFG, "2026-11-13");
++  assert.equal(r.latestOrder, "2027-04-18"); assert.equal(r.approachBy, "2027-01-18"); assert.equal(r.window, "open"); assert.equal(r.openingBasis, "published");
++  assert.equal(r.fitsPeriod, true);
++  assert.equal(K.approachBy({ opening: "2027-07-01", category: "playground", customerType: "school" }, CFG, "2026-09-01").window, "early");
++  assert.equal(K.approachBy({ opening: "2027-07-01", category: "playground", customerType: "school" }, CFG, "2027-02-01").window, "lastcall");
++  assert.equal(K.approachBy({ opening: "2027-07-01", category: "playground", customerType: "school" }, CFG, "2027-05-01").window, "closed");
++  assert.equal(K.approachBy({ opening: "2027-07-01", category: "playground", customerType: "developer" }, CFG, "2026-12-15").fitsPeriod, false);
++});
++test("timing: without an opening date the stage gives an estimate, marked as such", () => {
++  const r = K.approachBy({ stage: "construction", stageSince: "2026-10-01", category: "playground", customerType: "developer" }, CFG, "2026-11-13");
++  assert.equal(r.openingBasis, "estimate"); assert.equal(r.opening, "2027-07-28"); assert.match(r.basis.join(" "), /Estimate/);
++  assert.equal(K.approachBy({ stage: "design", category: "playground", customerType: "developer" }, CFG, "2026-11-13").window, "unknown");
++});
++test("timing validation", () => {
++  assert.equal(K.validateTiming({ leadTimes: { playground: 60, school: null }, safetyDays: "", periodEnd: "2027-04-30" }), null);
++  assert.match(K.validateTiming({ leadTimes: { playground: -3 } }), /Lead time/);
++  assert.match(K.validateTiming({ salesCycle: { school: 1.5 } }), /Sales cycle/);
++  assert.match(K.validateTiming({ periodEnd: "2027-02-30" }), /period end/);
++});
++
++/* ---------------- permissions ---------------- */
++test("permissions: AI settings and the call log are administrators only", () => {
++  for (const p of ["mix/aicfg", "mix/aicfgv/v/1", "mix/ailog/l/x"]) {
++    assert.equal(RULES.allowed(p, "read", "admin", "u1"), true, p);
++    assert.equal(RULES.allowed(p, "read", "interact", "u1"), false, p);
++    assert.equal(RULES.allowed(p, "write", "interact", "u1"), false, p);
++  }
++});
+diff --git a/qa/ci_p0_switchoff.run.mjs b/qa/ci_p0_switchoff.run.mjs
+new file mode 100644
+index 0000000..fdd03db
+--- /dev/null
++++ b/qa/ci_p0_switchoff.run.mjs
+@@ -0,0 +1,57 @@
++/* X FORCE Commercial Intelligence, Phase 0 — switch-off comparison, one side. Runs every research job and two lead-research steps on a
++   fake database and fake providers, with a fixed clock and fixed random numbers, and prints everything they produced as JSON:
++   each provider request (address and body), each saved document, each counter, each result. Run it on two checkouts and compare
++   (for example with cmp; only the per-kind credit counters ru:tav:s:* are left out, by design). Made-up records only.
++   Run:  node qa/ci_p0_switchoff.run.mjs <checkout root> <scenario>     scenario = off | engine */
++import path from "node:path";
++import { pathToFileURL } from "node:url";
++
++const root = path.resolve(process.argv[2] || "."), scenario = process.argv[3] || "off";
++const T = Date.parse("2026-11-12T09:15:00Z"), RealDate = Date;
++let tick = 0;
++globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [T + tick])); } static now() { return T + tick; } };
++let seed = 42; Math.random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
++globalThis.self = globalThis;
++const imp = (p) => import(pathToFileURL(path.join(root, p)).href);
++const { fakeD1 } = await imp("qa/fake-d1.mjs");
++const { runJob } = await imp("worker/research.js");
++const enrich = await imp("worker/enrich.js");
++
++const requests = [];
++const reply = (b) => new Response(JSON.stringify(b), { status: 200 });
++const U = ["https://www.ahram.org.eg/news/new-cairo-kids-park", "https://dailynewsegypt.com/2026/11/10/school", "https://www.cbe.org.eg/en/rates", "https://www.example-dev.com.eg/contact-us"];
++const ANSWERS = {
++  opportunities: [{ title: "New Cairo compound with kids park", organization: "Example Developments", location: "New Cairo, Egypt", category: "compound", kind: "project", products: ["Outdoor playground"], sourceUrl: U[0], sourceType: "media", publishedAt: "2026-11-01" },
++    { title: "مدرسة دولية جديدة في الشيخ زايد", organization: "مدارس النور", location: "الشيخ زايد", category: "school", kind: "project", products: [], sourceUrl: U[1], sourceType: "media" },
++    { title: "Invented", organization: "X", location: "Cairo", category: "school", sourceUrl: "https://invented.example/x" }],
++  news: [{ headline: "Freight rates", summary: "Rates rose", url: U[1], publishedAt: "2026-11-10", category: "shipping", impact: "medium" }],
++  fx: [{ code: "USD", egpPer: 48.5, url: U[2], asOf: "2026-11-12" }, { code: "EUR", egpPer: 52.1, url: U[2], asOf: "2026-11-12" }],
++  materials: [{ name: "Steel tube", price: 55000, unit: "ton", currency: "EGP", url: U[1], asOf: "2026-11-10" }],
++  weekly: { summary: "A quiet week.", sources: [U[0]] },
++};
++let job = "opportunities";
++globalThis.fetch = async (url, init) => {
++  tick += 1000; const u = new URL(url), body = init && init.body ? JSON.parse(init.body) : null;
++  requests.push({ host: u.host, path: u.pathname, body });
++  if (u.host === "tavily.test" && u.pathname === "/extract") return reply({ results: (body.urls || []).map((x) => ({ url: x, raw_content: "Contact us: sales@example-dev.com.eg, phone 02 2345 6789. Our New Cairo compound has a kids park." })), usage: { credits: 1 } });
++  if (u.host === "tavily.test") return reply({ results: U.map((x, i) => ({ url: x, title: "Example Developments result " + i, content: "Example Developments New Cairo project", score: 0.9 - i / 10, published_date: "2026-11-0" + (i + 1) })), usage: { credits: 1 } });
++  if (u.host === "gemini.test") return reply({ candidates: [{ content: { parts: [{ text: JSON.stringify(job === "enrich" ? [{ project: "New Cairo compound", quote: "Example Developments New Cairo project", source: "S1" }] : ANSWERS[job]) }] }, finishReason: "STOP" }], usageMetadata: { totalTokenCount: 77 }, modelVersion: "gemini-test" });
++  throw new Error("unexpected host " + u.host);
++};
++const env = { DB: fakeD1(), TAVILY_API_KEY: "tvly-test-not-a-real-key", GEMINI_API_KEY: "gem-test-not-a-real-key", TAVILY_BASE_URL: "https://tavily.test", GEMINI_BASE_URL: "https://gemini.test", TAVILY_TIMEOUT_MS: "300", GEMINI_TIMEOUT_MS: "300" };
++const put = (p, d) => env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?)").bind(p, p.slice(0, p.lastIndexOf("/")), JSON.stringify(d), "2026-11-01T00:00:00.000Z").run();
++await put("config/settings", { miEngine: scenario === "engine" });
++await put("mix/mat/m/steel", { name: "Steel tube", grade: "S235", unit: "ton", history: [] });
++await put("leads/L-test1", { name: "Example Developments", orgType: "developer", location: "New Cairo", status: "available", createdAt: "2026-10-01T00:00:00.000Z" });
++await env.DB.prepare("INSERT INTO users (uid) VALUES ('u-admin')").run();
++
++const results = [];
++for (job of ["opportunities", "news", "fx", "materials", "weekly"]) results.push([job, await runJob(env, job)]);
++if (scenario === "engine") {
++  job = "enrich";
++  results.push(["queue", await enrich.queueLeads(env, ["L-test1"], "u-admin")]);
++  for (let i = 0; i < 8; i++) results.push(["step", await enrich.engineStep(env, "holder-" + i)]);
++}
++const all = (sql) => env.DB.raw.prepare(sql).all();
++console.log(JSON.stringify({ requests, results, docs: all("SELECT path, data, v, at FROM docs ORDER BY path"),
++  kv: all("SELECT k, v FROM kv ORDER BY k").filter((r) => !r.k.startsWith("ru:tav:s:")) }, null, 1));
+diff --git a/worker/ai.js b/worker/ai.js
+new file mode 100644
+index 0000000..e6e4199
+--- /dev/null
++++ b/worker/ai.js
+@@ -0,0 +1,165 @@
++/* X FORCE — Commercial Intelligence, Phase 0: the one way the Worker talks to an AI provider.
++
++     task → data-class check → route (mix/aicfg) → daily cap → provider → result → call log (mix/ailog/l)
++
++   Switch config/settings.ci.ai OFF (the default): every call goes to Gemini exactly as before (worker/providers.js geminiJson), with
++   only one added rule — the call must declare public data (P0), because Gemini's free tier may use and human-review what it receives.
++   Switch ON: the administrator's routing in mix/aicfg chooses the provider and model per task, with an optional fallback; data classes
++   are enforced per provider (app/ci.js PROVIDERS, fixed in code); each non-Gemini provider has its own daily call cap (kv
++   ru:ai:<provider>:d:YYYY-MM-DD, 0 = not allowed); every call is logged without its text.
++
++   Providers:
++     gemini     GEMINI_API_KEY (existing). Its daily cap stays in worker/usage.js, reserved by the callers as before.
++     workersai  the Worker's AI binding (env.AI). Not configured in wrangler.jsonc yet: add  "ai": { "binding": "AI" }  to use it.
++     claude     ANTHROPIC_API_KEY (paid). ANTHROPIC_BASE_URL for tests.
++     compat     any service with an OpenAI-style /chat/completions API: AI_COMPAT_BASE_URL and AI_COMPAT_API_KEY (paid as a rule).
++   Every answer is asked for as JSON, as today. Returns {text, tokens, model, finish, provider}. Throws ProviderError or CapError. */
++import "../app/ci.js";
++import { callJson, geminiJson, geminiConfigured, secretOf, ProviderError } from "./providers.js";
++import { CapError, reserveGemini, releaseGemini } from "./usage.js";
++
++const C = () => globalThis.DPCi;
++const LOG = "mix/ailog/l", KEEP_DAYS = 90;
++const nowIso = () => new Date().toISOString();
++
++/** Is the "ai" switch on? One small read of config/settings. */
++export async function aiSwitch(env) {
++  const r = await env.DB.prepare("SELECT json_extract(data,'$.ci.ai') v FROM docs WHERE path = 'config/settings'").first();
++  return !!(r && (r.v === 1 || r.v === true));
++}
++async function routing(env) {
++  const r = await env.DB.prepare("SELECT data FROM docs WHERE path = 'mix/aicfg'").first();
++  return C().aicfgOf(r ? JSON.parse(r.data) : null);
++}
++
++/* ---------------- adapters ---------------- */
++const configured = {
++  gemini: (env) => geminiConfigured(env),
++  workersai: (env) => !!(env.AI && typeof env.AI.run === "function"),
++  claude: (env) => secretOf(env, "ANTHROPIC_API_KEY").length > 20,
++  compat: (env) => secretOf(env, "AI_COMPAT_API_KEY").length > 10 && /^https:\/\//.test(String(env.AI_COMPAT_BASE_URL || "")),
++};
++const timeout = (env) => { const t = parseInt(env.AI_TIMEOUT_MS, 10); return Number.isFinite(t) && t >= 100 ? Math.min(t, 120000) : 60000; };
++const adapters = {
++  async gemini(env, { system, prompt, maxOutputTokens }, model) {
++    const e = model ? Object.assign({}, env, { GEMINI_MODEL: model }) : env;
++    return geminiJson(e, maxOutputTokens == null ? { system, prompt } : { system, prompt, maxOutputTokens });
++  },
++  async workersai(env, { system, prompt, maxOutputTokens }, model) {
++    if (!model) throw new ProviderError("Workers AI", "not_configured", "Choose a Workers AI model under AI routing.");
++    let r;
++    try { r = await env.AI.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: prompt }], max_tokens: Math.min(maxOutputTokens || 4096, 8192), response_format: { type: "json_object" } }); }
++    catch (e) { throw new ProviderError("Workers AI", /limit|quota|429/i.test(String(e && e.message)) ? "quota" : "server", `Workers AI failed (${String(e && e.message).slice(0, 160)}).`); }
++    const text = typeof (r && r.response) === "string" ? r.response : r && r.response != null ? JSON.stringify(r.response) : "";
++    if (!text) throw new ProviderError("Workers AI", "server", "Workers AI returned no answer.");
++    return { text, tokens: Number(r.usage && r.usage.total_tokens) || 0, model, finish: null };
++  },
++  async claude(env, { system, prompt, maxOutputTokens }, model) {
++    if (!model) throw new ProviderError("Claude", "not_configured", "Choose a Claude model under AI routing.");
++    const base = String(env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
++    const j = await callJson(`${base}/v1/messages`, { method: "POST", headers: { "content-type": "application/json", "x-api-key": secretOf(env, "ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01" },
++      body: JSON.stringify({ model, max_tokens: Math.min(maxOutputTokens || 4096, 16000), temperature: 0.2, system: system + "\nAnswer with JSON only.", messages: [{ role: "user", content: prompt }] }) },
++      { name: "Claude", timeoutMs: timeout(env), retries: 1 });
++    const text = (j.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join("");
++    if (!text) throw new ProviderError("Claude", "server", `Claude returned no answer (${j.stop_reason || "no reason given"}).`);
++    if (j.stop_reason === "max_tokens") throw new ProviderError("Claude", "server", "Claude's answer was cut off (too long). Nothing was saved.");
++    return { text, tokens: (Number(j.usage && j.usage.input_tokens) || 0) + (Number(j.usage && j.usage.output_tokens) || 0), model: j.model || model, finish: j.stop_reason || null };
++  },
++  async compat(env, { system, prompt, maxOutputTokens }, model) {
++    if (!model) throw new ProviderError("AI provider", "not_configured", "Choose a model for the other provider under AI routing.");
++    const base = String(env.AI_COMPAT_BASE_URL).replace(/\/+$/, "");
++    const j = await callJson(`${base}/chat/completions`, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + secretOf(env, "AI_COMPAT_API_KEY") },
++      body: JSON.stringify({ model, temperature: 0.2, max_tokens: Math.min(maxOutputTokens || 4096, 16000), response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: prompt }] }) },
++      { name: "AI provider", timeoutMs: timeout(env), retries: 1 });
++    const ch = (j.choices || [])[0] || {}, text = ch.message && typeof ch.message.content === "string" ? ch.message.content : "";
++    if (!text) throw new ProviderError("AI provider", "server", "The AI provider returned no answer.");
++    if (ch.finish_reason === "length") throw new ProviderError("AI provider", "server", "The answer was cut off (too long). Nothing was saved.");
++    return { text, tokens: Number(j.usage && j.usage.total_tokens) || 0, model: j.model || model, finish: ch.finish_reason || null };
++  },
++};
++
++/* ---------------- caps for providers other than Gemini ---------------- */
++const pday = () => nowIso().slice(0, 10);
++async function reserveProvider(env, provider, cap) {
++  if (!(cap > 0)) throw new CapError("ai_" + provider, `${C().PROVIDERS[provider].label}: no daily calls allowed yet. Set a daily limit under AI routing.`);
++  const r = await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?1, '1') ON CONFLICT(k) DO UPDATE SET v = CAST(CAST(kv.v AS INTEGER) + 1 AS TEXT) WHERE CAST(kv.v AS INTEGER) + 1 <= ?2 RETURNING v")
++    .bind(`ru:ai:${provider}:d:${pday()}`, cap).first();
++  if (!r) throw new CapError("ai_" + provider, `${C().PROVIDERS[provider].label}: today's limit of ${cap} calls is used up. It resets at midnight UTC.`);
++}
++const releaseProvider = (env, provider) => env.DB.prepare("UPDATE kv SET v = CAST(MAX(0, CAST(v AS INTEGER) - 1) AS TEXT) WHERE k = ?").bind(`ru:ai:${provider}:d:${pday()}`).run();
++export async function providerUsage(env) {
++  const out = {};
++  for (const p of Object.keys(C().PROVIDERS)) { if (p === "gemini") continue; const r = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(`ru:ai:${p}:d:${pday()}`).first(); out[p] = r ? parseInt(r.v, 10) || 0 : 0; }
++  return out;
++}
++
++/* ---------------- the call log (no prompt or answer text is kept) ---------------- */
++async function logCall(env, rec) {
++  const at = nowIso(), id = at.replace(/[^0-9]/g, "").slice(0, 17) + Math.random().toString(36).slice(2, 7), path = `${LOG}/${id}`;
++  const cutoff = new Date(Date.now() - KEEP_DAYS * 864e5).toISOString();
++  await env.DB.batch([
++    env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?)").bind(path, LOG, JSON.stringify(Object.assign({ at }, rec)), at),
++    env.DB.prepare("DELETE FROM docs WHERE path >= ? AND path < ? AND at < ?").bind(LOG + "/", LOG + "0", cutoff),
++  ]);
++}
++
++/** Is AI available for this task? (Switch off: exactly the old Gemini check.) */
++export async function aiReady(env, task, cls = "P0") {
++  if (!(await aiSwitch(env))) return geminiConfigured(env);
++  const r = C().routeFor(task, cls, await routing(env));
++  return !r.error && r.plan.some((p) => configured[p.provider](env));
++}
++
++/**
++ * One AI call that must answer JSON.
++ * @param {object} o  { task, cls ("P0"…"P3"), system, prompt, maxOutputTokens }
++ */
++export async function aiJson(env, o) {
++  const { task, cls } = o, req = { system: o.system, prompt: o.prompt, maxOutputTokens: o.maxOutputTokens };
++  if (!C().TASKS[task]) throw new ProviderError("AI", "bad_request", `Unknown AI task "${task}".`);
++  if (!(await aiSwitch(env))) {
++    if (cls !== "P0") throw new ProviderError("AI", "bad_request", `Only public data may go to Gemini's free tier; this call is marked ${cls}.`);
++    return Object.assign(await adapters.gemini(env, req, ""), { provider: "gemini" });
++  }
++  const route = C().routeFor(task, cls, await routing(env));
++  if (route.error) { await logCall(env, { task, cls, provider: null, ok: false, code: "refused", error: route.error }).catch(() => {}); throw new ProviderError("AI", "not_configured", route.error); }
++  const cfg = await routing(env); let last = null;
++  for (const step of route.plan) {
++    const p = step.provider, t0 = Date.now();
++    if (!configured[p](env)) { last = new ProviderError(C().PROVIDERS[p].label, "not_configured", `${C().PROVIDERS[p].label} is not connected (${C().PROVIDERS[p].secret}).`); continue; }
++    let reserved = false;
++    try {
++      if (p !== "gemini") { await reserveProvider(env, p, cfg.providers[p].dailyCalls); reserved = true; }
++      const a = await adapters[p](env, req, step.model);
++      await logCall(env, { task, cls, provider: p, model: a.model, tokens: a.tokens, ms: Date.now() - t0, ok: true }).catch(() => {});
++      return Object.assign(a, { provider: p });
++    } catch (e) {
++      if (reserved) await releaseProvider(env, p).catch(() => {});
++      await logCall(env, { task, cls, provider: p, model: step.model || null, ms: Date.now() - t0, ok: false, code: e.code || "error", error: String(e.message || e).slice(0, 200) }).catch(() => {});
++      last = e;
++      // a fault of the request itself would fail again elsewhere; anything about the provider tries the fallback
++      if (e instanceof ProviderError && e.code === "bad_request") throw e;
++    }
++  }
++  throw last || new ProviderError("AI", "not_configured", "No AI provider is available for this task.");
++}
++
++/** Administrators' test of one provider: a fixed public prompt, so nothing private is ever sent. Counts against its cap. */
++export async function aiTest(env, provider) {
++  if (!C().PROVIDERS[provider]) return { ok: false, message: "Unknown provider." };
++  if (!configured[provider](env)) return { ok: false, message: `${C().PROVIDERS[provider].label} is not connected (${C().PROVIDERS[provider].secret}).` };
++  const cfg = await routing(env), t0 = Date.now(), req = { system: "You check that an API works.", prompt: 'Answer exactly {"ok": true}', maxOutputTokens: 200 };
++  let reserved = false;
++  try {
++    if (provider !== "gemini") await reserveProvider(env, provider, cfg.providers[provider].dailyCalls); else await reserveGemini(env);
++    reserved = true;
++    const a = await adapters[provider](env, req, cfg.providers[provider].model);
++    await logCall(env, { task: "test", cls: "P0", provider, model: a.model, tokens: a.tokens, ms: Date.now() - t0, ok: true }).catch(() => {});
++    return { ok: true, model: a.model, ms: Date.now() - t0, answer: String(a.text).slice(0, 80) };
++  } catch (e) {
++    if (reserved) await (provider === "gemini" ? releaseGemini(env) : releaseProvider(env, provider)).catch(() => {});
++    await logCall(env, { task: "test", cls: "P0", provider, ms: Date.now() - t0, ok: false, code: e.code || "error", error: String(e.message || e).slice(0, 200) }).catch(() => {});
++    return { ok: false, message: String(e.message || e).slice(0, 300) };
++  }
++}
++export const aiConfiguredMap = (env) => Object.fromEntries(Object.keys(configured).map((k) => [k, configured[k](env)]));
+diff --git a/worker/enrich.js b/worker/enrich.js
+index 646158c..3fe1049 100644
+--- a/worker/enrich.js
++++ b/worker/enrich.js
+@@ -10,7 +10,8 @@
+    Results are saved in mix/enrich/e/<leadId> (administrators only). Owner's request (7 Nov 2026): when "fill in automatically" is on, a
+    found website, a company e-mail and an official-site phone are written to the lead's shared contact record, marked unverified, each
+    with its source, only where the lead has none yet. Nobody is notified. It runs only while config/settings.miEngine is on. */
+-import { tavilySearch, tavilyExtract, geminiJson, geminiConfigured, ProviderError } from "./providers.js";
++import { tavilySearch, tavilyExtract, ProviderError } from "./providers.js";
++import { aiJson, aiReady } from "./ai.js";
+ import { reserveTavily, settleTavily, reserveGemini, releaseGemini, countGeminiTokens, CapError } from "./usage.js";
+ import { addJob, dueJobs, claimJob, endJob } from "./enginejobs.js";
+ import { extractJson } from "./research.js";
+@@ -55,7 +56,7 @@ async function takeDaily(env, limit, t) {
+ const tomorrow = (t) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 5); };
+ const nextMonth = (t) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1, 0, 5); };
+ /** One Tavily call inside the caps: the credits are reserved first and corrected to what Tavily reported. */
+-async function tav(env, rec, fn) { const res = await reserveTavily(env, 2); let spent = 0; try { const r = await fn(); spent = r.credits; rec.credits += spent; return r; } finally { await settleTavily(env, res, spent); } }
++async function tav(env, rec, fn) { const res = await reserveTavily(env, 2, "leads"); let spent = 0; try { const r = await fn(); spent = r.credits; rec.credits += spent; return r; } finally { await settleTavily(env, res, spent); } }
+ const addSources = (rec, results) => { const have = new Set(rec.sources.map((s) => s.url)); for (const x of results) if (!have.has(x.url) && rec.sources.length < 16) { rec.sources.push({ id: "S" + (rec.sources.length + 1), url: x.url, title: clip(x.title, 200), publishedAt: x.publishedAt || null, snippet: clip(x.content, 900) }); have.add(x.url); } };
+ const addContacts = (rec, list) => { const keys = new Set(rec.contacts.map((c) => c.kind + ":" + (c.key || c.value))); for (const c of list) { const k = c.kind + ":" + (c.key || c.value); if (!keys.has(k) && rec.contacts.length < 14) { keys.add(k); rec.contacts.push(c); } } };
+ const hasOwnEmail = (rec) => rec.contacts.some((c) => c.kind === "email" && c.own);
+@@ -108,9 +109,9 @@ Answer with ONE JSON list, nothing else: [{"project": "...", "quote": "...", "so
+ async function stepProjects(env, j, rec) {
+   const src = rec.sources.filter((s) => !/linkedin\.com/i.test(s.url));
+   if (!src.length) { rec.notes.push("No search results to read for projects."); return null; }
+-  if (!geminiConfigured(env)) { rec.notes.push("Projects not read: the AI analysis key is not set."); return null; }
++  if (!(await aiReady(env, "extract"))) { rec.notes.push("Projects not read: the AI analysis key is not set."); return null; }
+   await reserveGemini(env); let a;
+-  try { a = await geminiJson(env, { system: PROMPT, prompt: `Organisation: ${rec.leadName}\n\nSOURCES:\n\n` + src.map((s) => `[${s.id}] ${s.title}\nURL: ${s.url}\n${s.snippet}\n`).join("\n"), maxOutputTokens: 4096 }); }
++  try { a = await aiJson(env, { task: "extract", cls: "P0", system: PROMPT, prompt: `Organisation: ${rec.leadName}\n\nSOURCES:\n\n` + src.map((s) => `[${s.id}] ${s.title}\nURL: ${s.url}\n${s.snippet}\n`).join("\n"), maxOutputTokens: 4096 }); }
+   catch (e) { await releaseGemini(env).catch(() => {}); throw e; }
+   await countGeminiTokens(env, a.tokens).catch(() => {});
+   const list = extractJson(a.text); let dropped = 0;
+diff --git a/worker/freejobs.js b/worker/freejobs.js
+index 0b4bb5c..e97957f 100644
+--- a/worker/freejobs.js
++++ b/worker/freejobs.js
+@@ -3,7 +3,8 @@
+    filter (a link must be one of these Tavily results), worker/intel.js validates, de-duplicates, scores and saves.
+    Nothing internal is sent: the saved-record context is limited to public fields (titles, organisations, source links).
+    Fixed queries per job (no AI chooses what to search), so each job's cost is known: about 4–6 Tavily credits + 1 Gemini call. */
+-import { tavilySearch, tavilyExtract, geminiJson, geminiModel, ProviderError } from "./providers.js";
++import { tavilySearch, tavilyExtract, geminiModel, ProviderError } from "./providers.js";
++import { aiJson } from "./ai.js";
+ import { reserveTavily, settleTavily, reserveGemini, releaseGemini, countGeminiTokens, CapError } from "./usage.js";
+ import { nu } from "./research.js";
+ 
+@@ -75,7 +76,7 @@ export async function askFree(env, job, db, { shape, context, extractJson }) {
+   let searches = 0, credits = 0, failedSearches = 0;
+   for (const q of plan.queries) {
+     const est = 1; let res;
+-    try { res = await reserveTavily(env, est); } catch (e) { throw Object.assign(e, { limit: true }); }
++    try { res = await reserveTavily(env, est, "jobs"); } catch (e) { throw Object.assign(e, { limit: true }); }
+     let spent = 0;
+     try {
+       const r = await tavilySearch(env, { query: q.q, topic: q.topic, timeRange: q.timeRange, country: q.country, includeDomains: q.includeDomains, maxResults: q.maxResults });
+@@ -89,7 +90,7 @@ export async function askFree(env, job, db, { shape, context, extractJson }) {
+   }
+   if (plan.extract && sources.length) {
+     const pick = sources.slice().sort((a, b) => b.score - a.score).slice(0, plan.extract); let res, spent = 0;
+-    try { res = await reserveTavily(env, 1); } catch (e) { throw Object.assign(e, { limit: true }); }
++    try { res = await reserveTavily(env, 1, "jobs"); } catch (e) { throw Object.assign(e, { limit: true }); }
+     try { const r = await tavilyExtract(env, pick.map((s) => s.url), { maxChars: 6000 }); spent = r.credits; credits += r.credits;
+       for (const p of r.results) { const s = byKey.get(nu(p.url)); if (s) s.page = p.content; } }
+     catch (e) { if (stops(e)) throw Object.assign(e, { limit: e instanceof CapError || e.code === "quota" }); notes.push(`page texts not read: ${clip(e.message, 160)}`); }
+@@ -104,8 +105,8 @@ export async function askFree(env, job, db, { shape, context, extractJson }) {
+   const prompt = `Today is ${new Date().toISOString().slice(0, 10)}.\n\n${shape}\n\n${context}\n\nSOURCES (${blk.n}; the only pages you may cite — copy each URL exactly):\n\n${blk.text}`;
+   try { await reserveGemini(env); } catch (e) { throw Object.assign(e, { limit: true }); }
+   let a;
+-  try { a = await geminiJson(env, { system: RULES_FREE, prompt }); }
+-  catch (e) { await releaseGemini(env).catch(() => {}); if (e instanceof ProviderError && e.code === "quota") e.limit = true; throw e; }
++  try { a = await aiJson(env, { task: "extract", cls: "P0", system: RULES_FREE, prompt }); }   // public search results only
++  catch (e) { await releaseGemini(env).catch(() => {}); if ((e instanceof ProviderError && e.code === "quota") || e instanceof CapError) e.limit = true; throw e; }
+   await countGeminiTokens(env, a.tokens).catch(() => {});
+   return Object.assign(base, { parsed: extractJson(a.text), seen: seenOf(sources.slice(0, blk.n)), model: a.model, tokens: a.tokens, finish: a.finish, chars: a.text.length });
+ }
+diff --git a/worker/index.js b/worker/index.js
+index b9a75e8..3bc1058 100644
+--- a/worker/index.js
++++ b/worker/index.js
+@@ -24,6 +24,8 @@ import { usageSummary } from "./usage.js";
+ import { readiness } from "./readiness.js";
+ import { queueLeads, engineStep, engineTick } from "./enrich.js";
+ import { scheduleTick } from "./schedule.js";
++import { aiTest, providerUsage, aiConfiguredMap } from "./ai.js";
++import { streamUsage } from "./usage.js";
+ import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
+ 
+ const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
+@@ -928,6 +930,12 @@ async function route(req, env, ctx) {
+     if (r.ok && r.queued.length) await auditSrv(env, acc.uid, "Lead research queued", r.queued.slice(0, 20).join(", "), `${r.queued.length} lead(s)`);
+     return json(r.ok ? 200 : 400, r); }
+   if (p === "/api/mi/enrich/step" && M === "POST") { const r = await engineStep(env, acc.uid + ":" + Math.random().toString(36).slice(2)); return json(200, r); }
++  // Commercial Intelligence, Phase 0 (administrators only: this block is after the admin check). Status of AI providers and search streams;
++  // a test call to one provider with a fixed public prompt. Settings themselves are ordinary documents (mix/aicfg, mix/enginecfg, config/settings).
++  if (p === "/api/ci/status" && M === "GET") return json(200, { connected: aiConfiguredMap(env), aiToday: await providerUsage(env), streams: await streamUsage(env) });
++  if (p === "/api/ci/ai/test" && M === "POST") { const b = await body(req), r = await aiTest(env, String(b.provider || ""));
++    await auditSrv(env, acc.uid, "AI provider tested", String(b.provider || "").slice(0, 20), r.ok ? "Answered" : "Failed: " + String(r.message || "").slice(0, 120));
++    return json(200, r); }
+   // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
+   if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
+     if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);
+diff --git a/worker/topic.js b/worker/topic.js
+index 5fa45f8..2d1a43c 100644
+--- a/worker/topic.js
++++ b/worker/topic.js
+@@ -129,7 +129,7 @@ function onError(d, e, q) {
+ async function searchStep(env, d, q) {
+   d.stage = "searching"; q.tries++;
+   const est = q.depth === "advanced" ? 2 : 1; let res;
+-  try { res = await reserveTavily(env, est); } catch (e) { q.tries--; return onError(d, e, null); }
++  try { res = await reserveTavily(env, est, "topic"); } catch (e) { q.tries--; return onError(d, e, null); }
+   let spent = 0;
+   try {
+     const r = await tavilySearch(env, { query: q.q, depth: q.depth, topic: q.topic, timeRange: q.timeRange, country: q.country, maxResults: q.maxResults });
+@@ -143,7 +143,7 @@ async function collectStep(env, d) {
+   d.stage = "collecting";
+   const pick = d.sources.filter((s) => !s.page).sort((a, b) => b.score - a.score).slice(0, d.plan.extract);
+   const est = Math.ceil(pick.length / 5); let res;   // basic extraction (1 credit per 5 pages) for Standard and Deep
+-  try { res = await reserveTavily(env, est); } catch (e) { return onError(d, e, null); }
++  try { res = await reserveTavily(env, est, "topic"); } catch (e) { return onError(d, e, null); }
+   d.extractTries = (d.extractTries || 0) + 1;
+   let spent = 0;
+   try {
+diff --git a/worker/usage.js b/worker/usage.js
+index 68dab3b..c0675bb 100644
+--- a/worker/usage.js
++++ b/worker/usage.js
+@@ -8,7 +8,10 @@
+      ru:gem:t:YYYY-MM          Gemini tokens this month (shown only, no cap)
+      ru:rep:m:YYYY-MM          topic reports started this month   cap RESEARCH_MONTHLY_JOBS (default 150)
+      ru:rep:u:<uid>:YYYY-MM-DD topic reports started by one admin today   cap RESEARCH_USER_DAILY (default 3)
+-     research:YYYY-MM-DD       fixed research jobs today (1.4.2, unchanged)   cap RESEARCH_DAILY_JOBS */
++     research:YYYY-MM-DD       fixed research jobs today (1.4.2, unchanged)   cap RESEARCH_DAILY_JOBS
++     ru:tav:s:<stream>:YYYY-MM Tavily credits this month for one kind of research (Commercial Intelligence, Phase 0). Always counted, so an
++                               administrator sees each stream's real use before choosing shares. Capped only while config/settings.ci.envelopes
++                               is on AND mix/enginecfg.envelopes.<stream> holds a number; blank = no envelope for that stream. */
+ 
+ const num = (v, d, lo, hi) => { const x = parseInt(v, 10); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
+ export function caps(env) {
+@@ -36,18 +39,37 @@ const add = (env, k, n) => env.DB.prepare("INSERT INTO kv (k, v) VALUES (?1, CAS
+ export class CapError extends Error { constructor(code, message) { super(message); this.code = code; this.cap = true; } }
+ const resetUtc = "It resets at midnight UTC (2 or 3 a.m. in Cairo).";
+ 
+-/** Reserve Tavily credits before a call. Throws CapError when a cap would be passed (nothing is reserved then). */
+-export async function reserveTavily(env, n) {
+-  const c = caps(env), k = keys();
+-  if (!(await addCapped(env, k.tavDay, n, c.tavilyDay))) throw new CapError("tavily_day", `Today's research search allowance (${c.tavilyDay} Tavily credits) is used up. ${resetUtc} An administrator can change TAVILY_DAILY_CREDITS.`);
+-  if (!(await addCapped(env, k.tavMonth, n, c.tavilyMonth))) { await add(env, k.tavDay, -n);
++export const STREAMS = ["jobs", "leads", "topic"];
++export const streamKey = (stream, t = Date.now()) => `ru:tav:s:${stream}:${utcMonth(t)}`;
++/** The stream's envelope in credits, or null when there is none (switch off, or no share entered). */
++async function envelope(env, stream) {
++  const r = await env.DB.prepare("SELECT (SELECT json_extract(data,'$.ci.envelopes') FROM docs WHERE path = 'config/settings') AS onv, (SELECT json_extract(data, ?1) FROM docs WHERE path = 'mix/enginecfg') AS cap")
++    .bind(`$.envelopes.${stream}`).first();
++  if (!r || !(r.onv === 1 || r.onv === true)) return null;
++  const cap = Number(r.cap); return r.cap === null || r.cap === undefined || r.cap === "" || !Number.isInteger(cap) || cap < 0 ? null : cap;
++}
++/** Reserve Tavily credits before a call. Throws CapError when a cap would be passed (nothing is reserved then).
++ *  stream (optional): which kind of research spends them (STREAMS), for its monthly envelope. */
++export async function reserveTavily(env, n, stream = null) {
++  const c = caps(env), k = keys(), sk = STREAMS.includes(stream) ? streamKey(stream) : null;
++  if (sk) {
++    const cap = await envelope(env, stream);
++    if (cap == null) await add(env, sk, n);
++    else if (!(await addCapped(env, sk, n, cap))) throw new CapError("envelope_month_" + stream, `This month's share of search credits for ${stream === "jobs" ? "scheduled research" : stream === "leads" ? "lead research" : "topic research"} (${cap} credits) is used up. It renews on the 1st; an administrator can change the share.`);
++  }
++  if (!(await addCapped(env, k.tavDay, n, c.tavilyDay))) { if (sk) await add(env, sk, -n); throw new CapError("tavily_day", `Today's research search allowance (${c.tavilyDay} Tavily credits) is used up. ${resetUtc} An administrator can change TAVILY_DAILY_CREDITS.`); }
++  if (!(await addCapped(env, k.tavMonth, n, c.tavilyMonth))) { await add(env, k.tavDay, -n); if (sk) await add(env, sk, -n);
+     throw new CapError("tavily_month", `This month's research search allowance (${c.tavilyMonth} Tavily credits) is used up. It renews on the 1st; nothing is charged.`); }
+-  return { reserved: n, keys: k };
++  return sk ? { reserved: n, keys: k, streamKey: sk } : { reserved: n, keys: k };
+ }
+ /** After the call: correct the reservation to what Tavily actually charged (0 when the call failed). */
+ export async function settleTavily(env, res, actual) {
+   const d = Math.max(0, Math.round(Number(actual) || 0)) - res.reserved; if (!d) return;
+-  await Promise.all([add(env, res.keys.tavDay, d), add(env, res.keys.tavMonth, d)]);
++  await Promise.all([add(env, res.keys.tavDay, d), add(env, res.keys.tavMonth, d)].concat(res.streamKey ? [add(env, res.streamKey, d)] : []));
++}
++/** This month's credits per stream (for the administrators' screen). */
++export async function streamUsage(env) {
++  const out = {}; for (const s of STREAMS) out[s] = await get(env, streamKey(s)); return out;
+ }
+ /** Reserve one Gemini call (Session 3 uses it). */
+ export async function reserveGemini(env) {

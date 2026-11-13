@@ -3,7 +3,8 @@
    filter (a link must be one of these Tavily results), worker/intel.js validates, de-duplicates, scores and saves.
    Nothing internal is sent: the saved-record context is limited to public fields (titles, organisations, source links).
    Fixed queries per job (no AI chooses what to search), so each job's cost is known: about 4–6 Tavily credits + 1 Gemini call. */
-import { tavilySearch, tavilyExtract, geminiJson, geminiModel, ProviderError } from "./providers.js";
+import { tavilySearch, tavilyExtract, geminiModel, ProviderError } from "./providers.js";
+import { aiJson } from "./ai.js";
 import { reserveTavily, settleTavily, reserveGemini, releaseGemini, countGeminiTokens, CapError } from "./usage.js";
 import { nu } from "./research.js";
 
@@ -75,7 +76,7 @@ export async function askFree(env, job, db, { shape, context, extractJson }) {
   let searches = 0, credits = 0, failedSearches = 0;
   for (const q of plan.queries) {
     const est = 1; let res;
-    try { res = await reserveTavily(env, est); } catch (e) { throw Object.assign(e, { limit: true }); }
+    try { res = await reserveTavily(env, est, "jobs"); } catch (e) { throw Object.assign(e, { limit: true }); }
     let spent = 0;
     try {
       const r = await tavilySearch(env, { query: q.q, topic: q.topic, timeRange: q.timeRange, country: q.country, includeDomains: q.includeDomains, maxResults: q.maxResults });
@@ -89,7 +90,7 @@ export async function askFree(env, job, db, { shape, context, extractJson }) {
   }
   if (plan.extract && sources.length) {
     const pick = sources.slice().sort((a, b) => b.score - a.score).slice(0, plan.extract); let res, spent = 0;
-    try { res = await reserveTavily(env, 1); } catch (e) { throw Object.assign(e, { limit: true }); }
+    try { res = await reserveTavily(env, 1, "jobs"); } catch (e) { throw Object.assign(e, { limit: true }); }
     try { const r = await tavilyExtract(env, pick.map((s) => s.url), { maxChars: 6000 }); spent = r.credits; credits += r.credits;
       for (const p of r.results) { const s = byKey.get(nu(p.url)); if (s) s.page = p.content; } }
     catch (e) { if (stops(e)) throw Object.assign(e, { limit: e instanceof CapError || e.code === "quota" }); notes.push(`page texts not read: ${clip(e.message, 160)}`); }
@@ -104,8 +105,8 @@ export async function askFree(env, job, db, { shape, context, extractJson }) {
   const prompt = `Today is ${new Date().toISOString().slice(0, 10)}.\n\n${shape}\n\n${context}\n\nSOURCES (${blk.n}; the only pages you may cite — copy each URL exactly):\n\n${blk.text}`;
   try { await reserveGemini(env); } catch (e) { throw Object.assign(e, { limit: true }); }
   let a;
-  try { a = await geminiJson(env, { system: RULES_FREE, prompt }); }
-  catch (e) { await releaseGemini(env).catch(() => {}); if (e instanceof ProviderError && e.code === "quota") e.limit = true; throw e; }
+  try { a = await aiJson(env, { task: "extract", cls: "P0", system: RULES_FREE, prompt }); }   // public search results only
+  catch (e) { await releaseGemini(env).catch(() => {}); if ((e instanceof ProviderError && e.code === "quota") || e instanceof CapError) e.limit = true; throw e; }
   await countGeminiTokens(env, a.tokens).catch(() => {});
   return Object.assign(base, { parsed: extractJson(a.text), seen: seenOf(sources.slice(0, blk.n)), model: a.model, tokens: a.tokens, finish: a.finish, chars: a.text.length });
 }

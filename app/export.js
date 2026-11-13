@@ -15,7 +15,7 @@
     "eng/U/o", "engx/U/o", "engx/U/o/*/f", "engx/U/o/*/f/*/c", "engx/U/o/*/h", "engx/U/wid", "engx/U/wid/*/c", "commissions/U/r", "commissions/U/r/*/po", "commissions/U/r/*/po/*/c",
     "notif/U/n", "outbox/U/e", "requests/U/cc", "handoff/U/o", "wall/U/m", "wall/U/f", "wall/U/f/*/c", "askceo/U/m", "askceo/U/f", "askceo/U/f/*/c", "askceo/U/meta",
     "mi", "mi/opps/o", "mi/state/jobs", "mi/req/r", "mi/runs/r", "mix", "mix/mat/m", "mix/quotes/q", "mix/quotes/q/*/c", "mix/fx/r", "mix/news/n", "mix/reports/w", "mix/reports/p",
-    "mix/enginev/v", "mix/alias/a", "mix/disc/j", "mix/disc/c", "mix/opp/o", "mix/assign/a", "mix/outcome/o", "plan/U/o", "mix/enrich/e"];
+    "mix/enginev/v", "mix/aicfgv/v", "mix/alias/a", "mix/disc/j", "mix/disc/c", "mix/opp/o", "mix/assign/a", "mix/outcome/o", "plan/U/o", "mix/enrich/e"];
   async function pool(items, n, fn) { const out = []; let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })); return out; }
   async function full({ onProgress } = {}) {
     if (!root.DPAuth.isAdmin()) throw new Error("Administrators only.");

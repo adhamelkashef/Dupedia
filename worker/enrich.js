@@ -10,7 +10,8 @@
    Results are saved in mix/enrich/e/<leadId> (administrators only). Owner's request (7 Nov 2026): when "fill in automatically" is on, a
    found website, a company e-mail and an official-site phone are written to the lead's shared contact record, marked unverified, each
    with its source, only where the lead has none yet. Nobody is notified. It runs only while config/settings.miEngine is on. */
-import { tavilySearch, tavilyExtract, geminiJson, geminiConfigured, ProviderError } from "./providers.js";
+import { tavilySearch, tavilyExtract, ProviderError } from "./providers.js";
+import { aiJson, aiReady } from "./ai.js";
 import { reserveTavily, settleTavily, reserveGemini, releaseGemini, countGeminiTokens, CapError } from "./usage.js";
 import { addJob, dueJobs, claimJob, endJob } from "./enginejobs.js";
 import { extractJson } from "./research.js";
@@ -55,7 +56,7 @@ async function takeDaily(env, limit, t) {
 const tomorrow = (t) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 5); };
 const nextMonth = (t) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1, 0, 5); };
 /** One Tavily call inside the caps: the credits are reserved first and corrected to what Tavily reported. */
-async function tav(env, rec, fn) { const res = await reserveTavily(env, 2); let spent = 0; try { const r = await fn(); spent = r.credits; rec.credits += spent; return r; } finally { await settleTavily(env, res, spent); } }
+async function tav(env, rec, fn) { const res = await reserveTavily(env, 2, "leads"); let spent = 0; try { const r = await fn(); spent = r.credits; rec.credits += spent; return r; } finally { await settleTavily(env, res, spent); } }
 const addSources = (rec, results) => { const have = new Set(rec.sources.map((s) => s.url)); for (const x of results) if (!have.has(x.url) && rec.sources.length < 16) { rec.sources.push({ id: "S" + (rec.sources.length + 1), url: x.url, title: clip(x.title, 200), publishedAt: x.publishedAt || null, snippet: clip(x.content, 900) }); have.add(x.url); } };
 const addContacts = (rec, list) => { const keys = new Set(rec.contacts.map((c) => c.kind + ":" + (c.key || c.value))); for (const c of list) { const k = c.kind + ":" + (c.key || c.value); if (!keys.has(k) && rec.contacts.length < 14) { keys.add(k); rec.contacts.push(c); } } };
 const hasOwnEmail = (rec) => rec.contacts.some((c) => c.kind === "email" && c.own);
@@ -108,9 +109,9 @@ Answer with ONE JSON list, nothing else: [{"project": "...", "quote": "...", "so
 async function stepProjects(env, j, rec) {
   const src = rec.sources.filter((s) => !/linkedin\.com/i.test(s.url));
   if (!src.length) { rec.notes.push("No search results to read for projects."); return null; }
-  if (!geminiConfigured(env)) { rec.notes.push("Projects not read: the AI analysis key is not set."); return null; }
+  if (!(await aiReady(env, "extract"))) { rec.notes.push("Projects not read: the AI analysis key is not set."); return null; }
   await reserveGemini(env); let a;
-  try { a = await geminiJson(env, { system: PROMPT, prompt: `Organisation: ${rec.leadName}\n\nSOURCES:\n\n` + src.map((s) => `[${s.id}] ${s.title}\nURL: ${s.url}\n${s.snippet}\n`).join("\n"), maxOutputTokens: 4096 }); }
+  try { a = await aiJson(env, { task: "extract", cls: "P0", system: PROMPT, prompt: `Organisation: ${rec.leadName}\n\nSOURCES:\n\n` + src.map((s) => `[${s.id}] ${s.title}\nURL: ${s.url}\n${s.snippet}\n`).join("\n"), maxOutputTokens: 4096 }); }
   catch (e) { await releaseGemini(env).catch(() => {}); throw e; }
   await countGeminiTokens(env, a.tokens).catch(() => {});
   const list = extractJson(a.text); let dropped = 0;

@@ -1,11 +1,11 @@
 /* X FORCE — Market Intelligence 2.0, Phase 1: the administrators' screen (Data Readiness, product capability, company names,
    job ledger, the switch). Reached from Mission Control → Automation Health. Nothing here is visible to other roles. */
-/* global DPUI, DPStore, DPAuth, DPMiEngine */
+/* global DPUI, DPStore, DPAuth, DPMiEngine, DPCi */
 (function (root) {
   "use strict";
   const U = DPUI, { $, $$, esc, App } = U, E = DPMiEngine;
   const S = { tab: "leads", counts: null, lf: "todo", lp: 0 };
-  const TABS = [["leads", "Existing leads"], ["sched", "Research schedule"], ["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"]];
+  const TABS = [["leads", "Existing leads"], ["sched", "Research schedule"], ["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"], ["ci", "Commercial intelligence"]];
   const STATE = { ready: ["Ready", "ok"], partial: ["Partly", "warn"], none: ["Not yet", "err"] };
   const num = (x) => (Number(x) || 0).toLocaleString("en-US");
   const dt = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -42,7 +42,7 @@
     $("#me-sw").onclick = async () => { const f = await U.form(on ? "Switch the engine off" : "Switch the engine on", [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: on ? "Switch off" : "Switch on", intro: "Applies from the next research run. Saved records are not changed." }); if (!f) return; try { await setSwitch(!on, f.r); U.toast(on ? "Engine switched off." : "Engine switched on."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
     $$("[data-mt]", V).forEach((b) => (b.onclick = () => { S.tab = b.dataset.mt; render(); }));
     const B = $("#me-body");
-    try { await ({ leads: leadsTab, sched: schedTab, ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab })[S.tab](B); }
+    try { await ({ leads: leadsTab, sched: schedTab, ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab, ci: ciTab })[S.tab](B); }
     catch (e) { B.innerHTML = `<div class="note err">Could not load (${esc(e.message || e.code)}).</div>`; }
   }
 
@@ -200,6 +200,104 @@
     const rows = (await DPStore.tryList("mix/disc/j")).map((x) => x.data).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 100), P = { done: "ok", failed: "err", waiting: "warn", running: "info", queued: "" };
     B.innerHTML = `<div class="card stack"><h3>Job ledger</h3><p class="small muted">Every step of the discovery engine will be recorded here, including failures and their reasons. It stays empty until discovery arrives in Phase 2.</p>
       ${rows.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th>Created</th><th>Job</th><th>Status</th><th class="r">Tries</th><th>Next</th><th>Detail</th></tr></thead><tbody>${rows.map((j) => `<tr><td class="small">${esc(dt(j.createdAt))}</td><td class="small">${esc(j.kind)}<div class="tiny muted">${esc(j.key)}</div></td><td><span class="pill ${P[j.status] || ""}">${esc(j.status)}</span></td><td class="r num">${j.tries || 0}/${j.maxTries || 0}</td><td class="small">${["queued", "waiting"].includes(j.status) ? esc(dt(j.nextAt)) : "—"}</td><td class="small muted">${esc(j.error || "")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">No jobs yet.</p>`}</div>`;
+  }
+
+
+  /* ---------------- Commercial Intelligence, Phase 0: switches, AI routing, timing, credit shares ---------------- */
+  const C = () => root.DPCi;
+  const api = (u, o) => root.XFServer.api(u, o);
+  async function setFlag(k, on, reason) {
+    if (!U.isAdmin()) throw new Error("Administrators only."); if (!String(reason || "").trim()) throw new Error("Give a reason.");
+    const cur = (await DPStore.getConfig("settings")) || {}, ci = Object.assign({}, cur.ci || {}, { [k]: !!on });
+    await DPStore.setConfig("settings", Object.assign({}, cur, { ci }));
+    App.config.settings.ci = ci;
+    await DPAuth.auditLog(`Commercial intelligence: ${k} switched ${on ? "on" : "off"}`, { kind: "mi", reason }).catch(() => {});
+  }
+  async function saveAi(next, reason) {
+    if (!U.isAdmin()) throw new Error("Administrators only."); if (!String(reason || "").trim()) throw new Error("Give a reason for the change.");
+    const prev = C().aicfgOf(await DPStore.tryGet("mix/aicfg")), at = new Date().toISOString(), version = (prev.version || 0) + 1;
+    const doc = Object.assign(C().aicfgOf(next), { version, updatedAt: at, updatedBy: DPAuth.A.me.id });
+    if (prev.version) await DPStore.set(`mix/aicfgv/v/${prev.version}`, Object.assign({}, prev, { replacedAt: at, replacedBy: DPAuth.A.me.id }));
+    await DPStore.set("mix/aicfg", doc);
+    await DPAuth.auditLog("AI routing changed", { kind: "mi", reason, detail: `Version ${version}`, before: { tasks: prev.tasks }, after: { tasks: doc.tasks } }).catch(() => {});
+  }
+  const ask = (title, intro) => U.form(title, [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: "Save", intro: intro || "" });
+  async function ciTab(B) {
+    const K = C(), flags = K.flagsOf(App.config.settings), cfg = await loadCfg(), ai = K.aicfgOf(await DPStore.tryGet("mix/aicfg"));
+    const [st, rs, logs] = await Promise.all([api("/api/ci/status").catch(() => null), api("/api/research/status").catch(() => null), DPStore.tryList("mix/ailog/l")]);
+    const T = K.timingOf(cfg), env = K.envelopesOf(cfg), monthCap = rs && rs.usage ? rs.usage.tavily.monthCap : null, log = logs.map((x) => x.data).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
+    const provOpts = (sel, none) => `<option value=""${!sel ? " selected" : ""}>${esc(none)}</option>` + Object.entries(K.PROVIDERS).map(([k, p]) => `<option value="${k}"${sel === k ? " selected" : ""}>${esc(p.label)}</option>`).join("");
+    const nIn = (attr, v, label, max) => `<input class="in sm num" style="width:84px" type="number" min="0" max="${max}" step="1" ${attr} value="${v == null ? "" : v}" aria-label="${esc(label)}" placeholder="—">`;
+    B.innerHTML = `<div class="stack">
+      <div class="card stack"><h3>Switches</h3><p class="small muted">Commercial Intelligence is built in phases. Each part stays off until you switch it on; off means X FORCE behaves exactly as before.</p>
+        <div class="tablewrap"><table class="mtable"><thead><tr><th>Part</th><th>State</th><th>What it does</th><th></th></tr></thead><tbody>${K.FLAGS.map(([k, l, d]) => `<tr><td class="small"><b>${esc(l)}</b></td><td><span class="pill ${flags[k] ? "ok" : ""}">${flags[k] ? "On" : "Off"}</span></td><td class="small">${esc(d)}</td><td class="r"><button class="btn ghost xs" data-cif="${k}">${flags[k] ? "Switch off…" : "Switch on…"}</button></td></tr>`).join("")}</tbody></table></div></div>
+
+      <div class="card stack"><div class="row between"><h3>AI routing</h3><span class="tiny muted">Version ${ai.version || "not saved yet"}${ai.updatedAt ? ` · ${esc(dt(ai.updatedAt))} by ${esc(DPAuth.nameSync(ai.updatedBy) || "")}` : ""}</span></div>
+        ${flags.ai ? "" : `<div class="note warn small">The switch is off: every AI call goes to Gemini as before. These choices apply once AI routing is switched on.</div>`}
+        <p class="small muted">Each kind of data may go only to providers allowed for it. Public web text (P0) may go anywhere. Gemini's free tier receives public text only, because Google may use and review what it is sent. Personal data (P3) never goes to any provider. The text of prompts and answers is not kept.</p>
+        <div class="tablewrap"><table class="mtable"><thead><tr><th>Task</th><th>Data</th><th>Provider</th><th>If it fails</th></tr></thead><tbody>${Object.entries(K.TASKS).map(([k, t]) => `<tr><td class="small"><b>${esc(t.label)}</b></td><td class="small">${t.cls}</td><td><select class="in sm" data-aip="${k}" aria-label="${esc(t.label)} provider">${provOpts(ai.tasks[k].provider, "None (off)")}</select></td><td><select class="in sm" data-aif="${k}" aria-label="${esc(t.label)} fallback">${provOpts(ai.tasks[k].fallback, "No fallback")}</select></td></tr>`).join("")}</tbody></table></div>
+        <div class="tablewrap"><table class="mtable"><thead><tr><th>Provider</th><th>Connected</th><th>On</th><th>Model</th><th class="r">Calls a day</th><th class="r">Used today</th><th>May receive</th><th></th></tr></thead><tbody>${Object.entries(K.PROVIDERS).map(([k, p]) => {
+          const pc = ai.providers[k], con = st ? st.connected[k] : null;
+          return `<tr><td class="small"><b>${esc(p.label)}</b><div class="tiny muted">${esc(p.secret)}</div></td><td><span class="pill ${con ? "ok" : con === false ? "warn" : ""}">${con ? "Yes" : con === false ? "No" : "?"}</span></td>
+            <td><input type="checkbox" data-aion="${k}"${pc.on ? " checked" : ""} aria-label="${esc(p.label)} on"></td>
+            <td><input class="in sm" style="min-width:150px" data-aim="${k}" value="${esc(pc.model)}" placeholder="${k === "gemini" ? "as set in Cloudflare" : "model name"}" aria-label="${esc(p.label)} model"></td>
+            <td class="r">${k === "gemini" ? `<span class="tiny muted">existing cap</span>` : nIn(`data-aic="${k}"`, pc.dailyCalls, p.label + " calls a day", 100000)}</td>
+            <td class="r num">${k === "gemini" ? (rs && rs.usage ? num(rs.usage.gemini.today) : "—") : st ? num(st.aiToday[k]) : "—"}</td>
+            <td class="small">${p.classes.join(", ")}${k === "claude" ? `<label class="check tiny"><input type="checkbox" data-aip2${pc.allowP2 ? " checked" : ""}> also P2</label>` : ""}</td>
+            <td class="r"><button class="btn ghost xs" data-ait="${k}">Test</button></td></tr>`; }).join("")}</tbody></table></div>
+        <p class="tiny muted">A test sends one fixed public sentence and counts as one call. Paid providers are never used unless switched on here, with a daily limit above 0.</p>
+        <div class="row"><button class="btn lime sm" id="ai-save">Save a new version…</button></div></div>
+
+      <div class="card stack"><h3>Timing</h3><p class="small muted">Used to work out when to approach each project: latest order date = opening − lead time − safety margin; approach by = latest order date − sales cycle. Blank figures stay blank, and the result then says what is missing.</p>
+        <div class="grid2">
+          <div><h4 class="small">Lead time by product category (days)</h4><table class="mtable"><tbody>${E.CATEGORIES.map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-tlt="${k}"`, T.leadTimes[k], l + " lead time", 730)}</td></tr>`).join("")}
+            <tr><td class="small"><b>Safety margin (days)</b></td><td class="r">${nIn('id="t-safe"', T.safetyDays, "Safety margin", 365)}</td></tr>
+            <tr><td class="small"><b>Target period ends</b></td><td class="r"><input class="in sm" type="date" id="t-end" value="${T.periodEnd || ""}" aria-label="Target period end"></td></tr></tbody></table></div>
+          <div><h4 class="small">Sales cycle by customer type (days)</h4><table class="mtable"><tbody>${K.CUSTOMER_TYPES.map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-tsc="${k}"`, T.salesCycle[k], l + " sales cycle", 1095)}</td></tr>`).join("")}</tbody></table>
+            <h4 class="small">Usual days from each stage to opening</h4><p class="tiny muted">Used only when no opening date is published; the result is marked as an estimate.</p><table class="mtable"><tbody>${K.STAGES.filter(([k]) => k !== "unknown").map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-tso="${k}"`, T.stageOpening[k], l + " days to opening", 3650)}</td></tr>`).join("")}</tbody></table></div>
+        </div>
+        <div class="row"><button class="btn lime sm" id="t-save">Save a new version…</button></div>
+        <div class="card stack"><h4 class="small">Try it</h4><div class="row wrap">
+          <select class="in sm" id="tt-cat" aria-label="Category">${E.CATEGORIES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+          <select class="in sm" id="tt-ct" aria-label="Customer type">${K.CUSTOMER_TYPES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+          <select class="in sm" id="tt-st" aria-label="Stage">${K.STAGES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+          <label class="tiny">Published opening <input class="in sm" type="date" id="tt-op"></label></div><div class="small" id="tt-out"></div><p class="tiny muted">Uses the saved figures.</p></div></div>
+
+      <div class="card stack"><h3>Search credit shares</h3>
+        ${flags.envelopes ? "" : `<div class="note warn small">The switch is off: only the existing daily and monthly caps apply. Use is counted per kind of research either way, so you can see it before choosing shares.</div>`}
+        <p class="small muted">Each kind of research may spend only its share of the month's search credits${monthCap != null ? ` (cap ${num(monthCap)})` : ""}. Blank means no share for that kind: it is limited only by the existing caps.</p>
+        <div class="tablewrap"><table class="mtable"><thead><tr><th>Kind of research</th><th class="r">Share (credits a month)</th><th class="r">Used this month</th></tr></thead><tbody>${K.STREAMS.map(([k, l]) => `<tr><td class="small">${esc(l)}</td><td class="r">${nIn(`data-env="${k}"`, env[k], l + " share", 1000000)}</td><td class="r num">${st ? num(st.streams[k]) : "—"}</td></tr>`).join("")}</tbody></table></div>
+        <p class="tiny muted">Use is counted from the day this version was uploaded; earlier searches are not split by kind.</p>
+        <div class="row"><button class="btn lime sm" id="e-save">Save a new version…</button></div></div>
+
+      <div class="card stack"><h3>AI calls</h3><p class="small muted">Recorded while AI routing is on, and for every provider test. The last 30 calls; kept 90 days. No prompt or answer text is kept.</p>
+        ${log.length ? `<div class="tablewrap"><table class="mtable"><thead><tr><th>When</th><th>Task</th><th>Data</th><th>Provider</th><th>Model</th><th class="r">Tokens</th><th class="r">Time</th><th>Result</th></tr></thead><tbody>${log.map((l) => `<tr><td class="small">${esc(dt(l.at))}</td><td class="small">${esc(l.task)}</td><td class="small">${esc(l.cls || "")}</td><td class="small">${esc(l.provider || "—")}</td><td class="tiny">${esc(l.model || "")}</td><td class="r num">${l.tokens ? num(l.tokens) : "—"}</td><td class="r num">${l.ms != null ? (l.ms / 1000).toFixed(1) + " s" : "—"}</td><td class="small">${l.ok ? `<span class="pill ok">Answered</span>` : `<span class="pill err">${esc(l.code || "Failed")}</span> <span class="tiny muted">${esc(l.error || "")}</span>`}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">No calls recorded yet.</p>`}</div>
+    </div>`;
+
+    $$("[data-cif]", B).forEach((b) => (b.onclick = async () => { const k = b.dataset.cif, on = !flags[k], f = await U.form(`${on ? "Switch on" : "Switch off"}: ${K.FLAGS.find((x) => x[0] === k)[1]}`, [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: on ? "Switch on" : "Switch off" }); if (!f) return;
+      try { await setFlag(k, on, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } }));
+    $("#ai-save").onclick = async () => { const next = { tasks: {}, providers: {} };
+      for (const k of Object.keys(K.TASKS)) next.tasks[k] = { provider: $(`[data-aip="${k}"]`, B).value, fallback: $(`[data-aif="${k}"]`, B).value };
+      for (const k of Object.keys(K.PROVIDERS)) { next.providers[k] = { on: $(`[data-aion="${k}"]`, B).checked, model: $(`[data-aim="${k}"]`, B).value.trim() }; if (k !== "gemini") next.providers[k].dailyCalls = +$(`[data-aic="${k}"]`, B).value || 0; }
+      next.providers.claude.allowP2 = $("[data-aip2]", B).checked;
+      const f = await ask("Save AI routing", next.providers.claude.allowP2 ? "Prices, values and customer notes (P2) will be allowed to go to the paid Claude API." : ""); if (!f) return;
+      try { await saveAi(next, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
+    $$("[data-ait]", B).forEach((b) => (b.onclick = async () => { b.disabled = true; b.textContent = "Testing…";
+      try { const r = await api("/api/ci/ai/test", { method: "POST", body: JSON.stringify({ provider: b.dataset.ait }) }); U.toast(r.ok ? `Answered in ${(r.ms / 1000).toFixed(1)} s (${r.model}).` : r.message, r.ok ? {} : { err: true }); }
+      catch (e) { U.toast(e.message, { err: true }); } render(); }));
+    const blank = (x) => (x.value === "" ? null : +x.value);
+    $("#t-save").onclick = async () => { const t = { leadTimes: {}, salesCycle: {}, stageOpening: {}, safetyDays: blank($("#t-safe", B)), periodEnd: $("#t-end", B).value || null };
+      $$("[data-tlt]", B).forEach((x) => (t.leadTimes[x.dataset.tlt] = blank(x))); $$("[data-tsc]", B).forEach((x) => (t.salesCycle[x.dataset.tsc] = blank(x))); $$("[data-tso]", B).forEach((x) => (t.stageOpening[x.dataset.tso] = blank(x)));
+      const err = K.validateTiming(t); if (err) return U.toast(err, { err: true });
+      const f = await ask("Save timing figures"); if (!f) return; try { await saveCfg(t, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
+    $("#e-save").onclick = async () => { const e2 = {}; $$("[data-env]", B).forEach((x) => (e2[x.dataset.env] = blank(x)));
+      const err = K.validateEnvelopes(e2, monthCap); if (err) return U.toast(err, { err: true });
+      const f = await ask("Save search credit shares"); if (!f) return; try { await saveCfg({ envelopes: e2 }, f.r); U.toast("Saved."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
+    const W = { early: "", open: "ok", lastcall: "warn", closed: "err", unknown: "" };
+    const tryIt = () => { const r = K.approachBy({ category: $("#tt-cat", B).value, customerType: $("#tt-ct", B).value, stage: $("#tt-st", B).value, opening: $("#tt-op", B).value || null }, cfg, new Date().toISOString().slice(0, 10));
+      $("#tt-out", B).innerHTML = `<span class="pill ${W[r.window]}">${esc(K.WINDOWS[r.window])}</span>${r.approachBy ? ` Approach by <b>${esc(r.approachBy)}</b>.` : ""}${r.latestOrder ? ` Latest order date ${esc(r.latestOrder)}.` : ""}${r.fitsPeriod === true ? " Can sign within the target period." : r.fitsPeriod === false ? " Cannot sign within the target period." : ""}
+        <ul class="tiny">${r.basis.concat(r.missing.map((m) => "Missing: " + m)).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`; };
+    ["#tt-cat", "#tt-ct", "#tt-st", "#tt-op"].forEach((s) => ($(s, B).onchange = tryIt)); tryIt();
   }
 
   U.register("miengine", render);

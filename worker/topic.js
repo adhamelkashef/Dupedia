@@ -129,7 +129,7 @@ function onError(d, e, q) {
 async function searchStep(env, d, q) {
   d.stage = "searching"; q.tries++;
   const est = q.depth === "advanced" ? 2 : 1; let res;
-  try { res = await reserveTavily(env, est); } catch (e) { q.tries--; return onError(d, e, null); }
+  try { res = await reserveTavily(env, est, "topic"); } catch (e) { q.tries--; return onError(d, e, null); }
   let spent = 0;
   try {
     const r = await tavilySearch(env, { query: q.q, depth: q.depth, topic: q.topic, timeRange: q.timeRange, country: q.country, maxResults: q.maxResults });
@@ -143,7 +143,7 @@ async function collectStep(env, d) {
   d.stage = "collecting";
   const pick = d.sources.filter((s) => !s.page).sort((a, b) => b.score - a.score).slice(0, d.plan.extract);
   const est = Math.ceil(pick.length / 5); let res;   // basic extraction (1 credit per 5 pages) for Standard and Deep
-  try { res = await reserveTavily(env, est); } catch (e) { return onError(d, e, null); }
+  try { res = await reserveTavily(env, est, "topic"); } catch (e) { return onError(d, e, null); }
   d.extractTries = (d.extractTries || 0) + 1;
   let spent = 0;
   try {
