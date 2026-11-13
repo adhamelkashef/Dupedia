@@ -4,7 +4,12 @@
   "description": "X FORCE 1.2 — Dupedia's operating system on Cloudflare Workers + D1",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "test": "node qa/run-tests.mjs",
+    "test:smoke": "node qa/run-smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22.5"
   },
   "devDependencies": {
     "wrangler": "4.153.0"

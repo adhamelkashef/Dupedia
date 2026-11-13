@@ -1,0 +1,639 @@
+diff --git a/.assetsignore b/.assetsignore
+index 6c3fbf5..2d70c55 100644
+--- a/.assetsignore
++++ b/.assetsignore
+@@ -2,8 +2,11 @@
+ .github
+ node_modules
+ worker
+-README.md
+-CLOUDFLARE.md
++*.md
++data/leadseed.json
++qa
++ops
++server
+ wrangler.jsonc
+ package.json
+ package-lock.json
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..cb6bc05
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,22 @@
++name: CI
++
++on:
++  pull_request:
++  push:
++    branches: [main]
++
++permissions:
++  contents: read
++
++jobs:
++  test:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: 24
++          cache: npm
++      - run: npm ci
++      - run: npm test
++      - run: npm run test:smoke
+diff --git a/CLOUDFLARE.md b/CLOUDFLARE.md
+index f6bdf40..349be3e 100644
+--- a/CLOUDFLARE.md
++++ b/CLOUDFLARE.md
+@@ -41,17 +41,21 @@ The permission rules are the app's own access rules (`DPStore.RULES` in `app/sto
+ ## One-time Cloudflare setup
+ 
+ 1. **Build settings.** Go to Workers & Pages → your project → Settings → Build.
+-   - Build command: leave it empty.
++   - Build command: `npm test`. If a unit test fails, the build fails and nothing is deployed.
+    - Deploy command: `npx wrangler deploy`
+    - Root directory: `/`
++   - Under **Variables** (build variables), add `NODE_VERSION` = `24` so the build runs the same Node version as the tests.
++   - GitHub Actions (`.github/workflows/ci.yml`) also runs `npm test` and `npm run test:smoke` on every pull request and every push to `main`. It reports the result; on a private repository, branch protection needs a paid GitHub plan, so the build command above is what actually blocks a deploy.
+ 2. **Worker name.** The `"name"` in `wrangler.jsonc` must be exactly the name of your Worker in Cloudflare. It is set to `dupedia`. If your Worker has another name, change that line.
+ 3. **Commit and push.** Cloudflare rebuilds automatically. On the first deploy, wrangler creates the D1 database `xforce-db` and connects it.
+    - If the build log says it could not create the database, create it yourself: Storage & Databases → D1 → Create database, named exactly `xforce-db`. Then redeploy (Deployments → Retry).
+ 4. **Setup code.** Go to Settings → Variables and Secrets → **Add**.
+    - Type: **Secret**
+    - Name: `SETUP_CODE`
+-   - Value: a long random code only you know (at least 8 characters; 20 or more is better).
++   - Value: a random code only you know, **20 or more random characters** (for example from a password manager's generator). The server accepts 8 or more, but this code works permanently at **/recover**, so use 20+.
+    - Save. Secrets are never shown again, never in GitHub, and kept across deploys.
++   - Keep this code. It is also the owner’s permanent way back in at **/recover** if the owner password is lost: anyone with the code and the owner username can set a new owner password. To change it, replace the `SETUP_CODE` secret in the dashboard.
++   - **Existing installations:** before this version goes live, replace `SETUP_CODE` with a new value of 20 or more random characters. Until now the code only mattered once, at setup; from this version it recovers the owner account at **/recover** for as long as it is set.
+ 5. **Create the owner account.** Open your `workers.dev` address. It goes to **/setup**. Enter the setup code, your name, a username and a password.
+    - This creates the owner (CEO) account.
+    - Setup then closes for good, even with the right code.
+@@ -76,6 +80,7 @@ Secrets go only in the dashboard as **Secret**, never in this file. The only sec
+ - **Sign-in protection.**
+   - 5 wrong passwords lock that username for 15 minutes.
+   - 30 failures from one address lock that address.
++- **The owner account.** Administrators cannot reset or set the owner’s password. Only the owner can change the owner’s e-mail address, role or active status in User Management. The owner recovers it with “Forgot your password?” or with the setup code at **/recover**, which works permanently, so `SETUP_CODE` should be 20 or more random characters (5 wrong attempts lock the address, and 5 for the owner username lock that username from any address, for 15 minutes; a successful recovery ends every owner session and administrators are notified).
+ - **Sessions** use an HttpOnly, Secure, SameSite=Strict cookie.
+   - Every change must carry an anti-forgery header.
+   - Deactivating someone or resetting their password ends their sessions at once.
+@@ -178,7 +183,7 @@ every session of that account; the Forgot form answers the same way whether or n
+ ## Temporary login passwords (1.4.5)
+ 
+ **User Management → the person → Reset password… → Generate temporary password → Confirm and generate.** Works for every
+-account — employees, sales, finance, engineering and other administrators. The password is shown once; copy it and give it
++account except the owner — employees, sales, finance, engineering and other administrators. The password is shown once; copy it and give it
+ in person or by phone. Optionally tick *E-mail them sign-in instructions* (the e-mail never contains the password).
+ 
+ - At sign-in the person must choose their own password on the sign-in page before X FORCE opens; the server refuses every
+@@ -186,8 +191,7 @@ in person or by phone. Optionally tick *E-mail them sign-in instructions* (the e
+ - Expiry: the administrator picks 4 hours, 24 hours or 3 days. Optional **Text** variables:
+   `TEMP_PASSWORD_HOURS` (default 24, used when no choice is sent) and `TEMP_PASSWORD_MAX_HOURS` (upper limit, default 168 = 7 days).
+   The first password of a newly created account also expires after `TEMP_PASSWORD_MAX_HOURS`.
+-- Safeguards: nobody resets their own password here (use My Profile → Change password). Since 1.4.6 any administrator
+-  can reset the **owner's** password for account recovery, without the owner's approval; the owner is always told — an
+-  urgent item on their dashboard, an inbox alert and (when e-mail is set up and the owner has an address) an e-mail. The
+-  owner account still cannot be demoted or deactivated. User Management shows whether each temporary password was used,
++- Safeguards: nobody resets their own password here (use My Profile → Change password). Administrators cannot reset or
++  set the **owner's** password (the attempt is refused and audited); the owner recovers it with “Forgot your password?”
++  or the setup code at **/recover**. The owner account cannot be demoted or deactivated. User Management shows whether each temporary password was used,
+   expired unused, replaced, or is still waiting; "used" and "expired" are written to the audit log. Every generation and every refusal is written to the audit log (who, whom, when, e-mail result) — never the password.
+diff --git a/app/ui-users.js b/app/ui-users.js
+index e1aec6a..588420a 100644
+--- a/app/ui-users.js
++++ b/app/ui-users.js
+@@ -28,7 +28,7 @@
+       return `<tr><td><img class="pic" width="48" height="48" style="width:48px;height:48px" alt="" src="${esc(pics[r.uid])}"></td><td><b>${esc(A.fullName(r) || "—")}</b>${r.title ? `<div class="tiny muted">${esc(r.title)}</div>` : ""}${r.uid === DPStore.st.userId ? ' <span class="pill">You</span>' : ""}</td><td class="small num">${esc(hr.employeeId || "—")}</td><td class="small">${esc(r.department || "—")}</td><td class="small">${esc(r.email || hr.email || "—")}${hr.mobile ? `<div class="tiny muted">${esc(hr.mobile)}</div>` : ""}</td><td>${esc(roleLabel(r.role))}</td><td class="small">${esc(H.dateS(r.createdAt))}</td>
+         <td>${r.active === false ? '<span class="pill err">Deactivated</span>' : '<span class="pill ok">Active</span>'}${srvBy[r.uid] && srvBy[r.uid].locked ? ' <span class="pill warn">Locked out</span>' : ""}${srvBy[r.uid] && srvBy[r.uid].lastReset ? `<div class="tiny muted">${esc(resetLine(srvBy[r.uid].lastReset))}</div>` : ""}</td><td class="small">${a && a.lastSeen ? esc(new Date(a.lastSeen).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })) : "—"}</td>
+         <td class="small">${root.XFServer ? (A.baseOf(r.role) === "admin" ? "Administrator (server)" : A.baseOf(r.role) === "accountant" ? "Finance (server)" : "Staff (server)") : DPStore.st.mode !== "cloud" ? "n/a (local)" : a && a.level ? (a.level === "admin" ? `Editor${A.baseOf(r.role) !== "admin" ? ' <span class="pill err">too high</span>' : ""}` : a.level === "interact" ? `Contributor${A.baseOf(r.role) === "admin" ? ' <span class="pill warn">too low for admin</span>' : ""}` : esc(a.level)) : "—"}</td>
+-        <td style="white-space:nowrap"><button class="btn ghost xs" data-ed="${esc(r.docId)}">Edit…</button> ${r.uid ? `<button class="btn ghost xs" data-act="${esc(r.uid)}">Activity</button> <button class="btn ghost xs" data-idc="${esc(r.uid)}">ID card</button>` : ""}${srv && r.uid && r.uid !== DPStore.st.userId ? ` <button class="btn ghost xs" data-rp="${esc(r.docId)}">Reset password…</button>` : ""}</td></tr>`; }).join("")}</tbody></table>`;
++        <td style="white-space:nowrap"><button class="btn ghost xs" data-ed="${esc(r.docId)}">Edit…</button> ${r.uid ? `<button class="btn ghost xs" data-act="${esc(r.uid)}">Activity</button> <button class="btn ghost xs" data-idc="${esc(r.uid)}">ID card</button>` : ""}${srv && r.uid && r.uid !== DPStore.st.userId && !(srvBy[r.uid] && srvBy[r.uid].owner) ? ` <button class="btn ghost xs" data-rp="${esc(r.docId)}">Reset password…</button>` : ""}</td></tr>`; }).join("")}</tbody></table>`;
+     $$("[data-rp]", V).forEach((b) => (b.onclick = () => { const r = rows.find((x) => x.docId === b.dataset.rp); resetDialog(r, hrs[r.uid] || {}, srvBy[r.uid] || null, !!(srv && srv.mail)); }));
+     $$("[data-ed]", V).forEach((b) => (b.onclick = () => editUser(rows.find((r) => r.docId === b.dataset.ed))));
+     $$("[data-act]", V).forEach((b) => (b.onclick = () => activity(b.dataset.act, act[b.dataset.act])));
+@@ -106,16 +106,16 @@
+     const fmt = (d) => new Date(d).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+     U.openModal(`<h2>Password — ${esc(name)}</h2>
+       <dl class="rp-who"><div><dt>Name</dt><dd>${esc(name)}</dd></div><div><dt>Registered e-mail</dt><dd>${esc(email || "— none on file")}</dd></div><div><dt>Role</dt><dd>${esc(role || "—")}</dd></div></dl>
+-      ${info && info.owner ? `<div class="note warn small"><b>This is the owner account.</b> You can reset it for account recovery. The owner is told straight away — an alert in their inbox and on their dashboard${mailOn && email ? ", and an e-mail to " + esc(email) : ""}.</div>` : ""}
++      ${info && info.owner ? `<div class="note warn small"><b>This is the owner account.</b> Only the owner can change its password — with ‘Forgot your password?’ or, if e-mail is not set up, with the setup code at /recover.</div>` : ""}
+       <p class="small muted">Nobody can see the current password. Resetting also unlocks an account locked by failed sign-ins.${info && info.locked ? ' <span class="pill warn">Locked out now</span>' : ""}</p>
+       ${info && info.lastReset ? `<div class="note small">Last: ${esc(resetLine(info.lastReset))}${String(info.lastReset.mail || "").startsWith("failed") ? " — " + esc(String(info.lastReset.mail).replace(/^failed:\s*/, "")) : ""}</div>` : ""}
+-      <div id="rp-main"><div class="rp-opts">
++      ${info && info.owner ? "" : `<div id="rp-main"><div class="rp-opts">
+         <div class="card stack rp-o"><h3>Generate temporary password</h3><p class="small">A new random password replaces the current one and their open sessions end. They sign in with it once and must choose their own straight away.</p>
+           <label class="field"><span>Expires after</span><select class="in" id="rp-h"><option value="4">4 hours</option><option value="24" selected>24 hours</option><option value="72">3 days</option></select></label>
+           <label class="check small"><input type="checkbox" id="rp-n" ${linkWhy ? "disabled" : ""}> E-mail them sign-in instructions (never the password)</label>${linkWhy ? `<span class="tiny muted">${esc(linkWhy)}</span>` : ""}
+           <button class="btn lime sm" id="rp-temp">Generate temporary password</button></div>
+         <div class="card stack rp-o"><h3>E-mail a reset link</h3><p class="small">Sends a single-use link to <b>${esc(email || "—")}</b>. It expires in 24 hours. Their current password keeps working until they use it.</p>
+-          <button class="btn ghost sm" id="rp-link" ${linkWhy ? "disabled" : ""}>Send the reset link</button></div></div></div>
++          <button class="btn ghost sm" id="rp-link" ${linkWhy ? "disabled" : ""}>Send the reset link</button></div></div></div>`}
+       <div id="rp-out" aria-live="polite"></div>
+       <div class="acts" id="rp-acts"><button class="btn ghost" id="rp-x">Close</button></div>`, (m) => {
+       const out = $("#rp-out", m), busy = (b, on) => { b.disabled = on; b.setAttribute("aria-busy", on ? "true" : "false"); };
+@@ -124,7 +124,7 @@
+       const l = $("#rp-link", m); if (l) l.onclick = async () => { busy(l, true);
+         try { const x = await root.XFServer.resetAccount(r.uid, "link"); out.innerHTML = `<div class="note ok small"><b>Reset link sent</b> to ${esc(x.to)} at ${esc(new Date(x.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}. The e-mail service accepted it; delivery to the inbox can take a few minutes.</div>`; }
+         catch (e) { out.innerHTML = `<div class="note err small"><b>Not sent.</b> ${esc(e.message)}</div>`; } busy(l, false); };
+-      $("#rp-temp", m).onclick = () => {
++      const tb = $("#rp-temp", m); if (tb) tb.onclick = () => {
+         const hours = +$("#rp-h", m).value, notify = $("#rp-n", m).checked, main = $("#rp-main", m);
+         main.hidden = true;
+         out.innerHTML = `<div class="card stack rp-conf" role="alertdialog" aria-labelledby="rp-ch"><h3 id="rp-ch">Generate a temporary password for ${esc(name)}?</h3>
+@@ -148,18 +148,20 @@
+   async function editUser(r) {
+     const roles = A.A.roles || A.DEFAULT_ROLES, cloud = DPStore.st.mode === "cloud", uid = r.uid, hr = uid ? (((await DPStore.tryGet(`staff/${uid}`)) || {}).hr || {}) : {};
+     const pic = await A.avatarUrl(uid), hasPic = !!(await A.picture(uid)), st = uid ? await statsFor(uid, r) : {};
++    const isOwner = !!(root.XFServer && uid && (((await root.XFServer.accounts().catch(() => null)) || {}).accounts || []).some((x) => x.uid === uid && x.owner));   // nobody resets the owner's password here
++    const ownerLocked = isOwner && uid !== DPStore.st.userId;   // only the owner changes the owner's e-mail, role and active status (the server refuses it too)
+     U.openModal(`<div class="picedit"><img class="pic ring2" width="96" height="96" style="width:96px;height:96px" alt="" src="${esc(pic)}"><div><h2>${esc(A.fullName(r) || r.email)}</h2><span class="small muted">${esc([roleLabel(r.role), r.department, r.active === false ? "Deactivated" : "Active"].filter(Boolean).join(" · "))} · account created ${esc(H.dateS(r.createdAt))} by ${esc(A.nameSync(r.createdBy) || "—")}</span>
+         <div class="row" style="margin-top:6px"><button class="btn ghost xs" id="eu-pic">${hasPic ? "Replace picture…" : "Upload picture…"}</button>${hasPic ? `<button class="btn ghost xs" id="eu-pico">Original</button><button class="btn ghost xs" id="eu-picx">Remove</button>` : ""}</div></div></div>
+       ${r.deactivatedAt ? `<div class="note small">Deactivated ${esc(H.dateS(r.deactivatedAt))} — ${esc(r.deactivationReason || "")}</div>` : ""}
+       <h4>Employment and performance</h4>${uid ? statsHtml(st) : ""}
+       <div class="grid3"><label class="field"><span>First name</span><input class="in" id="eu-fn" value="${esc(r.firstName || A.fullName(r).split(" ")[0] || "")}"></label><label class="field"><span>Last name</span><input class="in" id="eu-ln" value="${esc(r.lastName || A.fullName(r).split(" ").slice(1).join(" "))}"></label><label class="field"><span>Employment ID</span><input class="in" id="eu-id" value="${esc(hr.employeeId || "")}"></label></div>
+       <div class="grid3"><label class="field"><span>Job title</span><input class="in" id="eu-t" value="${esc(r.title || "")}"></label><label class="field"><span>Department</span><select class="in" id="eu-d">${DEPTS.map((d) => `<option${d === r.department ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label><label class="field"><span>Hiring date</span><input class="in" type="date" id="eu-h" value="${esc(hr.hireDate || "")}"></label></div>
+-      <div class="grid3"><label class="field"><span>E-mail</span><input class="in" id="eu-e" value="${esc(r.email || hr.email || "")}"></label><label class="field"><span>Mobile</span><input class="in" id="eu-m" value="${esc(hr.mobile || "")}"></label>
+-        <label class="field"><span>Role</span><select class="in" id="eu-r">${roles.map((x) => `<option value="${esc(x.id)}"${x.id === r.role ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label></div>
++      <div class="grid3"><label class="field"><span>E-mail</span><input class="in" id="eu-e" value="${esc(r.email || hr.email || "")}"${ownerLocked ? ' readonly aria-describedby="eu-e-h"><span class="tiny muted" id="eu-e-h">Only the owner can change this.</span' : ""}></label><label class="field"><span>Mobile</span><input class="in" id="eu-m" value="${esc(hr.mobile || "")}"></label>
++        <label class="field"><span>Role</span><select class="in" id="eu-r"${ownerLocked ? ' disabled aria-describedby="eu-r-h"' : ""}>${roles.map((x) => `<option value="${esc(x.id)}"${x.id === r.role ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select>${ownerLocked ? '<span class="tiny muted" id="eu-r-h">Only the owner can change this.</span>' : ""}</label></div>
+       ${A.baseOf(r.role) === "engineer" ? `<label class="check small"><input type="checkbox" id="eu-all" ${r.engineerSeesAll ? "checked" : ""}> May view every order's engineering status (not only assigned orders)</label>` : ""}
+       ${cloud && !root.XFServer ? "<p class='tiny muted'>Match the sharing level to the role: Editor for administrators, Contributor for everyone else.</p>" : ""}
+       <label class="field"><span>Reason for the change</span><input class="in" id="eu-why"></label>
+-      <div class="row">${r.active === false ? `<button class="btn sm" id="eu-on">Reactivate</button>` : `<button class="btn danger sm" id="eu-off" ${uid === DPStore.st.userId ? "disabled" : ""}>Deactivate</button>`}${!cloud || (root.XFServer && uid && uid !== DPStore.st.userId) ? `<button class="btn ghost sm" id="eu-pw">Reset password…</button>` : ""}${uid && A.isSalesRole(r.role) ? `<button class="btn ghost sm" id="eu-leads">Reassign their leads…</button>` : ""}</div>
++      <div class="row">${ownerLocked ? "" : r.active === false ? `<button class="btn sm" id="eu-on">Reactivate</button>` : `<button class="btn danger sm" id="eu-off" ${uid === DPStore.st.userId ? "disabled" : ""}>Deactivate</button>`}${(!cloud || (root.XFServer && uid && uid !== DPStore.st.userId)) && !isOwner ? `<button class="btn ghost sm" id="eu-pw">Reset password…</button>` : ""}${uid && A.isSalesRole(r.role) ? `<button class="btn ghost sm" id="eu-leads">Reassign their leads…</button>` : ""}</div>
+       <div class="acts"><button class="btn ghost" id="eu-x">Close</button><button class="btn" id="eu-s">Save</button></div>`, (m) => {
+       const why = () => $("#eu-why", m).value.trim();
+       $("#eu-x", m).onclick = () => U.closeModal();
+@@ -169,6 +171,7 @@
+       const px = $("#eu-picx", m); if (px) px.onclick = () => run(() => A.removePicture(uid), "Picture removed.");
+       $("#eu-s", m).onclick = () => { const patch = {}, g = (id) => $(id, m).value.trim();
+         const map = { firstName: "#eu-fn", lastName: "#eu-ln", title: "#eu-t", department: "#eu-d", email: "#eu-e", role: "#eu-r" };
++        if (ownerLocked) { delete map.email; delete map.role; }   // never sent for the owner, so no directory write is refused half-way
+         for (const [k, id] of Object.entries(map)) if (g(id) !== String(r[k] || (k === "email" ? hr.email || "" : ""))) patch[k] = g(id);
+         const all = $("#eu-all", m); if (all && all.checked !== !!r.engineerSeesAll) patch.engineerSeesAll = all.checked;
+         const hrPatch = { employeeId: g("#eu-id"), mobile: g("#eu-m"), hireDate: $("#eu-h", m).value, email: g("#eu-e") };
+diff --git a/package.json b/package.json
+index 8b86516..53954a2 100644
+--- a/package.json
++++ b/package.json
+@@ -4,7 +4,12 @@
+   "description": "X FORCE 1.2 — Dupedia's operating system on Cloudflare Workers + D1",
+   "scripts": {
+     "deploy": "wrangler deploy",
+-    "dev": "wrangler dev"
++    "dev": "wrangler dev",
++    "test": "node qa/run-tests.mjs",
++    "test:smoke": "node qa/run-smoke.mjs"
++  },
++  "engines": {
++    "node": ">=22.5"
+   },
+   "devDependencies": {
+     "wrangler": "4.153.0"
+diff --git a/qa/run-smoke.mjs b/qa/run-smoke.mjs
+new file mode 100644
+index 0000000..b54acd5
+--- /dev/null
++++ b/qa/run-smoke.mjs
+@@ -0,0 +1,80 @@
++/* Local Worker smoke runner: `npm run test:smoke`.
++   Each group gets its own fresh `wrangler dev --local` server and temp database; the files in a group run in order
++   against that server (growth-operations and growth-medium-routes reuse the accounts growth-routes creates).
++   qa/research_routes.smoke.mjs is NOT here: it calls Tavily's live keyless search over the network.
++   Exits 1 if any group fails. */
++import { spawn, spawnSync } from 'node:child_process';
++import { mkdtempSync, rmSync } from 'node:fs';
++import net from 'node:net';
++import os from 'node:os';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const WRANGLER = path.join(root, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
++
++const GROUPS = [
++  { name: 'growth', code: 'local-growth-fixture-only', files: ['qa/growth-routes.smoke.mjs', 'qa/growth-operations.smoke.mjs', 'qa/growth-medium-routes.smoke.mjs'] },
++  { name: 'security phase 1', code: 'local-security-fixture-only', files: ['qa/security_phase1.smoke.mjs'] },
++  { name: 'no setup code', code: null, check: noCodeCheck },
++];
++
++const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.on('error', rej); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
++const sleep = ms => new Promise(r => setTimeout(r, ms));
++const servers = new Set();
++const killServer = child => { try { process.platform === 'win32' ? child.kill() : process.kill(-child.pid, 'SIGKILL'); } catch {} servers.delete(child); };
++const killAll = () => { for (const c of [...servers]) killServer(c); };
++process.on('exit', killAll);
++for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { killAll(); process.exit(130); });
++
++async function startServer(code, persist) {
++  const port = await freePort();
++  const args = [WRANGLER, 'dev', '--local', '--ip', '127.0.0.1', '--port', String(port), '--persist-to', persist];
++  if (code) args.push('--var', 'SETUP_CODE:' + code);
++  const child = spawn(process.execPath, args, { cwd: root, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' } });
++  servers.add(child);
++  let log = '';
++  child.stdout.on('data', d => { log += d; }); child.stderr.on('data', d => { log += d; });
++  const base = 'http://127.0.0.1:' + port;
++  const deadline = Date.now() + 60000;
++  while (Date.now() < deadline) {
++    if (child.exitCode !== null) break;
++    try { const r = await fetch(base + '/login', { redirect: 'manual' }); if (r.status === 200) return { child, base }; } catch {}
++    await sleep(500);
++  }
++  killServer(child);
++  throw new Error('server did not answer GET /login with 200 within 60 s\n' + log.split('\n').slice(-20).join('\n'));
++}
++
++/* /api/recover must say "nocode" (503) when the Worker has no SETUP_CODE secret */
++async function noCodeCheck(base) {
++  const r = await fetch(base + '/api/recover', { method: 'POST', headers: { 'content-type': 'application/json', 'x-xf': '1' }, body: '{}' });
++  const j = await r.json().catch(() => null);
++  if (r.status !== 503 || !j || j.error !== 'nocode') throw new Error('expected 503 {error:"nocode"}, got ' + r.status + ' ' + JSON.stringify(j));
++  console.log('PASS /api/recover answers 503 nocode without SETUP_CODE');
++}
++
++let failed = 0;
++for (const g of GROUPS) {
++  const persist = mkdtempSync(path.join(os.tmpdir(), 'xf-smoke-'));
++  let srv;
++  try {
++    srv = await startServer(g.code, persist);
++    for (const f of g.files || []) {
++      const r = spawnSync(process.execPath, [path.join(root, f), srv.base], { cwd: root, stdio: 'inherit', timeout: 300000 });
++      if (r.status !== 0) throw new Error(f + ' failed (' + (r.error ? r.error.code : 'exit ' + r.status) + ')');
++      console.log('PASS ' + f);
++    }
++    if (g.check) await g.check(srv.base);
++    console.log('PASS group: ' + g.name);
++  } catch (e) {
++    failed++;
++    console.log('FAIL group: ' + g.name + '\n' + String(e.message || e).replace(/^/gm, '    '));
++  } finally {
++    if (srv) killServer(srv.child);
++    await sleep(300);
++    rmSync(persist, { recursive: true, force: true });
++  }
++}
++console.log(failed ? `\n${failed} of ${GROUPS.length} smoke groups FAILED` : `\nAll ${GROUPS.length} smoke groups passed`);
++process.exit(failed ? 1 : 0);
+diff --git a/qa/run-tests.mjs b/qa/run-tests.mjs
+new file mode 100644
+index 0000000..c7c2436
+--- /dev/null
++++ b/qa/run-tests.mjs
+@@ -0,0 +1,26 @@
++/* Unit test runner: `npm test`. No network, no server. Exits 1 if any file fails.
++   Runs every qa/*.test.mjs and qa/*.test.cjs with node, then the Site Planner suite (60 s limit per file, 300 s for the planner). */
++import { spawnSync } from 'node:child_process';
++import { readdirSync } from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const dir = path.join(root, 'qa');
++const files = readdirSync(dir).filter(f => /\.test\.(mjs|cjs)$/.test(f)).sort().map(f => ({ label: 'qa/' + f, cmd: process.execPath, args: [path.join(dir, f)] }));
++files.push({ label: 'qa/planner/run-all.sh', cmd: 'sh', args: [path.join(dir, 'planner', 'run-all.sh')], timeout: 300000 }); /* 13 suites, about 70 s in total */
++
++const tail = (s, n = 15) => s.trim().split('\n').slice(-n).join('\n');
++let failed = 0;
++for (const t of files) {
++  const r = spawnSync(t.cmd, t.args, { cwd: root, encoding: 'utf8', timeout: t.timeout || 60000, maxBuffer: 32 * 1024 * 1024 });
++  const out = (r.stdout || '') + (r.stderr || '');
++  if (r.status === 0) console.log('PASS ' + t.label);
++  else {
++    failed++;
++    console.log('FAIL ' + t.label + (r.error ? ' (' + r.error.code + ')' : ' (exit ' + r.status + ')'));
++    console.log(tail(out).replace(/^/gm, '    '));
++  }
++}
++console.log(failed ? `\n${failed} of ${files.length} test files FAILED` : `\nAll ${files.length} test files passed`);
++process.exit(failed ? 1 : 0);
+diff --git a/qa/security_phase1.smoke.mjs b/qa/security_phase1.smoke.mjs
+new file mode 100644
+index 0000000..3d27ca0
+--- /dev/null
++++ b/qa/security_phase1.smoke.mjs
+@@ -0,0 +1,92 @@
++/* Local-only Worker integration checks for X FORCE Security Phase 1. Never target production. */
++import assert from 'node:assert/strict';
++const BASE=process.argv[2]||'http://localhost:8790';if(!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(BASE))throw Error('Local test server only');
++const SETUP='local-security-fixture-only';let checks=0;
++async function call(path,body,cookie,extra){const r=await fetch(BASE+path,{method:body?'POST':'GET',headers:{'content-type':'application/json','x-xf':'1',...(cookie?{cookie}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,redirect:'manual'});const text=await r.text();let j=null;try{j=JSON.parse(text)}catch{}return{status:r.status,j,text,headers:r.headers,cookie:r.headers.get('set-cookie')?.split(';')[0]};}
++function ok(v,label){assert.ok(v,label);checks++;console.log('PASS '+label)}
++/* ===== FIXTURES: owner, admin, staff, mustChange (cookies) and ownerUid, adminUid, staffUid. Add new checks below the end marker. ===== */
++const PW1='Sec-Local-Pass-1',PW2='Sec-Local-Pass-2';
++let a=await call('/api/setup',{code:SETUP,username:'sec.owner',name:'Security Local Owner',password:PW1});
++if(a.status===410)a=await call('/api/login',{username:'sec.owner',password:PW1});
++const owner=a.cookie;ok(owner,'local owner authenticated');
++async function account(username,level){
++  const mk=await call('/api/accounts',{username,name:'Security '+username,level,password:PW1},owner);
++  const first=await call('/api/login',{username,password:PW1});
++  if(mk.status===200){await call('/api/password',{old:PW1,password:PW2},first.cookie);return(await call('/api/login',{username,password:PW2})).cookie;}
++  return(await call('/api/login',{username,password:PW2})).cookie;
++}
++const admin=await account('sec.admin','admin'),staff=await account('sec.staff','interact');
++await call('/api/accounts',{username:'sec.fresh',name:'Security fresh',level:'interact',password:PW1},owner);
++const mustChange=(await call('/api/login',{username:'sec.fresh',password:PW1})).cookie;
++const ownerUid=(await call('/api/me',null,owner)).j.uid,adminUid=(await call('/api/me',null,admin)).j.uid,staffUid=(await call('/api/me',null,staff)).j.uid;
++ok(admin&&staff&&mustChange&&ownerUid&&adminUid&&staffUid,'fixture accounts ready');
++/* ===== END FIXTURES ===== */
++// Task 2: /data is for signed-in administrators only; Markdown and unused data are not deployed
++ok((await call('/data/leadseed.js')).status===401,'anonymous gets 401 on /data');
++ok((await call('/data/leadseed.js',null,staff)).status===403,'staff gets 403 on /data');
++const adminData=await call('/data/leadseed.js',null,admin);
++ok(adminData.status===200,'admin session loads /data/leadseed.js');
++ok(/no-store/.test(adminData.headers.get('cache-control')||''),'/data responses are not cached (no-store)');
++ok((await call('/data/leadseed.js',null,mustChange)).status===403,'must-change session gets 403 on /data');
++ok((await call('/data/leadseed.json',null,admin)).status===404,'leadseed.json is no longer deployed');
++ok((await call('/XFORCE-1.4.6.md')).status===404,'markdown files are not served');
++// Task 3: administrators cannot reset the owner; the owner recovers with the setup code; account changes are audited
++async function auditList(cookie){return(await call('/api/db',{op:'list',path:'audit'},cookie)).j?.docs||[]}
++async function auditCount(cookie){return(await auditList(cookie)).length}
++async function auditHas(cookie,action){return(await auditList(cookie)).some((d)=>d.data&&d.data.action===action)}
++let r = await call(`/api/accounts/${ownerUid}/reset`, { mode: 'temp' }, admin);
++ok(r.status === 403 && r.j.error === 'owner', 'admin cannot issue a temporary password for the owner');
++r = await call(`/api/accounts/${ownerUid}/reset`, { mode: 'link' }, admin);
++ok(r.status === 403 && r.j.error === 'owner', 'admin cannot send the owner a reset link');
++r = await call(`/api/accounts/${ownerUid}`, { password: 'Admin-Chosen-Pass-1' }, admin);
++ok(r.status === 403 && r.j.error === 'owner', 'admin cannot set the owner password');
++r = await call(`/api/accounts/${ownerUid}`, { name: 'Owner Renamed' }, admin);
++ok(r.status === 200, 'admin can still rename the owner');
++const before = await auditCount(owner);
++r = await call(`/api/accounts/${staffUid}`, { password: 'short' }, admin);
++ok(r.status === 400 && (await auditCount(owner)) === before, 'rejected admin-set password writes no audit entry');
++await call('/api/accounts', { username: 'sec.audit', name: 'Audit Check', level: 'interact', password: 'Audit-Check-Pass-1' }, admin);
++ok(await auditHas(owner, 'Account created'), 'account creation is audited');
++await call(`/api/accounts/${staffUid}`, { level: 'finance' }, admin);
++ok(await auditHas(owner, 'Access level changed'), 'level change is audited');
++await call(`/api/accounts/${staffUid}`, { active: false }, admin);
++ok(await auditHas(owner, 'Account deactivated'), 'deactivation is audited');
++// the owner's directory e-mail receives the owner's reset link: only the owner may change it
++const ownerDir = `directory/${ownerUid}`, db = (op, path, data, cookie) => call('/api/db', { op, path, data }, cookie);
++r = await db('set', ownerDir, { uid: ownerUid, email: 'owner@example.test', firstName: 'Security', role: 'admin' }, owner);
++ok(r.status === 200 && !r.j.error, 'owner sets up their directory record');
++r = await db('set', ownerDir, { uid: ownerUid, email: 'attacker@example.test', firstName: 'Security', role: 'admin' }, admin);
++ok(r.j && r.j.error, 'admin cannot change the owner e-mail');
++r = await db('update', ownerDir, { firstName: 'Renamed' }, admin);
++const dirNow = (await call('/api/db', { op: 'get', path: ownerDir }, owner)).j;
++ok(r.j && !r.j.error && dirNow.data.firstName === 'Renamed' && dirNow.data.email === 'owner@example.test', 'admin can still edit the owner directory name');
++r = await db('create', 'directory/sec-fake', { uid: ownerUid, email: 'attacker@example.test' }, admin);
++ok(r.j && r.j.error, 'admin cannot create a second directory record for the owner');
++r = await db('delete', ownerDir, undefined, admin);
++ok(r.j && r.j.error && (await call('/api/db', { op: 'get', path: ownerDir }, owner)).j.exists, 'admin cannot delete the owner directory record');
++r = await db('update', ownerDir, { email: 'owner2@example.test' }, owner);
++ok(r.j && !r.j.error, 'owner can change their own e-mail');
++// the owner's active status and role decide whether e-mail recovery works: administrators cannot change them either
++const dirGet = async () => (await call('/api/db', { op: 'get', path: ownerDir }, owner)).j.data;
++r = await db('update', ownerDir, { active: false }, admin);
++ok(r.j && r.j.error && (await dirGet()).active !== false, 'admin cannot deactivate the owner directory record');
++r = await db('update', ownerDir, { role: 'employee' }, admin);
++ok(r.j && r.j.error && (await dirGet()).role === 'admin', 'admin cannot change the owner role');
++r = await db('update', ownerDir, { email: ' OWNER2@EXAMPLE.test ' }, admin);
++ok(r.j && r.j.error && (await dirGet()).email === 'owner2@example.test', 'admin cannot pad the owner e-mail with spaces');
++r = await call('/api/recover', { code: SETUP, username: 'sec.admin', password: 'Recovered-Pass-1' });
++ok(r.status === 403 && r.j.error === 'code', 'setup code does not recover a non-owner account');
++r = await call('/api/recover', { code: SETUP, username: 'sec.owner', password: 'Recovered-Pass-1' });
++ok(r.status === 200, 'owner recovers with the setup code');
++ok((await call('/api/me', null, owner)).status === 401, 'recovery ends the owner\'s old sessions');
++const back = await call('/api/login', { username: 'sec.owner', password: 'Recovered-Pass-1' });
++ok(back.status === 200, 'owner signs in with the new password');
++ok(await auditHas(back.cookie, 'Owner password recovered with the setup code'), 'recovery is audited');
++// last: the address is locked afterwards (one failure above + 4 here = 5)
++for (let i = 0; i < 4; i++) await call('/api/recover', { code: 'wrong-code', username: 'sec.owner', password: 'Recovered-Pass-2' });
++ok((await call('/api/recover', { code: SETUP, username: 'sec.owner', password: 'Recovered-Pass-2' })).status === 429, 'recover locks after 5 failures');
++// the owner username is locked too, whatever address the attempts come from (wrangler dev passes cf-connecting-ip through)
++for (let i = 1; i <= 5; i++) await call('/api/recover', { code: 'wrong-code', username: 'sec.owner', password: 'Recovered-Pass-2' }, null, { 'cf-connecting-ip': '198.51.100.' + i });
++r = await call('/api/recover', { code: SETUP, username: 'sec.owner', password: 'Recovered-Pass-2' }, null, { 'cf-connecting-ip': '198.51.100.99' });
++ok(r.status === 429 && r.j.error === 'locked', 'recover locks the owner username across addresses');
++console.log(`${checks} security phase 1 checks passed`);
+diff --git a/worker/index.js b/worker/index.js
+index b9a75e8..bb86d3f 100644
+--- a/worker/index.js
++++ b/worker/index.js
+@@ -24,7 +24,7 @@ import { usageSummary } from "./usage.js";
+ import { readiness } from "./readiness.js";
+ import { queueLeads, engineStep, engineTick } from "./enrich.js";
+ import { scheduleTick } from "./schedule.js";
+-import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
++import { mailConfigured, sendMail, resetEmail, tempEmail } from "./mail.js";
+ 
+ const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
+ const DOC_MAX = 256 * 1024, BODY_MAX = 4 * 1048576;
+@@ -108,6 +108,7 @@ async function account(env, req) {
+   const a = await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON u.uid = s.uid WHERE s.th = ? AND s.exp > ?").bind(await sha256(t), Date.now()).first();
+   if (!a || !a.active) return null; return a;
+ }
++const privateAsset = (r) => { const o = new Response(r.body, r); o.headers.set("Cache-Control", "private, no-store"); return o; };
+ async function limited(env, k) { const f = await env.DB.prepare("SELECT until FROM fails WHERE k = ?").bind(k).first(); return !!(f && f.until > Date.now()); }
+ // 5 failures lock a username for 15 minutes; an address (an office may share one) after 30
+ async function failed(env, k, max = 5) {
+@@ -255,7 +256,20 @@ const PRE_APPROVED = [["commission", (l) => l.commission && `commissions/${l.com
+   ["payroll", (l) => l.payroll && `fin/payroll/r/${l.payroll}`, (d) => ["approved", "partly_paid"].includes(d.status)],
+   ["wdue", (l) => l.wdue && `fin/wdue/d/${l.wdue}`, (d) => ["approved", "partly_paid"].includes(d.status)],
+   ["purchase", (l) => l.purchase && `fin/purch/p/${l.purchase}`, (d) => ["approved", "received"].includes(d.status)]];
++/* The owner's directory e-mail is where "Forgot your password?" sends the owner's reset link, and an inactive directory record
++   switches that recovery off: only the owner may change the owner's e-mail, role or active status. */
++const ownerUids = async (env) => new Set((((await env.DB.prepare("SELECT uid FROM users WHERE owner = 1").all()).results) || []).map((r) => r.uid));
++const DIR_OWNER_MSG = "Only the owner can change the owner’s e-mail address, role or active status, or create the owner’s directory record.";
++async function dirGuard(env, acc, p, old, next) {
++  if (levelOf(acc) === "owner") return null;
++  const own = await ownerUids(env); if (!(own.has(old && old.uid) || own.has(next && next.uid))) return null;
++  if (!old || old.uid !== next.uid) return DIR_OWNER_MSG;
++  if (String(old.email ?? "") !== String(next.email ?? "")) return DIR_OWNER_MSG;   // exact: no trimming or case folding
++  if (!eqv(old.active, next.active) || !eqv(old.role, next.role)) return DIR_OWNER_MSG;
++  return null;
++}
+ const GUARDS = [
++  { re: /^directory\/[^/]+$/, del: async (old, acc, env) => (old && levelOf(acc) !== "owner" && (await ownerUids(env)).has(old.uid) ? DIR_OWNER_MSG : null), check: dirGuard },
+   // 1.4 — Growth & Marketing Center
+   { re: /^mkt\//, del: (old, acc) => (isAdminAcc(acc) ? null : "Only an administrator can delete marketing records — set the status instead."), check: mktGuard },
+   // 1.3 — factory records: written by engineers and administrators only; material movements and assignment history are
+@@ -390,7 +404,7 @@ async function dbOp(env, acc, b) {
+     const curRow = op === "update" || guarded || op === "create" ? await env.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(p).first() : null;
+     const old = curRow ? JSON.parse(curRow.data) : null;
+     if (op === "delete") {
+-      if (guarded && guarded.del) { const e = guarded.del(old, acc); if (e) return { error: "refused", message: e }; }
++      if (guarded && guarded.del) { const e = await guarded.del(old, acc, env); if (e) return { error: "refused", message: e }; }
+       await env.DB.batch([env.DB.prepare("DELETE FROM docs WHERE path = ?").bind(p), env.DB.prepare("INSERT INTO gone (path, at) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET at = excluded.at").bind(p, now())]); return { ok: true };
+     }
+     let data = b.data; if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "invalid_argument", message: "Document data must be an object." };
+@@ -537,16 +551,23 @@ const FORGOT = PAGE("Forgot password · X FORCE", `<form id="f" data-mode="forgo
+ <div class="err" id="e" role="alert"></div>
+ <label>E-mail address<input name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required autofocus></label>
+ <button>Send the reset link</button><a class="fgt" href="/login">Back to sign in</a>
+-<div class="help"><p class="tiny">The link works once and expires after 30 minutes. No e-mail? Check spam, or ask an administrator to reset your password.</p></div></form>
++<div class="help"><p class="tiny">The link works once and expires after 30 minutes. No e-mail? Check spam, or ask an administrator to reset your password.</p><p class="tiny">Owner of this X FORCE? <a href="/recover">Recover with the setup code</a>.</p></div></form>
+ <script src="/xf-login.js"></script>`);
+ const NOMAIL = PAGE("Forgot password · X FORCE", `<form><h1>Forgot your password?</h1><p class="sub">Password recovery by e-mail is not switched on for this company yet.</p>
+-<p class="tiny">Ask an administrator to reset your password: User Management → your name → Reset password.</p><a class="fgt" href="/login">Back to sign in</a></form>`);
++<p class="tiny">Ask an administrator to reset your password: User Management → your name → Reset password.</p><p class="tiny">Owner of this X FORCE? <a href="/recover">Recover with the setup code</a>.</p><a class="fgt" href="/login">Back to sign in</a></form>`);
+ const RESET = PAGE("Choose a new password · X FORCE", `<form id="f" data-mode="reset" novalidate><h1>Choose a new password</h1><p class="sub">This ends every other session on your account.</p>
+ <div class="err" id="e" role="alert"></div>
+ <label>New password<span class="fld"><input id="pw" name="password" type="password" autocomplete="new-password" required autofocus>${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label>
+ <label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label>
+ <button>Save the new password</button><a class="fgt" href="/forgot">Need a new link?</a></form>
+ <script src="/xf-login.js"></script>`);
++const RECOVER = PAGE("Recover the owner account · X FORCE", `<form id="f" data-mode="recover" novalidate><h1>Recover the owner account</h1><p class="sub">For the owner only. Choose a new password with the setup code. This ends every session on the owner account.</p>
++<div class="err" id="e" role="alert"></div>
++<label>Setup code<input name="code" required autocomplete="off" spellcheck="false" autofocus><span class="tiny">The secret <span class="code">SETUP_CODE</span> saved in Cloudflare.</span></label>
++<label>Owner username<input name="username" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
++<label>New password<span class="fld"><input id="pw" name="password" type="password" required autocomplete="new-password">${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label>
++<label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label>
++<button>Recover the owner account</button><a class="fgt" href="/login">Back to sign in</a></form><script src="/xf-login.js"></script>`);
+ const NOSETUP = PAGE("Not set up · X FORCE", `<form><h1>Almost there</h1><p class="sub">X FORCE has no administrator yet, and no setup code is configured.</p>
+ <p class="tiny">In Cloudflare: Workers &amp; Pages → this project → Settings → Variables and Secrets → add a <b>Secret</b> named <span class="code">SETUP_CODE</span> (a long random code only you know), then reload this page.</p></form>`);
+ const LOGIN_JS = `(function(){var f=document.getElementById("f");if(!f)return;var er=document.getElementById("e"),b=f.querySelector("button:not(.peek)");
+@@ -566,16 +587,17 @@ var miss=[].slice.call(f.querySelectorAll("input[required]")).find(function(i){r
+ if(miss){return bad("Enter your "+(miss.closest("label").firstChild.textContent||"details").trim().toLowerCase()+".",miss);}
+ var d=Object.fromEntries(new FormData(f));
+ if(mode==="forgot"&&!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(d.email.trim()))return bad("Enter a valid e-mail address.",f.querySelector("input[name=email]"));
+-if(mode==="reset"||mode==="change"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d=mode==="reset"?{token:tok,password:d.password}:{old:oldpw||d.old,password:d.password};}
++if(mode==="reset"||mode==="change"||mode==="recover"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d=mode==="reset"?{token:tok,password:d.password}:mode==="recover"?{code:d.code,username:d.username,password:d.password}:{old:oldpw||d.old,password:d.password};}
+ b.disabled=true;b.setAttribute("aria-busy","true");
+ var sx=document.getElementById("sx"),signin=!mode&&!f.dataset.setup&&sx;if(signin){sx.classList.remove("ok");document.getElementById("sx-t").textContent="Checking your account…";document.getElementById("sx-s").textContent="";sx.hidden=false;var slow=setTimeout(function(){document.getElementById("sx-s").textContent="Still working. Your connection may be slow.";},8000);requestAnimationFrame(function(){requestAnimationFrame(function(){sx.classList.add("on");});});}
+ var ac=window.AbortController?new AbortController():null,tm=setTimeout(function(){if(ac)ac.abort();},20000);
+-var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d),signal:ac?ac.signal:undefined}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server did not answer. Check your connection and try again."};});clearTimeout(tm);
++var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":mode==="recover"?"/api/recover":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d),signal:ac?ac.signal:undefined}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server did not answer. Check your connection and try again."};});clearTimeout(tm);
+ if(signin)clearTimeout(slow);function unsx(){if(!signin)return;sx.classList.remove("on");setTimeout(function(){sx.hidden=true;},260);}
+ if(r.error||(!mode&&r.mustChange))unsx();
+ if(r.error){b.disabled=false;b.removeAttribute("aria-busy");if(mode==="change"&&r.error==="old"){if(oldpw){location.href="/login";return;}r.message="The temporary password is not correct.";}var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
+ if(!mode&&r.mustChange){b.disabled=false;b.removeAttribute("aria-busy");return change(d.password);}
+ if(mode==="forgot")return done("Check your e-mail",r.message,"/login","Back to sign in");
++if(mode==="recover")return done("Owner account recovered","Sign in with your new password.","/login","Sign in");
+ if(mode==="reset")return done("Password changed","You can now sign in with your new password. Your other sessions were signed out.","/login","Sign in");
+ if(signin){sx.classList.add("ok");sx.querySelector(".x-band").classList.remove("x-band--wait");document.getElementById("sx-t").textContent="Signed in. Opening your dashboard…";try{sessionStorage.setItem("xf.splash","1");}catch(x){}
+ setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:420);return;}
+@@ -710,22 +732,11 @@ async function auditSrv(env, by, action, target, detail) {
+   const id = now().replace(/[-:.TZ]/g, "").slice(0, 17) + "-" + tokenNew2().slice(0, 6).replace(/[^A-Za-z0-9]/g, "x");
+   await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, 'audit', ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind("audit/" + id, JSON.stringify({ action, target, by, at: now(), kind: "security", detail: String(detail || "").slice(0, 300), server: true }), now()).run();
+ }
+-/** 1.4.6 — any administrator may reset the owner's password (recovery without the owner's approval). The owner is always
+- *  told: an inbox alert (shown as urgent in "Needs your attention") and, when e-mail is set up, an e-mail to their address.
+- *  Neither contains a password. */
+-async function ownerAlert(env, req, owner, by, what, { mail = true } = {}) {
+-  const when = now(), id = "sec-ownerreset-" + when.replace(/[^0-9]/g, "").slice(0, 14);
+-  const n = { id, type: "security", title: "Your password was reset by an administrator", body: `${by.name} (${by.username}) issued ${what} for your owner account on ${when.slice(0, 16).replace("T", " ")} UTC. If you did not arrange this, change your password and review the audit log.`, link: { view: "audit" }, at: when, from: by.uid, read: false, data: { by: by.uid, at: when, kind: "owner-reset" } };
+-  await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind(`notif/${owner.uid}/n/${id}`, `notif/${owner.uid}/n`, JSON.stringify(n), when).run();
+-  let sent = "not e-mailed";
+-  if (mail) { const d = await dirOf(env, owner.uid), to = emailOf(d);
+-    if (mailConfigured(env) && to) { const m = securityEmail({ name: (d && (d.firstName || d.displayName)) || owner.name, by: by.name, what, when, origin: appOrigin(env, req) }); const r = await sendMail(env, { to, subject: m.subject, html: m.html, text: m.text }); sent = r.ok ? "owner e-mailed" : "owner e-mail failed: " + r.error; }
+-    else sent = !to ? "owner has no e-mail on file" : "e-mail not set up"; }
+-  await auditSrv(env, by.uid, "Owner password reset — owner alerted", owner.uid, `${what}; inbox alert created; ${sent}`);
+-}
+ /** Generate a readable temporary password (letters and digits, no look-alikes). */
+ function tempPassword() { const c = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = rand(16); let s = ""; for (const x of r) s += c[x % c.length]; return s.slice(0, 6) + "-" + s.slice(6, 12) + (2 + (r[0] % 8)); }
+ 
++const OWNER_MSG = "The owner account can’t be reset by an administrator. The owner recovers it with “Forgot your password?” or the setup code at /recover.";
++async function ownerRefused(env, acc, a) { await auditSrv(env, acc.uid, "Owner reset refused", a.uid, "Administrators cannot reset the owner account"); return json(403, { error: "owner", message: OWNER_MSG }); }
+ async function route(req, env, ctx) {
+   const u = new URL(req.url), p = decodeURIComponent(u.pathname), M = req.method;
+   // 1.3 — internal folders are never website files, whatever .assetsignore says (ops/ holds the manufacturing cost model)
+@@ -800,10 +811,35 @@ async function route(req, env, ctx) {
+     await auditSrv(env, a.uid, "Password changed with a reset link", a.uid, "All sessions ended");
+     return json(200, { ok: true });
+   }
++  // ---- owner recovery with the setup code (administrators cannot reset the owner)
++  if (p === "/recover") return respond(200, RECOVER, "text/html; charset=utf-8");
++  if (p === "/api/recover" && M === "POST") {
++    if (!csrfOk(req)) return json(403, { error: "forbidden" });
++    // the setup code is a permanent owner credential: 5 failures lock the address and, from any address, the username
++    const b = await body(req), un = String(b.username || "").trim().toLowerCase(), k = "rc:" + ip(req), ku = "rc:u:" + un, bad = { error: "code", message: "The setup code or username is not correct." };
++    if ((await limited(env, k)) || (await limited(env, ku))) return json(429, { error: "locked", message: "Too many attempts. Try again in 15 minutes." });
++    if (!env.SETUP_CODE || String(env.SETUP_CODE).length < 8) return json(503, { error: "nocode", message: "No SETUP_CODE secret (8+ characters) is configured in Cloudflare." });
++    if (!(await setupDone(env))) return json(403, bad);
++    const codeOk = same(enc.encode(await sha256(String(b.code || ""))), enc.encode(await sha256(String(env.SETUP_CODE))));
++    const a = await env.DB.prepare("SELECT * FROM users WHERE username = ? AND owner = 1").bind(un).first();
++    if (!codeOk || !a) { await failed(env, k); await failed(env, ku); return json(403, bad); }
++    const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob });
++    const h = await hashPw(env, b.password), t = now();
++    await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 0 WHERE uid = ?").bind(h.salt, h.hash, h.iter, a.uid),
++      env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid), env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username),
++      env.DB.prepare("DELETE FROM kv WHERE k = ?").bind("tempexp:" + a.uid),
++      env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND used_at IS NULL").bind("superseded " + t, a.uid)]);
++    await auditSrv(env, a.uid, "Owner password recovered with the setup code", a.uid, "All sessions ended");
++    const n = { id: "sec-recover-" + t.replace(/[^0-9]/g, "").slice(0, 14), type: "security", title: "The owner account was recovered with the setup code", body: `The owner password was changed at /recover on ${t.slice(0, 16).replace("T", " ")} UTC and every owner session was ended. If this was not expected, contact the owner and review the audit log.`, link: { view: "audit" }, at: t, from: a.uid, read: false };
++    const rs = ((await env.DB.prepare("SELECT uid FROM users WHERE active = 1 AND (level = 'admin' OR owner = 1)").all()).results || []).filter((x) => x.uid !== a.uid);
++    if (rs.length) await env.DB.batch(rs.map((x) => env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind(`notif/${x.uid}/n/${n.id}`, `notif/${x.uid}/n`, JSON.stringify(n), t)));
++    return json(200, { ok: true });
++  }
+   // ---- everything below needs a session
+   const acc = await account(env, req);
+   if (p === "/" || p === "/index.html") { if (!(await setupDone(env))) return redirect("/setup"); if (!acc) return redirect("/login"); if (acc.must_change) return redirect("/login?change=1"); return indexHtml(env, req); }
+   if (p === "/xf-shim.js") return acc ? env.ASSETS.fetch(req) : respond(401, "", "text/plain");
++  if (p.startsWith("/data/")) return !acc ? respond(401, "", "text/plain") : acc.must_change || !isAdminAcc(acc) ? respond(403, "", "text/plain") : privateAsset(await env.ASSETS.fetch(req));   // research data: signed-in administrators only, never cached
+   if (!p.startsWith("/api/")) return respond(404, "Not found", "text/plain");
+   if (p.startsWith("/api/ingest/")) return json(501, { error: "not_available", message: "Research results are not uploaded from outside on Cloudflare: research runs inside this Worker (Mission Control → Run research now)." });
+   if (!acc) return json(401, { error: "unauthenticated", message: "Signed out — sign in again." });
+@@ -852,11 +888,11 @@ async function route(req, env, ctx) {
+     const b = await body(req), a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(mr[1]).first();
+     if (!a) return json(404, { error: "not_found", message: "No such account." });
+     if (a.uid === acc.uid) { await auditSrv(env, acc.uid, "Password reset refused", a.uid, "Own account — use My Profile → Change password"); return json(400, { error: "self", message: "Change your own password in My Profile → Change password (or use “Forgot your password?” on the sign-in page)." }); }
++    if (a.owner) return ownerRefused(env, acc, a);
+     await env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username).run();   // a locked-out person can be helped at once
+     if (b.mode === "link") {
+       if (!mailConfigured(env)) return json(400, { error: "not_configured", message: "E-mail is not set up yet (RESEND_API_KEY and MAIL_FROM). Use a temporary password instead." });
+       const r = await issueLink(env, req, a.uid, "admin-link", acc.uid);
+-      if (r.ok && a.owner) await ownerAlert(env, req, a, acc, "a reset link", { mail: false });
+       return json(r.ok ? 200 : 400, r.ok ? { ok: true, mode: "link", sentAt: r.sentAt, to: r.to } : { error: "mail", message: r.error });
+     }
+     if (b.mode === "temp") {
+@@ -876,8 +912,7 @@ async function route(req, env, ctx) {
+           const r = await sendMail(env, { to, subject: m.subject, html: m.html, text: m.text }); mail = { requested: true, ok: r.ok, error: r.ok ? null : r.error, to: to.replace(/^(.).*(@.*)$/, "$1…$2") }; }
+         await env.DB.prepare("UPDATE resets SET mail = ? WHERE uid = ? AND kind = 'admin-temp' AND exp = ?").bind(mail.ok ? "instructions sent " + now() : "instructions NOT sent: " + mail.error, a.uid, exp).run();
+       }
+-      await auditSrv(env, acc.uid, "Temporary password generated", a.uid, `Generated (${a.level === "admin" || a.owner ? "administrator" : a.level} account); sessions ended; must be changed at sign-in; expires in ${hrs} h; e-mail: ${b.notify ? (mail.ok ? "instructions sent" : "not sent — " + mail.error) : "not requested"}`);
+-      if (a.owner) await ownerAlert(env, req, a, acc, "a temporary password");
++      await auditSrv(env, acc.uid, "Temporary password generated", a.uid, `Generated (${a.level === "admin" ? "administrator" : a.level} account); sessions ended; must be changed at sign-in; expires in ${hrs} h; e-mail: ${b.notify ? (mail.ok ? "instructions sent" : "not sent — " + mail.error) : "not requested"}`);
+       return json(200, { ok: true, mode: "temp", tempPassword: pw, expiresAt: new Date(exp).toISOString(), hours: hrs, mail }, { "Cache-Control": "no-store" });
+     }
+     return json(400, { error: "invalid_argument", message: "Choose how to reset: e-mail link or temporary password." });
+@@ -891,6 +926,7 @@ async function route(req, env, ctx) {
+     await env.DB.prepare("INSERT INTO users (uid, username, name, level, owner, active, must_change, salt, hash, iter, created_at, created_by) VALUES (?, ?, ?, ?, 0, 1, 1, ?, ?, ?, ?, ?)")
+       .bind(uid, un, String(b.name || un).slice(0, 80), ACC_LEVELS[b.level] || "interact", h.salt, h.hash, h.iter, now(), acc.uid).run();
+     await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + uid, String(Date.now() + tempHours(env, env.TEMP_PASSWORD_MAX_HOURS || 168) * 3600e3)).run();
++    await auditSrv(env, acc.uid, "Account created", uid, `${un} · ${ACC_LEVELS[b.level] || "interact"}`);
+     return json(200, { uid });
+   }
+   const m = p.match(/^\/api\/accounts\/(u_[A-Za-z0-9]{10,40})$/);
+@@ -898,15 +934,19 @@ async function route(req, env, ctx) {
+     const a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(m[1]).first(); if (!a) return json(404, { error: "not_found" });
+     const b = await body(req);
+     if (a.owner && (b.active === false || (b.level && b.level !== "admin"))) return json(400, { error: "owner", message: "The owner account cannot be deactivated or demoted." });
+-    if (b.level) a.level = ACC_LEVELS[b.level] || "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
+-    const st = [];
+     if (b.password && a.uid === acc.uid) return json(400, { error: "self", message: "Change your own password in My Profile." });
+-    if (b.password && a.owner) await ownerAlert(env, req, a, acc, "a password chosen by the administrator");
+-    if (b.password) { await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(Date.now() + tempHours(env) * 3600e3)).run(); await auditSrv(env, acc.uid, "Temporary password set by an administrator", a.uid, "Chosen by the administrator; must be changed at sign-in"); }
+-    if (b.password) { const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob }); const h = await hashPw(env, b.password); Object.assign(a, { salt: h.salt, hash: h.hash, iter: h.iter, must_change: 1 }); }
+-    st.push(env.DB.prepare("UPDATE users SET level = ?, active = ?, name = ?, salt = ?, hash = ?, iter = ?, must_change = ? WHERE uid = ?").bind(a.level, a.active, a.name, a.salt, a.hash, a.iter, a.must_change, a.uid));
++    if (b.password && a.owner) return ownerRefused(env, acc, a);
++    if (b.password) { const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob }); }   // validate before any write
++    const was = { level: a.level, active: a.active };
++    if (b.level) a.level = ACC_LEVELS[b.level] || "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
++    if (b.password) { const h = await hashPw(env, b.password); Object.assign(a, { salt: h.salt, hash: h.hash, iter: h.iter, must_change: 1 }); }
++    const st = [env.DB.prepare("UPDATE users SET level = ?, active = ?, name = ?, salt = ?, hash = ?, iter = ?, must_change = ? WHERE uid = ?").bind(a.level, a.active, a.name, a.salt, a.hash, a.iter, a.must_change, a.uid)];
+     if (!a.active || b.password) st.push(env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid));   // deactivation / reset ends their sessions at once
++    if (b.password) st.push(env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(Date.now() + tempHours(env) * 3600e3)));
+     await env.DB.batch(st);
++    if (a.level !== was.level) await auditSrv(env, acc.uid, "Access level changed", a.uid, `${was.level} → ${a.level}`);
++    if (a.active !== was.active) await auditSrv(env, acc.uid, a.active ? "Account reactivated" : "Account deactivated", a.uid, a.active ? "" : "Sessions ended");
++    if (b.password) await auditSrv(env, acc.uid, "Temporary password set by an administrator", a.uid, "Chosen by the administrator; must be changed at sign-in");
+     return json(200, { ok: true, account: pubAcc(a) });
+   }
+   if (p === "/api/storage") { const s = await storage(env), sw = await env.DB.prepare("SELECT data FROM docs WHERE path = 'sweep/state'").first(); const ss = sw ? JSON.parse(sw.data) : {};
+diff --git a/wrangler.jsonc b/wrangler.jsonc
+index 626ef8a..ef1dc2b 100644
+--- a/wrangler.jsonc
++++ b/wrangler.jsonc
+@@ -8,7 +8,7 @@
+     "directory": ".",
+     "binding": "ASSETS",
+     // these paths go through the Worker (sign-in, setup, the app page, the API); everything else is a static file
+-    "run_worker_first": ["/", "/index.html", "/login", "/setup", "/xf-login.js", "/xf-shim.js", "/forgot", "/reset", "/api/*", "/ops/*", "/server/*", "/qa/*"]
++    "run_worker_first": ["/", "/index.html", "/login", "/setup", "/xf-login.js", "/xf-shim.js", "/forgot", "/reset", "/recover", "/data/*", "/api/*", "/ops/*", "/server/*", "/qa/*"]
+   },
+   "d1_databases": [
+     // created automatically on the first deploy if it does not exist yet (or create it yourself with this exact name)

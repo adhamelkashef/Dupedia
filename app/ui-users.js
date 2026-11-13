@@ -28,7 +28,7 @@
       return `<tr><td><img class="pic" width="48" height="48" style="width:48px;height:48px" alt="" src="${esc(pics[r.uid])}"></td><td><b>${esc(A.fullName(r) || "—")}</b>${r.title ? `<div class="tiny muted">${esc(r.title)}</div>` : ""}${r.uid === DPStore.st.userId ? ' <span class="pill">You</span>' : ""}</td><td class="small num">${esc(hr.employeeId || "—")}</td><td class="small">${esc(r.department || "—")}</td><td class="small">${esc(r.email || hr.email || "—")}${hr.mobile ? `<div class="tiny muted">${esc(hr.mobile)}</div>` : ""}</td><td>${esc(roleLabel(r.role))}</td><td class="small">${esc(H.dateS(r.createdAt))}</td>
         <td>${r.active === false ? '<span class="pill err">Deactivated</span>' : '<span class="pill ok">Active</span>'}${srvBy[r.uid] && srvBy[r.uid].locked ? ' <span class="pill warn">Locked out</span>' : ""}${srvBy[r.uid] && srvBy[r.uid].lastReset ? `<div class="tiny muted">${esc(resetLine(srvBy[r.uid].lastReset))}</div>` : ""}</td><td class="small">${a && a.lastSeen ? esc(new Date(a.lastSeen).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })) : "—"}</td>
         <td class="small">${root.XFServer ? (A.baseOf(r.role) === "admin" ? "Administrator (server)" : A.baseOf(r.role) === "accountant" ? "Finance (server)" : "Staff (server)") : DPStore.st.mode !== "cloud" ? "n/a (local)" : a && a.level ? (a.level === "admin" ? `Editor${A.baseOf(r.role) !== "admin" ? ' <span class="pill err">too high</span>' : ""}` : a.level === "interact" ? `Contributor${A.baseOf(r.role) === "admin" ? ' <span class="pill warn">too low for admin</span>' : ""}` : esc(a.level)) : "—"}</td>
-        <td style="white-space:nowrap"><button class="btn ghost xs" data-ed="${esc(r.docId)}">Edit…</button> ${r.uid ? `<button class="btn ghost xs" data-act="${esc(r.uid)}">Activity</button> <button class="btn ghost xs" data-idc="${esc(r.uid)}">ID card</button>` : ""}${srv && r.uid && r.uid !== DPStore.st.userId ? ` <button class="btn ghost xs" data-rp="${esc(r.docId)}">Reset password…</button>` : ""}</td></tr>`; }).join("")}</tbody></table>`;
+        <td style="white-space:nowrap"><button class="btn ghost xs" data-ed="${esc(r.docId)}">Edit…</button> ${r.uid ? `<button class="btn ghost xs" data-act="${esc(r.uid)}">Activity</button> <button class="btn ghost xs" data-idc="${esc(r.uid)}">ID card</button>` : ""}${srv && r.uid && r.uid !== DPStore.st.userId && !(srvBy[r.uid] && srvBy[r.uid].owner) ? ` <button class="btn ghost xs" data-rp="${esc(r.docId)}">Reset password…</button>` : ""}</td></tr>`; }).join("")}</tbody></table>`;
     $$("[data-rp]", V).forEach((b) => (b.onclick = () => { const r = rows.find((x) => x.docId === b.dataset.rp); resetDialog(r, hrs[r.uid] || {}, srvBy[r.uid] || null, !!(srv && srv.mail)); }));
     $$("[data-ed]", V).forEach((b) => (b.onclick = () => editUser(rows.find((r) => r.docId === b.dataset.ed))));
     $$("[data-act]", V).forEach((b) => (b.onclick = () => activity(b.dataset.act, act[b.dataset.act])));
@@ -106,16 +106,16 @@
     const fmt = (d) => new Date(d).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
     U.openModal(`<h2>Password — ${esc(name)}</h2>
       <dl class="rp-who"><div><dt>Name</dt><dd>${esc(name)}</dd></div><div><dt>Registered e-mail</dt><dd>${esc(email || "— none on file")}</dd></div><div><dt>Role</dt><dd>${esc(role || "—")}</dd></div></dl>
-      ${info && info.owner ? `<div class="note warn small"><b>This is the owner account.</b> You can reset it for account recovery. The owner is told straight away — an alert in their inbox and on their dashboard${mailOn && email ? ", and an e-mail to " + esc(email) : ""}.</div>` : ""}
+      ${info && info.owner ? `<div class="note warn small"><b>This is the owner account.</b> Only the owner can change its password — with ‘Forgot your password?’ or, if e-mail is not set up, with the setup code at /recover.</div>` : ""}
       <p class="small muted">Nobody can see the current password. Resetting also unlocks an account locked by failed sign-ins.${info && info.locked ? ' <span class="pill warn">Locked out now</span>' : ""}</p>
       ${info && info.lastReset ? `<div class="note small">Last: ${esc(resetLine(info.lastReset))}${String(info.lastReset.mail || "").startsWith("failed") ? " — " + esc(String(info.lastReset.mail).replace(/^failed:\s*/, "")) : ""}</div>` : ""}
-      <div id="rp-main"><div class="rp-opts">
+      ${info && info.owner ? "" : `<div id="rp-main"><div class="rp-opts">
         <div class="card stack rp-o"><h3>Generate temporary password</h3><p class="small">A new random password replaces the current one and their open sessions end. They sign in with it once and must choose their own straight away.</p>
           <label class="field"><span>Expires after</span><select class="in" id="rp-h"><option value="4">4 hours</option><option value="24" selected>24 hours</option><option value="72">3 days</option></select></label>
           <label class="check small"><input type="checkbox" id="rp-n" ${linkWhy ? "disabled" : ""}> E-mail them sign-in instructions (never the password)</label>${linkWhy ? `<span class="tiny muted">${esc(linkWhy)}</span>` : ""}
           <button class="btn lime sm" id="rp-temp">Generate temporary password</button></div>
         <div class="card stack rp-o"><h3>E-mail a reset link</h3><p class="small">Sends a single-use link to <b>${esc(email || "—")}</b>. It expires in 24 hours. Their current password keeps working until they use it.</p>
-          <button class="btn ghost sm" id="rp-link" ${linkWhy ? "disabled" : ""}>Send the reset link</button></div></div></div>
+          <button class="btn ghost sm" id="rp-link" ${linkWhy ? "disabled" : ""}>Send the reset link</button></div></div></div>`}
       <div id="rp-out" aria-live="polite"></div>
       <div class="acts" id="rp-acts"><button class="btn ghost" id="rp-x">Close</button></div>`, (m) => {
       const out = $("#rp-out", m), busy = (b, on) => { b.disabled = on; b.setAttribute("aria-busy", on ? "true" : "false"); };
@@ -124,7 +124,7 @@
       const l = $("#rp-link", m); if (l) l.onclick = async () => { busy(l, true);
         try { const x = await root.XFServer.resetAccount(r.uid, "link"); out.innerHTML = `<div class="note ok small"><b>Reset link sent</b> to ${esc(x.to)} at ${esc(new Date(x.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}. The e-mail service accepted it; delivery to the inbox can take a few minutes.</div>`; }
         catch (e) { out.innerHTML = `<div class="note err small"><b>Not sent.</b> ${esc(e.message)}</div>`; } busy(l, false); };
-      $("#rp-temp", m).onclick = () => {
+      const tb = $("#rp-temp", m); if (tb) tb.onclick = () => {
         const hours = +$("#rp-h", m).value, notify = $("#rp-n", m).checked, main = $("#rp-main", m);
         main.hidden = true;
         out.innerHTML = `<div class="card stack rp-conf" role="alertdialog" aria-labelledby="rp-ch"><h3 id="rp-ch">Generate a temporary password for ${esc(name)}?</h3>
@@ -148,18 +148,20 @@
   async function editUser(r) {
     const roles = A.A.roles || A.DEFAULT_ROLES, cloud = DPStore.st.mode === "cloud", uid = r.uid, hr = uid ? (((await DPStore.tryGet(`staff/${uid}`)) || {}).hr || {}) : {};
     const pic = await A.avatarUrl(uid), hasPic = !!(await A.picture(uid)), st = uid ? await statsFor(uid, r) : {};
+    const isOwner = !!(root.XFServer && uid && (((await root.XFServer.accounts().catch(() => null)) || {}).accounts || []).some((x) => x.uid === uid && x.owner));   // nobody resets the owner's password here
+    const ownerLocked = isOwner && uid !== DPStore.st.userId;   // only the owner changes the owner's e-mail, role and active status (the server refuses it too)
     U.openModal(`<div class="picedit"><img class="pic ring2" width="96" height="96" style="width:96px;height:96px" alt="" src="${esc(pic)}"><div><h2>${esc(A.fullName(r) || r.email)}</h2><span class="small muted">${esc([roleLabel(r.role), r.department, r.active === false ? "Deactivated" : "Active"].filter(Boolean).join(" · "))} · account created ${esc(H.dateS(r.createdAt))} by ${esc(A.nameSync(r.createdBy) || "—")}</span>
         <div class="row" style="margin-top:6px"><button class="btn ghost xs" id="eu-pic">${hasPic ? "Replace picture…" : "Upload picture…"}</button>${hasPic ? `<button class="btn ghost xs" id="eu-pico">Original</button><button class="btn ghost xs" id="eu-picx">Remove</button>` : ""}</div></div></div>
       ${r.deactivatedAt ? `<div class="note small">Deactivated ${esc(H.dateS(r.deactivatedAt))} — ${esc(r.deactivationReason || "")}</div>` : ""}
       <h4>Employment and performance</h4>${uid ? statsHtml(st) : ""}
       <div class="grid3"><label class="field"><span>First name</span><input class="in" id="eu-fn" value="${esc(r.firstName || A.fullName(r).split(" ")[0] || "")}"></label><label class="field"><span>Last name</span><input class="in" id="eu-ln" value="${esc(r.lastName || A.fullName(r).split(" ").slice(1).join(" "))}"></label><label class="field"><span>Employment ID</span><input class="in" id="eu-id" value="${esc(hr.employeeId || "")}"></label></div>
       <div class="grid3"><label class="field"><span>Job title</span><input class="in" id="eu-t" value="${esc(r.title || "")}"></label><label class="field"><span>Department</span><select class="in" id="eu-d">${DEPTS.map((d) => `<option${d === r.department ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label><label class="field"><span>Hiring date</span><input class="in" type="date" id="eu-h" value="${esc(hr.hireDate || "")}"></label></div>
-      <div class="grid3"><label class="field"><span>E-mail</span><input class="in" id="eu-e" value="${esc(r.email || hr.email || "")}"></label><label class="field"><span>Mobile</span><input class="in" id="eu-m" value="${esc(hr.mobile || "")}"></label>
-        <label class="field"><span>Role</span><select class="in" id="eu-r">${roles.map((x) => `<option value="${esc(x.id)}"${x.id === r.role ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label></div>
+      <div class="grid3"><label class="field"><span>E-mail</span><input class="in" id="eu-e" value="${esc(r.email || hr.email || "")}"${ownerLocked ? ' readonly aria-describedby="eu-e-h"><span class="tiny muted" id="eu-e-h">Only the owner can change this.</span' : ""}></label><label class="field"><span>Mobile</span><input class="in" id="eu-m" value="${esc(hr.mobile || "")}"></label>
+        <label class="field"><span>Role</span><select class="in" id="eu-r"${ownerLocked ? ' disabled aria-describedby="eu-r-h"' : ""}>${roles.map((x) => `<option value="${esc(x.id)}"${x.id === r.role ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select>${ownerLocked ? '<span class="tiny muted" id="eu-r-h">Only the owner can change this.</span>' : ""}</label></div>
       ${A.baseOf(r.role) === "engineer" ? `<label class="check small"><input type="checkbox" id="eu-all" ${r.engineerSeesAll ? "checked" : ""}> May view every order's engineering status (not only assigned orders)</label>` : ""}
       ${cloud && !root.XFServer ? "<p class='tiny muted'>Match the sharing level to the role: Editor for administrators, Contributor for everyone else.</p>" : ""}
       <label class="field"><span>Reason for the change</span><input class="in" id="eu-why"></label>
-      <div class="row">${r.active === false ? `<button class="btn sm" id="eu-on">Reactivate</button>` : `<button class="btn danger sm" id="eu-off" ${uid === DPStore.st.userId ? "disabled" : ""}>Deactivate</button>`}${!cloud || (root.XFServer && uid && uid !== DPStore.st.userId) ? `<button class="btn ghost sm" id="eu-pw">Reset password…</button>` : ""}${uid && A.isSalesRole(r.role) ? `<button class="btn ghost sm" id="eu-leads">Reassign their leads…</button>` : ""}</div>
+      <div class="row">${ownerLocked ? "" : r.active === false ? `<button class="btn sm" id="eu-on">Reactivate</button>` : `<button class="btn danger sm" id="eu-off" ${uid === DPStore.st.userId ? "disabled" : ""}>Deactivate</button>`}${(!cloud || (root.XFServer && uid && uid !== DPStore.st.userId)) && !isOwner ? `<button class="btn ghost sm" id="eu-pw">Reset password…</button>` : ""}${uid && A.isSalesRole(r.role) ? `<button class="btn ghost sm" id="eu-leads">Reassign their leads…</button>` : ""}</div>
       <div class="acts"><button class="btn ghost" id="eu-x">Close</button><button class="btn" id="eu-s">Save</button></div>`, (m) => {
       const why = () => $("#eu-why", m).value.trim();
       $("#eu-x", m).onclick = () => U.closeModal();
@@ -169,6 +171,7 @@
       const px = $("#eu-picx", m); if (px) px.onclick = () => run(() => A.removePicture(uid), "Picture removed.");
       $("#eu-s", m).onclick = () => { const patch = {}, g = (id) => $(id, m).value.trim();
         const map = { firstName: "#eu-fn", lastName: "#eu-ln", title: "#eu-t", department: "#eu-d", email: "#eu-e", role: "#eu-r" };
+        if (ownerLocked) { delete map.email; delete map.role; }   // never sent for the owner, so no directory write is refused half-way
         for (const [k, id] of Object.entries(map)) if (g(id) !== String(r[k] || (k === "email" ? hr.email || "" : ""))) patch[k] = g(id);
         const all = $("#eu-all", m); if (all && all.checked !== !!r.engineerSeesAll) patch.engineerSeesAll = all.checked;
         const hrPatch = { employeeId: g("#eu-id"), mobile: g("#eu-m"), hireDate: $("#eu-h", m).value, email: g("#eu-e") };

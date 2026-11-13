@@ -24,9 +24,7 @@ import { usageSummary } from "./usage.js";
 import { readiness } from "./readiness.js";
 import { queueLeads, engineStep, engineTick } from "./enrich.js";
 import { scheduleTick } from "./schedule.js";
-import { aiTest, providerUsage, aiConfiguredMap } from "./ai.js";
-import { streamUsage } from "./usage.js";
-import { mailConfigured, sendMail, resetEmail, tempEmail, securityEmail } from "./mail.js";
+import { mailConfigured, sendMail, resetEmail, tempEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
 const DOC_MAX = 256 * 1024, BODY_MAX = 4 * 1048576;
@@ -110,6 +108,7 @@ async function account(env, req) {
   const a = await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON u.uid = s.uid WHERE s.th = ? AND s.exp > ?").bind(await sha256(t), Date.now()).first();
   if (!a || !a.active) return null; return a;
 }
+const privateAsset = (r) => { const o = new Response(r.body, r); o.headers.set("Cache-Control", "private, no-store"); return o; };
 async function limited(env, k) { const f = await env.DB.prepare("SELECT until FROM fails WHERE k = ?").bind(k).first(); return !!(f && f.until > Date.now()); }
 // 5 failures lock a username for 15 minutes; an address (an office may share one) after 30
 async function failed(env, k, max = 5) {
@@ -257,7 +256,20 @@ const PRE_APPROVED = [["commission", (l) => l.commission && `commissions/${l.com
   ["payroll", (l) => l.payroll && `fin/payroll/r/${l.payroll}`, (d) => ["approved", "partly_paid"].includes(d.status)],
   ["wdue", (l) => l.wdue && `fin/wdue/d/${l.wdue}`, (d) => ["approved", "partly_paid"].includes(d.status)],
   ["purchase", (l) => l.purchase && `fin/purch/p/${l.purchase}`, (d) => ["approved", "received"].includes(d.status)]];
+/* The owner's directory e-mail is where "Forgot your password?" sends the owner's reset link, and an inactive directory record
+   switches that recovery off: only the owner may change the owner's e-mail, role or active status. */
+const ownerUids = async (env) => new Set((((await env.DB.prepare("SELECT uid FROM users WHERE owner = 1").all()).results) || []).map((r) => r.uid));
+const DIR_OWNER_MSG = "Only the owner can change the owner’s e-mail address, role or active status, or create the owner’s directory record.";
+async function dirGuard(env, acc, p, old, next) {
+  if (levelOf(acc) === "owner") return null;
+  const own = await ownerUids(env); if (!(own.has(old && old.uid) || own.has(next && next.uid))) return null;
+  if (!old || old.uid !== next.uid) return DIR_OWNER_MSG;
+  if (String(old.email ?? "") !== String(next.email ?? "")) return DIR_OWNER_MSG;   // exact: no trimming or case folding
+  if (!eqv(old.active, next.active) || !eqv(old.role, next.role)) return DIR_OWNER_MSG;
+  return null;
+}
 const GUARDS = [
+  { re: /^directory\/[^/]+$/, del: async (old, acc, env) => (old && levelOf(acc) !== "owner" && (await ownerUids(env)).has(old.uid) ? DIR_OWNER_MSG : null), check: dirGuard },
   // 1.4 — Growth & Marketing Center
   { re: /^mkt\//, del: (old, acc) => (isAdminAcc(acc) ? null : "Only an administrator can delete marketing records — set the status instead."), check: mktGuard },
   // 1.3 — factory records: written by engineers and administrators only; material movements and assignment history are
@@ -392,7 +404,7 @@ async function dbOp(env, acc, b) {
     const curRow = op === "update" || guarded || op === "create" ? await env.DB.prepare("SELECT data FROM docs WHERE path = ?").bind(p).first() : null;
     const old = curRow ? JSON.parse(curRow.data) : null;
     if (op === "delete") {
-      if (guarded && guarded.del) { const e = guarded.del(old, acc); if (e) return { error: "refused", message: e }; }
+      if (guarded && guarded.del) { const e = await guarded.del(old, acc, env); if (e) return { error: "refused", message: e }; }
       await env.DB.batch([env.DB.prepare("DELETE FROM docs WHERE path = ?").bind(p), env.DB.prepare("INSERT INTO gone (path, at) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET at = excluded.at").bind(p, now())]); return { ok: true };
     }
     let data = b.data; if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "invalid_argument", message: "Document data must be an object." };
@@ -539,16 +551,23 @@ const FORGOT = PAGE("Forgot password · X FORCE", `<form id="f" data-mode="forgo
 <div class="err" id="e" role="alert"></div>
 <label>E-mail address<input name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required autofocus></label>
 <button>Send the reset link</button><a class="fgt" href="/login">Back to sign in</a>
-<div class="help"><p class="tiny">The link works once and expires after 30 minutes. No e-mail? Check spam, or ask an administrator to reset your password.</p></div></form>
+<div class="help"><p class="tiny">The link works once and expires after 30 minutes. No e-mail? Check spam, or ask an administrator to reset your password.</p><p class="tiny">Owner of this X FORCE? <a href="/recover">Recover with the setup code</a>.</p></div></form>
 <script src="/xf-login.js"></script>`);
 const NOMAIL = PAGE("Forgot password · X FORCE", `<form><h1>Forgot your password?</h1><p class="sub">Password recovery by e-mail is not switched on for this company yet.</p>
-<p class="tiny">Ask an administrator to reset your password: User Management → your name → Reset password.</p><a class="fgt" href="/login">Back to sign in</a></form>`);
+<p class="tiny">Ask an administrator to reset your password: User Management → your name → Reset password.</p><p class="tiny">Owner of this X FORCE? <a href="/recover">Recover with the setup code</a>.</p><a class="fgt" href="/login">Back to sign in</a></form>`);
 const RESET = PAGE("Choose a new password · X FORCE", `<form id="f" data-mode="reset" novalidate><h1>Choose a new password</h1><p class="sub">This ends every other session on your account.</p>
 <div class="err" id="e" role="alert"></div>
 <label>New password<span class="fld"><input id="pw" name="password" type="password" autocomplete="new-password" required autofocus>${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label>
 <label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label>
 <button>Save the new password</button><a class="fgt" href="/forgot">Need a new link?</a></form>
 <script src="/xf-login.js"></script>`);
+const RECOVER = PAGE("Recover the owner account · X FORCE", `<form id="f" data-mode="recover" novalidate><h1>Recover the owner account</h1><p class="sub">For the owner only. Choose a new password with the setup code. This ends every session on the owner account.</p>
+<div class="err" id="e" role="alert"></div>
+<label>Setup code<input name="code" required autocomplete="off" spellcheck="false" autofocus><span class="tiny">The secret <span class="code">SETUP_CODE</span> saved in Cloudflare.</span></label>
+<label>Owner username<input name="username" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+<label>New password<span class="fld"><input id="pw" name="password" type="password" required autocomplete="new-password">${PEEK}</span><span class="tiny">10 or more characters, with letters and a digit.</span></label>
+<label>Repeat the new password<input name="password2" type="password" autocomplete="new-password" required></label>
+<button>Recover the owner account</button><a class="fgt" href="/login">Back to sign in</a></form><script src="/xf-login.js"></script>`);
 const NOSETUP = PAGE("Not set up · X FORCE", `<form><h1>Almost there</h1><p class="sub">X FORCE has no administrator yet, and no setup code is configured.</p>
 <p class="tiny">In Cloudflare: Workers &amp; Pages → this project → Settings → Variables and Secrets → add a <b>Secret</b> named <span class="code">SETUP_CODE</span> (a long random code only you know), then reload this page.</p></form>`);
 const LOGIN_JS = `(function(){var f=document.getElementById("f");if(!f)return;var er=document.getElementById("e"),b=f.querySelector("button:not(.peek)");
@@ -568,16 +587,17 @@ var miss=[].slice.call(f.querySelectorAll("input[required]")).find(function(i){r
 if(miss){return bad("Enter your "+(miss.closest("label").firstChild.textContent||"details").trim().toLowerCase()+".",miss);}
 var d=Object.fromEntries(new FormData(f));
 if(mode==="forgot"&&!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(d.email.trim()))return bad("Enter a valid e-mail address.",f.querySelector("input[name=email]"));
-if(mode==="reset"||mode==="change"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d=mode==="reset"?{token:tok,password:d.password}:{old:oldpw||d.old,password:d.password};}
+if(mode==="reset"||mode==="change"||mode==="recover"){if(d.password!==d.password2)return bad("The two passwords are not the same.",f.querySelector("input[name=password2]"));d=mode==="reset"?{token:tok,password:d.password}:mode==="recover"?{code:d.code,username:d.username,password:d.password}:{old:oldpw||d.old,password:d.password};}
 b.disabled=true;b.setAttribute("aria-busy","true");
 var sx=document.getElementById("sx"),signin=!mode&&!f.dataset.setup&&sx;if(signin){sx.classList.remove("ok");document.getElementById("sx-t").textContent="Checking your account…";document.getElementById("sx-s").textContent="";sx.hidden=false;var slow=setTimeout(function(){document.getElementById("sx-s").textContent="Still working. Your connection may be slow.";},8000);requestAnimationFrame(function(){requestAnimationFrame(function(){sx.classList.add("on");});});}
 var ac=window.AbortController?new AbortController():null,tm=setTimeout(function(){if(ac)ac.abort();},20000);
-var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d),signal:ac?ac.signal:undefined}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server did not answer. Check your connection and try again."};});clearTimeout(tm);
+var r=await fetch(mode==="change"?"/api/password":mode==="forgot"?"/api/forgot":mode==="reset"?"/api/reset":mode==="recover"?"/api/recover":f.dataset.setup?"/api/setup":"/api/login",{method:"POST",headers:{"content-type":"application/json","x-xf":"1"},body:JSON.stringify(d),signal:ac?ac.signal:undefined}).then(function(r){return r.json();}).catch(function(){return {error:"net",message:"The server did not answer. Check your connection and try again."};});clearTimeout(tm);
 if(signin)clearTimeout(slow);function unsx(){if(!signin)return;sx.classList.remove("on");setTimeout(function(){sx.hidden=true;},260);}
 if(r.error||(!mode&&r.mustChange))unsx();
 if(r.error){b.disabled=false;b.removeAttribute("aria-busy");if(mode==="change"&&r.error==="old"){if(oldpw){location.href="/login";return;}r.message="The temporary password is not correct.";}var pw=f.querySelector("input[name=password]");if(pw&&r.error==="credentials"){pw.value="";}return bad(r.message||r.error,r.error==="credentials"?pw:null);}
 if(!mode&&r.mustChange){b.disabled=false;b.removeAttribute("aria-busy");return change(d.password);}
 if(mode==="forgot")return done("Check your e-mail",r.message,"/login","Back to sign in");
+if(mode==="recover")return done("Owner account recovered","Sign in with your new password.","/login","Sign in");
 if(mode==="reset")return done("Password changed","You can now sign in with your new password. Your other sessions were signed out.","/login","Sign in");
 if(signin){sx.classList.add("ok");sx.querySelector(".x-band").classList.remove("x-band--wait");document.getElementById("sx-t").textContent="Signed in. Opening your dashboard…";try{sessionStorage.setItem("xf.splash","1");}catch(x){}
 setTimeout(function(){location.href="/";},matchMedia("(prefers-reduced-motion: reduce)").matches?0:420);return;}
@@ -712,22 +732,11 @@ async function auditSrv(env, by, action, target, detail) {
   const id = now().replace(/[-:.TZ]/g, "").slice(0, 17) + "-" + tokenNew2().slice(0, 6).replace(/[^A-Za-z0-9]/g, "x");
   await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, 'audit', ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind("audit/" + id, JSON.stringify({ action, target, by, at: now(), kind: "security", detail: String(detail || "").slice(0, 300), server: true }), now()).run();
 }
-/** 1.4.6 — any administrator may reset the owner's password (recovery without the owner's approval). The owner is always
- *  told: an inbox alert (shown as urgent in "Needs your attention") and, when e-mail is set up, an e-mail to their address.
- *  Neither contains a password. */
-async function ownerAlert(env, req, owner, by, what, { mail = true } = {}) {
-  const when = now(), id = "sec-ownerreset-" + when.replace(/[^0-9]/g, "").slice(0, 14);
-  const n = { id, type: "security", title: "Your password was reset by an administrator", body: `${by.name} (${by.username}) issued ${what} for your owner account on ${when.slice(0, 16).replace("T", " ")} UTC. If you did not arrange this, change your password and review the audit log.`, link: { view: "audit" }, at: when, from: by.uid, read: false, data: { by: by.uid, at: when, kind: "owner-reset" } };
-  await env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind(`notif/${owner.uid}/n/${id}`, `notif/${owner.uid}/n`, JSON.stringify(n), when).run();
-  let sent = "not e-mailed";
-  if (mail) { const d = await dirOf(env, owner.uid), to = emailOf(d);
-    if (mailConfigured(env) && to) { const m = securityEmail({ name: (d && (d.firstName || d.displayName)) || owner.name, by: by.name, what, when, origin: appOrigin(env, req) }); const r = await sendMail(env, { to, subject: m.subject, html: m.html, text: m.text }); sent = r.ok ? "owner e-mailed" : "owner e-mail failed: " + r.error; }
-    else sent = !to ? "owner has no e-mail on file" : "e-mail not set up"; }
-  await auditSrv(env, by.uid, "Owner password reset — owner alerted", owner.uid, `${what}; inbox alert created; ${sent}`);
-}
 /** Generate a readable temporary password (letters and digits, no look-alikes). */
 function tempPassword() { const c = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = rand(16); let s = ""; for (const x of r) s += c[x % c.length]; return s.slice(0, 6) + "-" + s.slice(6, 12) + (2 + (r[0] % 8)); }
 
+const OWNER_MSG = "The owner account can’t be reset by an administrator. The owner recovers it with “Forgot your password?” or the setup code at /recover.";
+async function ownerRefused(env, acc, a) { await auditSrv(env, acc.uid, "Owner reset refused", a.uid, "Administrators cannot reset the owner account"); return json(403, { error: "owner", message: OWNER_MSG }); }
 async function route(req, env, ctx) {
   const u = new URL(req.url), p = decodeURIComponent(u.pathname), M = req.method;
   // 1.3 — internal folders are never website files, whatever .assetsignore says (ops/ holds the manufacturing cost model)
@@ -802,10 +811,35 @@ async function route(req, env, ctx) {
     await auditSrv(env, a.uid, "Password changed with a reset link", a.uid, "All sessions ended");
     return json(200, { ok: true });
   }
+  // ---- owner recovery with the setup code (administrators cannot reset the owner)
+  if (p === "/recover") return respond(200, RECOVER, "text/html; charset=utf-8");
+  if (p === "/api/recover" && M === "POST") {
+    if (!csrfOk(req)) return json(403, { error: "forbidden" });
+    // the setup code is a permanent owner credential: 5 failures lock the address and, from any address, the username
+    const b = await body(req), un = String(b.username || "").trim().toLowerCase(), k = "rc:" + ip(req), ku = "rc:u:" + un, bad = { error: "code", message: "The setup code or username is not correct." };
+    if ((await limited(env, k)) || (await limited(env, ku))) return json(429, { error: "locked", message: "Too many attempts. Try again in 15 minutes." });
+    if (!env.SETUP_CODE || String(env.SETUP_CODE).length < 8) return json(503, { error: "nocode", message: "No SETUP_CODE secret (8+ characters) is configured in Cloudflare." });
+    if (!(await setupDone(env))) return json(403, bad);
+    const codeOk = same(enc.encode(await sha256(String(b.code || ""))), enc.encode(await sha256(String(env.SETUP_CODE))));
+    const a = await env.DB.prepare("SELECT * FROM users WHERE username = ? AND owner = 1").bind(un).first();
+    if (!codeOk || !a) { await failed(env, k); await failed(env, ku); return json(403, bad); }
+    const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob });
+    const h = await hashPw(env, b.password), t = now();
+    await env.DB.batch([env.DB.prepare("UPDATE users SET salt = ?, hash = ?, iter = ?, must_change = 0 WHERE uid = ?").bind(h.salt, h.hash, h.iter, a.uid),
+      env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid), env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username),
+      env.DB.prepare("DELETE FROM kv WHERE k = ?").bind("tempexp:" + a.uid),
+      env.DB.prepare("UPDATE resets SET used_at = ? WHERE uid = ? AND used_at IS NULL").bind("superseded " + t, a.uid)]);
+    await auditSrv(env, a.uid, "Owner password recovered with the setup code", a.uid, "All sessions ended");
+    const n = { id: "sec-recover-" + t.replace(/[^0-9]/g, "").slice(0, 14), type: "security", title: "The owner account was recovered with the setup code", body: `The owner password was changed at /recover on ${t.slice(0, 16).replace("T", " ")} UTC and every owner session was ended. If this was not expected, contact the owner and review the audit log.`, link: { view: "audit" }, at: t, from: a.uid, read: false };
+    const rs = ((await env.DB.prepare("SELECT uid FROM users WHERE active = 1 AND (level = 'admin' OR owner = 1)").all()).results || []).filter((x) => x.uid !== a.uid);
+    if (rs.length) await env.DB.batch(rs.map((x) => env.DB.prepare("INSERT INTO docs (path, parent, data, v, at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(path) DO NOTHING").bind(`notif/${x.uid}/n/${n.id}`, `notif/${x.uid}/n`, JSON.stringify(n), t)));
+    return json(200, { ok: true });
+  }
   // ---- everything below needs a session
   const acc = await account(env, req);
   if (p === "/" || p === "/index.html") { if (!(await setupDone(env))) return redirect("/setup"); if (!acc) return redirect("/login"); if (acc.must_change) return redirect("/login?change=1"); return indexHtml(env, req); }
   if (p === "/xf-shim.js") return acc ? env.ASSETS.fetch(req) : respond(401, "", "text/plain");
+  if (p.startsWith("/data/")) return !acc ? respond(401, "", "text/plain") : acc.must_change || !isAdminAcc(acc) ? respond(403, "", "text/plain") : privateAsset(await env.ASSETS.fetch(req));   // research data: signed-in administrators only, never cached
   if (!p.startsWith("/api/")) return respond(404, "Not found", "text/plain");
   if (p.startsWith("/api/ingest/")) return json(501, { error: "not_available", message: "Research results are not uploaded from outside on Cloudflare: research runs inside this Worker (Mission Control → Run research now)." });
   if (!acc) return json(401, { error: "unauthenticated", message: "Signed out — sign in again." });
@@ -854,11 +888,11 @@ async function route(req, env, ctx) {
     const b = await body(req), a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(mr[1]).first();
     if (!a) return json(404, { error: "not_found", message: "No such account." });
     if (a.uid === acc.uid) { await auditSrv(env, acc.uid, "Password reset refused", a.uid, "Own account — use My Profile → Change password"); return json(400, { error: "self", message: "Change your own password in My Profile → Change password (or use “Forgot your password?” on the sign-in page)." }); }
+    if (a.owner) return ownerRefused(env, acc, a);
     await env.DB.prepare("DELETE FROM fails WHERE k = ?").bind("u:" + a.username).run();   // a locked-out person can be helped at once
     if (b.mode === "link") {
       if (!mailConfigured(env)) return json(400, { error: "not_configured", message: "E-mail is not set up yet (RESEND_API_KEY and MAIL_FROM). Use a temporary password instead." });
       const r = await issueLink(env, req, a.uid, "admin-link", acc.uid);
-      if (r.ok && a.owner) await ownerAlert(env, req, a, acc, "a reset link", { mail: false });
       return json(r.ok ? 200 : 400, r.ok ? { ok: true, mode: "link", sentAt: r.sentAt, to: r.to } : { error: "mail", message: r.error });
     }
     if (b.mode === "temp") {
@@ -878,8 +912,7 @@ async function route(req, env, ctx) {
           const r = await sendMail(env, { to, subject: m.subject, html: m.html, text: m.text }); mail = { requested: true, ok: r.ok, error: r.ok ? null : r.error, to: to.replace(/^(.).*(@.*)$/, "$1…$2") }; }
         await env.DB.prepare("UPDATE resets SET mail = ? WHERE uid = ? AND kind = 'admin-temp' AND exp = ?").bind(mail.ok ? "instructions sent " + now() : "instructions NOT sent: " + mail.error, a.uid, exp).run();
       }
-      await auditSrv(env, acc.uid, "Temporary password generated", a.uid, `Generated (${a.level === "admin" || a.owner ? "administrator" : a.level} account); sessions ended; must be changed at sign-in; expires in ${hrs} h; e-mail: ${b.notify ? (mail.ok ? "instructions sent" : "not sent — " + mail.error) : "not requested"}`);
-      if (a.owner) await ownerAlert(env, req, a, acc, "a temporary password");
+      await auditSrv(env, acc.uid, "Temporary password generated", a.uid, `Generated (${a.level === "admin" ? "administrator" : a.level} account); sessions ended; must be changed at sign-in; expires in ${hrs} h; e-mail: ${b.notify ? (mail.ok ? "instructions sent" : "not sent — " + mail.error) : "not requested"}`);
       return json(200, { ok: true, mode: "temp", tempPassword: pw, expiresAt: new Date(exp).toISOString(), hours: hrs, mail }, { "Cache-Control": "no-store" });
     }
     return json(400, { error: "invalid_argument", message: "Choose how to reset: e-mail link or temporary password." });
@@ -893,6 +926,7 @@ async function route(req, env, ctx) {
     await env.DB.prepare("INSERT INTO users (uid, username, name, level, owner, active, must_change, salt, hash, iter, created_at, created_by) VALUES (?, ?, ?, ?, 0, 1, 1, ?, ?, ?, ?, ?)")
       .bind(uid, un, String(b.name || un).slice(0, 80), ACC_LEVELS[b.level] || "interact", h.salt, h.hash, h.iter, now(), acc.uid).run();
     await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + uid, String(Date.now() + tempHours(env, env.TEMP_PASSWORD_MAX_HOURS || 168) * 3600e3)).run();
+    await auditSrv(env, acc.uid, "Account created", uid, `${un} · ${ACC_LEVELS[b.level] || "interact"}`);
     return json(200, { uid });
   }
   const m = p.match(/^\/api\/accounts\/(u_[A-Za-z0-9]{10,40})$/);
@@ -900,15 +934,19 @@ async function route(req, env, ctx) {
     const a = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(m[1]).first(); if (!a) return json(404, { error: "not_found" });
     const b = await body(req);
     if (a.owner && (b.active === false || (b.level && b.level !== "admin"))) return json(400, { error: "owner", message: "The owner account cannot be deactivated or demoted." });
-    if (b.level) a.level = ACC_LEVELS[b.level] || "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
-    const st = [];
     if (b.password && a.uid === acc.uid) return json(400, { error: "self", message: "Change your own password in My Profile." });
-    if (b.password && a.owner) await ownerAlert(env, req, a, acc, "a password chosen by the administrator");
-    if (b.password) { await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(Date.now() + tempHours(env) * 3600e3)).run(); await auditSrv(env, acc.uid, "Temporary password set by an administrator", a.uid, "Chosen by the administrator; must be changed at sign-in"); }
-    if (b.password) { const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob }); const h = await hashPw(env, b.password); Object.assign(a, { salt: h.salt, hash: h.hash, iter: h.iter, must_change: 1 }); }
-    st.push(env.DB.prepare("UPDATE users SET level = ?, active = ?, name = ?, salt = ?, hash = ?, iter = ?, must_change = ? WHERE uid = ?").bind(a.level, a.active, a.name, a.salt, a.hash, a.iter, a.must_change, a.uid));
+    if (b.password && a.owner) return ownerRefused(env, acc, a);
+    if (b.password) { const prob = pwProblem(b.password); if (prob) return json(400, { error: "password", message: prob }); }   // validate before any write
+    const was = { level: a.level, active: a.active };
+    if (b.level) a.level = ACC_LEVELS[b.level] || "interact"; if (b.active != null) a.active = b.active ? 1 : 0; if (b.name) a.name = String(b.name).slice(0, 80);
+    if (b.password) { const h = await hashPw(env, b.password); Object.assign(a, { salt: h.salt, hash: h.hash, iter: h.iter, must_change: 1 }); }
+    const st = [env.DB.prepare("UPDATE users SET level = ?, active = ?, name = ?, salt = ?, hash = ?, iter = ?, must_change = ? WHERE uid = ?").bind(a.level, a.active, a.name, a.salt, a.hash, a.iter, a.must_change, a.uid)];
     if (!a.active || b.password) st.push(env.DB.prepare("DELETE FROM sessions WHERE uid = ?").bind(a.uid));   // deactivation / reset ends their sessions at once
+    if (b.password) st.push(env.DB.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind("tempexp:" + a.uid, String(Date.now() + tempHours(env) * 3600e3)));
     await env.DB.batch(st);
+    if (a.level !== was.level) await auditSrv(env, acc.uid, "Access level changed", a.uid, `${was.level} → ${a.level}`);
+    if (a.active !== was.active) await auditSrv(env, acc.uid, a.active ? "Account reactivated" : "Account deactivated", a.uid, a.active ? "" : "Sessions ended");
+    if (b.password) await auditSrv(env, acc.uid, "Temporary password set by an administrator", a.uid, "Chosen by the administrator; must be changed at sign-in");
     return json(200, { ok: true, account: pubAcc(a) });
   }
   if (p === "/api/storage") { const s = await storage(env), sw = await env.DB.prepare("SELECT data FROM docs WHERE path = 'sweep/state'").first(); const ss = sw ? JSON.parse(sw.data) : {};
@@ -930,12 +968,6 @@ async function route(req, env, ctx) {
     if (r.ok && r.queued.length) await auditSrv(env, acc.uid, "Lead research queued", r.queued.slice(0, 20).join(", "), `${r.queued.length} lead(s)`);
     return json(r.ok ? 200 : 400, r); }
   if (p === "/api/mi/enrich/step" && M === "POST") { const r = await engineStep(env, acc.uid + ":" + Math.random().toString(36).slice(2)); return json(200, r); }
-  // Commercial Intelligence, Phase 0 (administrators only: this block is after the admin check). Status of AI providers and search streams;
-  // a test call to one provider with a fixed public prompt. Settings themselves are ordinary documents (mix/aicfg, mix/enginecfg, config/settings).
-  if (p === "/api/ci/status" && M === "GET") return json(200, { connected: aiConfiguredMap(env), aiToday: await providerUsage(env), streams: await streamUsage(env) });
-  if (p === "/api/ci/ai/test" && M === "POST") { const b = await body(req), r = await aiTest(env, String(b.provider || ""));
-    await auditSrv(env, acc.uid, "AI provider tested", String(b.provider || "").slice(0, 20), r.ok ? "Answered" : "Failed: " + String(r.message || "").slice(0, 120));
-    return json(200, r); }
   // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
   if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
     if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);

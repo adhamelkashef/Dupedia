@@ -41,17 +41,21 @@ The permission rules are the app's own access rules (`DPStore.RULES` in `app/sto
 ## One-time Cloudflare setup
 
 1. **Build settings.** Go to Workers & Pages → your project → Settings → Build.
-   - Build command: leave it empty.
+   - Build command: `npm test`. If a unit test fails, the build fails and nothing is deployed.
    - Deploy command: `npx wrangler deploy`
    - Root directory: `/`
+   - Under **Variables** (build variables), add `NODE_VERSION` = `24` so the build runs the same Node version as the tests.
+   - GitHub Actions (`.github/workflows/ci.yml`) also runs `npm test` and `npm run test:smoke` on every pull request and every push to `main`. It reports the result; on a private repository, branch protection needs a paid GitHub plan, so the build command above is what actually blocks a deploy.
 2. **Worker name.** The `"name"` in `wrangler.jsonc` must be exactly the name of your Worker in Cloudflare. It is set to `dupedia`. If your Worker has another name, change that line.
 3. **Commit and push.** Cloudflare rebuilds automatically. On the first deploy, wrangler creates the D1 database `xforce-db` and connects it.
    - If the build log says it could not create the database, create it yourself: Storage & Databases → D1 → Create database, named exactly `xforce-db`. Then redeploy (Deployments → Retry).
 4. **Setup code.** Go to Settings → Variables and Secrets → **Add**.
    - Type: **Secret**
    - Name: `SETUP_CODE`
-   - Value: a long random code only you know (at least 8 characters; 20 or more is better).
+   - Value: a random code only you know, **20 or more random characters** (for example from a password manager's generator). The server accepts 8 or more, but this code works permanently at **/recover**, so use 20+.
    - Save. Secrets are never shown again, never in GitHub, and kept across deploys.
+   - Keep this code. It is also the owner’s permanent way back in at **/recover** if the owner password is lost: anyone with the code and the owner username can set a new owner password. To change it, replace the `SETUP_CODE` secret in the dashboard.
+   - **Existing installations:** before this version goes live, replace `SETUP_CODE` with a new value of 20 or more random characters. Until now the code only mattered once, at setup; from this version it recovers the owner account at **/recover** for as long as it is set.
 5. **Create the owner account.** Open your `workers.dev` address. It goes to **/setup**. Enter the setup code, your name, a username and a password.
    - This creates the owner (CEO) account.
    - Setup then closes for good, even with the right code.
@@ -76,6 +80,7 @@ Secrets go only in the dashboard as **Secret**, never in this file. The only sec
 - **Sign-in protection.**
   - 5 wrong passwords lock that username for 15 minutes.
   - 30 failures from one address lock that address.
+- **The owner account.** Administrators cannot reset or set the owner’s password. Only the owner can change the owner’s e-mail address, role or active status in User Management. The owner recovers it with “Forgot your password?” or with the setup code at **/recover**, which works permanently, so `SETUP_CODE` should be 20 or more random characters (5 wrong attempts lock the address, and 5 for the owner username lock that username from any address, for 15 minutes; a successful recovery ends every owner session and administrators are notified).
 - **Sessions** use an HttpOnly, Secure, SameSite=Strict cookie.
   - Every change must carry an anti-forgery header.
   - Deactivating someone or resetting their password ends their sessions at once.
@@ -178,7 +183,7 @@ every session of that account; the Forgot form answers the same way whether or n
 ## Temporary login passwords (1.4.5)
 
 **User Management → the person → Reset password… → Generate temporary password → Confirm and generate.** Works for every
-account — employees, sales, finance, engineering and other administrators. The password is shown once; copy it and give it
+account except the owner — employees, sales, finance, engineering and other administrators. The password is shown once; copy it and give it
 in person or by phone. Optionally tick *E-mail them sign-in instructions* (the e-mail never contains the password).
 
 - At sign-in the person must choose their own password on the sign-in page before X FORCE opens; the server refuses every
@@ -186,8 +191,7 @@ in person or by phone. Optionally tick *E-mail them sign-in instructions* (the e
 - Expiry: the administrator picks 4 hours, 24 hours or 3 days. Optional **Text** variables:
   `TEMP_PASSWORD_HOURS` (default 24, used when no choice is sent) and `TEMP_PASSWORD_MAX_HOURS` (upper limit, default 168 = 7 days).
   The first password of a newly created account also expires after `TEMP_PASSWORD_MAX_HOURS`.
-- Safeguards: nobody resets their own password here (use My Profile → Change password). Since 1.4.6 any administrator
-  can reset the **owner's** password for account recovery, without the owner's approval; the owner is always told — an
-  urgent item on their dashboard, an inbox alert and (when e-mail is set up and the owner has an address) an e-mail. The
-  owner account still cannot be demoted or deactivated. User Management shows whether each temporary password was used,
+- Safeguards: nobody resets their own password here (use My Profile → Change password). Administrators cannot reset or
+  set the **owner's** password (the attempt is refused and audited); the owner recovers it with “Forgot your password?”
+  or the setup code at **/recover**. The owner account cannot be demoted or deactivated. User Management shows whether each temporary password was used,
   expired unused, replaced, or is still waiting; "used" and "expired" are written to the audit log. Every generation and every refusal is written to the audit log (who, whom, when, e-mail result) — never the password.
