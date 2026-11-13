@@ -24,6 +24,8 @@ import { usageSummary } from "./usage.js";
 import { readiness } from "./readiness.js";
 import { queueLeads, engineStep, engineTick } from "./enrich.js";
 import { scheduleTick } from "./schedule.js";
+import { aiTest, providerUsage, aiConfiguredMap } from "./ai.js";
+import { streamUsage } from "./usage.js";
 import { mailConfigured, sendMail, resetEmail, tempEmail } from "./mail.js";
 
 const RULES = globalThis.DPStore, FC = globalThis.DPFinCalc;
@@ -968,6 +970,12 @@ async function route(req, env, ctx) {
     if (r.ok && r.queued.length) await auditSrv(env, acc.uid, "Lead research queued", r.queued.slice(0, 20).join(", "), `${r.queued.length} lead(s)`);
     return json(r.ok ? 200 : 400, r); }
   if (p === "/api/mi/enrich/step" && M === "POST") { const r = await engineStep(env, acc.uid + ":" + Math.random().toString(36).slice(2)); return json(200, r); }
+  // Commercial Intelligence, Phase 0 (administrators only: this block is after the admin check). Status of AI providers and search streams;
+  // a test call to one provider with a fixed public prompt. Settings themselves are ordinary documents (mix/aicfg, mix/enginecfg, config/settings).
+  if (p === "/api/ci/status" && M === "GET") return json(200, { connected: aiConfiguredMap(env), aiToday: await providerUsage(env), streams: await streamUsage(env) });
+  if (p === "/api/ci/ai/test" && M === "POST") { const b = await body(req), r = await aiTest(env, String(b.provider || ""));
+    await auditSrv(env, acc.uid, "AI provider tested", String(b.provider || "").slice(0, 20), r.ok ? "Answered" : "Failed: " + String(r.message || "").slice(0, 120));
+    return json(200, r); }
   // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
   if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
     if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);
