@@ -2,8 +2,11 @@
 .github
 node_modules
 worker
-README.md
-CLOUDFLARE.md
+*.md
+data/leadseed.json
+qa
+ops
+server
 wrangler.jsonc
 package.json
 package-lock.json
