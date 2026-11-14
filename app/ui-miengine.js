@@ -5,7 +5,7 @@
   "use strict";
   const U = DPUI, { $, $$, esc, App } = U, E = DPMiEngine;
   const S = { tab: "leads", counts: null, lf: "todo", lp: 0 };
-  const TABS = [["leads", "Existing leads"], ["sched", "Research schedule"], ["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"], ["ci", "Commercial intelligence"]];
+  const TABS = [["leads", "Existing leads"], ["sched", "Research schedule"], ["ready", "Data readiness"], ["cap", "Product capability"], ["names", "Company names"], ["jobs", "Job ledger"], ["ci", "Commercial intelligence"], ["signals", "Signals"], ["sigsrc", "Signal sources"]];
   const STATE = { ready: ["Ready", "ok"], partial: ["Partly", "warn"], none: ["Not yet", "err"] };
   const num = (x) => (Number(x) || 0).toLocaleString("en-US");
   const dt = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -42,7 +42,7 @@
     $("#me-sw").onclick = async () => { const f = await U.form(on ? "Switch the engine off" : "Switch the engine on", [{ id: "r", label: "Reason (kept in the audit log)", required: true }], { submit: on ? "Switch off" : "Switch on", intro: "Applies from the next research run. Saved records are not changed." }); if (!f) return; try { await setSwitch(!on, f.r); U.toast(on ? "Engine switched off." : "Engine switched on."); render(); } catch (e) { U.toast(e.message, { err: true }); } };
     $$("[data-mt]", V).forEach((b) => (b.onclick = () => { S.tab = b.dataset.mt; render(); }));
     const B = $("#me-body");
-    try { await ({ leads: leadsTab, sched: schedTab, ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab, ci: ciTab })[S.tab](B); }
+    try { await ({ leads: leadsTab, sched: schedTab, ready: readyTab, cap: capTab, names: namesTab, jobs: jobsTab, ci: ciTab, signals: (B) => root.DPSignalsUI.inboxTab(B, render), sigsrc: (B) => root.DPSignalsUI.sourcesTab(B, render) })[S.tab](B); }
     catch (e) { B.innerHTML = `<div class="note err">Could not load (${esc(e.message || e.code)}).</div>`; }
   }
 

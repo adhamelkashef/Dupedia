@@ -31,10 +31,12 @@ export async function addJob(env, { key, kind, input = null, maxTries = 3, stage
   return { id, created: !!r };
 }
 
-/** Jobs ready now, oldest first (counted in the database, so the Worker parses only what it returns). */
-export async function dueJobs(env, limit = 1, t = Date.now()) {
-  const rs = (await env.DB.prepare(`SELECT data FROM docs WHERE parent = ? AND json_extract(data,'$.status') IN ('queued','waiting','running') AND json_extract(data,'$.nextAt') <= ? ORDER BY json_extract(data,'$.nextAt') LIMIT ?`)
-    .bind(PARENT, nowIso(t), Math.max(1, Math.min(50, limit))).all()).results || [];
+/** Jobs ready now, oldest first (counted in the database, so the Worker parses only what it returns).
+ *  kinds (optional): only jobs of these kinds, so one engine never waits behind another engine's job. */
+export async function dueJobs(env, limit = 1, t = Date.now(), kinds = null) {
+  const ks = Array.isArray(kinds) ? kinds.map(String).filter((k) => /^[a-z0-9-]{1,40}$/.test(k)) : [];
+  const rs = (await env.DB.prepare(`SELECT data FROM docs WHERE parent = ? AND json_extract(data,'$.status') IN ('queued','waiting','running') AND json_extract(data,'$.nextAt') <= ?${ks.length ? ` AND json_extract(data,'$.kind') IN (${ks.map(() => "?").join(",")})` : ""} ORDER BY json_extract(data,'$.nextAt') LIMIT ?`)
+    .bind(PARENT, nowIso(t), ...ks, Math.max(1, Math.min(50, limit))).all()).results || [];
   return rs.map((r) => JSON.parse(r.data));
 }
 

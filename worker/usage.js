@@ -39,7 +39,7 @@ const add = (env, k, n) => env.DB.prepare("INSERT INTO kv (k, v) VALUES (?1, CAS
 export class CapError extends Error { constructor(code, message) { super(message); this.code = code; this.cap = true; } }
 const resetUtc = "It resets at midnight UTC (2 or 3 a.m. in Cairo).";
 
-export const STREAMS = ["jobs", "leads", "topic"];
+export const STREAMS = ["jobs", "leads", "topic", "signals"];
 export const streamKey = (stream, t = Date.now()) => `ru:tav:s:${stream}:${utcMonth(t)}`;
 /** The stream's envelope in credits, or null when there is none (switch off, or no share entered). */
 async function envelope(env, stream) {
@@ -55,7 +55,7 @@ export async function reserveTavily(env, n, stream = null) {
   if (sk) {
     const cap = await envelope(env, stream);
     if (cap == null) await add(env, sk, n);
-    else if (!(await addCapped(env, sk, n, cap))) throw new CapError("envelope_month_" + stream, `This month's share of search credits for ${stream === "jobs" ? "scheduled research" : stream === "leads" ? "lead research" : "topic research"} (${cap} credits) is used up. It renews on the 1st; an administrator can change the share.`);
+    else if (!(await addCapped(env, sk, n, cap))) throw new CapError("envelope_month_" + stream, `This month's share of search credits for ${({ jobs: "scheduled research", leads: "lead research", topic: "topic research", signals: "signal searches" })[stream]} (${cap} credits) is used up. It renews on the 1st; an administrator can change the share.`);
   }
   if (!(await addCapped(env, k.tavDay, n, c.tavilyDay))) { if (sk) await add(env, sk, -n); throw new CapError("tavily_day", `Today's research search allowance (${c.tavilyDay} Tavily credits) is used up. ${resetUtc} An administrator can change TAVILY_DAILY_CREDITS.`); }
   if (!(await addCapped(env, k.tavMonth, n, c.tavilyMonth))) { await add(env, k.tavDay, -n); if (sk) await add(env, sk, -n);

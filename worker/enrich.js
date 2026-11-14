@@ -148,7 +148,7 @@ async function autoAdd(env, rec, t) {
 
 /** One small step of the oldest waiting research. Returns what happened, for the page or the hourly log. */
 export async function engineStep(env, holder = "h" + Math.random().toString(36).slice(2), t = Date.now()) {
-  const [j0] = await dueJobs(env, 1, t); if (!j0) return { idle: true };
+  const [j0] = await dueJobs(env, 1, t, ["enrich"]); if (!j0) return { idle: true };
   if (j0.kind !== "enrich") return { idle: true };
   const j = await claimJob(env, j0.id, holder, t); if (!j) return { busy: true };
   const rec = (await docGet(env, encPath(j.input.leadId))) || { leadId: j.input.leadId, leadName: "", sources: [], contacts: [], projects: [], notes: [], credits: 0 };

@@ -25,6 +25,7 @@ import { readiness } from "./readiness.js";
 import { queueLeads, engineStep, engineTick } from "./enrich.js";
 import { scheduleTick } from "./schedule.js";
 import { aiTest, providerUsage, aiConfiguredMap } from "./ai.js";
+import { signalsTick, signalsRunNow, pasteLink, testFeed } from "./signals.js";
 import { streamUsage } from "./usage.js";
 import { mailConfigured, sendMail, resetEmail, tempEmail } from "./mail.js";
 
@@ -976,6 +977,12 @@ async function route(req, env, ctx) {
   if (p === "/api/ci/ai/test" && M === "POST") { const b = await body(req), r = await aiTest(env, String(b.provider || ""));
     await auditSrv(env, acc.uid, "AI provider tested", String(b.provider || "").slice(0, 20), r.ok ? "Answered" : "Failed: " + String(r.message || "").slice(0, 120));
     return json(200, r); }
+  // Commercial Intelligence, Phase 1 — signals (administrators only; nothing is fetched while config/settings.ci.signals is off)
+  if (p === "/api/mi/signal/run" && M === "POST") { const b = await body(req); return json(200, await signalsRunNow(env, Number(b.steps) || 3)); }
+  if (p === "/api/mi/signal/add" && M === "POST") { const b = await body(req), r = await pasteLink(env, { url: String(b.url || ""), quote: String(b.quote || ""), type: String(b.type || "") }, acc.uid);
+    if (r.ok && r.created) await auditSrv(env, acc.uid, "Signal added from a link", String(b.url || "").slice(0, 200), `${r.created} signal(s)`);
+    return json(r.ok ? 200 : 400, Object.assign({}, r, { error: undefined, message: r.error || undefined })); }
+  if (p === "/api/mi/signal/testfeed" && M === "POST") { const b = await body(req); return json(200, await testFeed(env, String(b.url || ""))); }
   // 2.1 — Market Research on a typed topic (free providers). Administrators only (this whole block is after the admin check).
   if (p === "/api/research/topic" && M === "POST") { const b = await body(req), r = await createTopic(env, acc.uid, b);
     if (r.ok) await auditSrv(env, acc.uid, "Market research started", r.progress.id, `${r.progress.topic} · ${r.progress.market} · ${r.progress.depth}`);
@@ -999,7 +1006,8 @@ export default {
     ctx.waitUntil(sweep(env).then((r) => console.log("sweep:", JSON.stringify(r))).catch((e) => console.error("sweep failed:", e && (e.stack || e)))
       .then(() => scheduleTick(env)).then((r) => console.log("mi-schedule:", JSON.stringify(r))).catch((e) => console.error("mi-schedule failed:", e && (e.stack || e)))
       .then(() => researchTick(env)).then((r) => console.log("research:", JSON.stringify(r).slice(0, 500))).catch((e) => console.error("research tick failed:", e && (e.stack || e)))
-      .then(() => engineTick(env)).then((r) => console.log("mi-engine:", JSON.stringify(r).slice(0, 300))).catch((e) => console.error("mi-engine tick failed:", e && (e.stack || e))));
+      .then(() => engineTick(env)).then((r) => console.log("mi-engine:", JSON.stringify(r).slice(0, 300))).catch((e) => console.error("mi-engine tick failed:", e && (e.stack || e)))
+      .then(() => signalsTick(env)).then((r) => console.log("ci-signals:", JSON.stringify(r).slice(0, 300))).catch((e) => console.error("ci-signals tick failed:", e && (e.stack || e))));
   },
 };
 export { sweep };

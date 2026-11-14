@@ -15,6 +15,7 @@
   const FLAGS = [
     ["ai", "AI routing and call log", "Each AI task uses the provider chosen below, data classes are enforced, and every call is logged. Off: every AI call goes to Gemini exactly as before."],
     ["envelopes", "Search credit envelopes", "Each kind of research may spend only its monthly share of search credits. Off: only the existing daily and monthly caps apply."],
+    ["signals", "Signals (shadow mode)", "Feeds, watched company pages and searches are read for signals, saved for administrators only. Nobody else sees them or is notified. Off: nothing is fetched."],
   ];
   function flagsOf(settings) {
     const c = (settings && settings.ci) || {}, out = {};
@@ -161,7 +162,7 @@
   const WINDOWS = { early: "Early", open: "Open", lastcall: "Last call", closed: "Closed", unknown: "Unknown" };
 
   /* ---------------- search credit envelopes (stored in mix/enginecfg.envelopes) ---------------- */
-  const STREAMS = [["jobs", "Scheduled research (news, currency, opportunities, materials, weekly)"], ["leads", "Lead and contact research"], ["topic", "Topic research"]];
+  const STREAMS = [["jobs", "Scheduled research (news, currency, opportunities, materials, weekly)"], ["leads", "Lead and contact research"], ["topic", "Topic research"], ["signals", "Signal searches (Commercial Intelligence)"]];
   function envelopesOf(cfg) {
     const e = (cfg && cfg.envelopes) || {}, out = {};
     for (const [k] of STREAMS) { const v = e[k]; out[k] = v === null || v === undefined || v === "" ? null : Number.isInteger(+v) && +v >= 0 && +v <= 1000000 ? +v : null; }

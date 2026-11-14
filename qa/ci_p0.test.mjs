@@ -39,9 +39,9 @@ const SECRET = "PRIVATE-PROMPT-TEXT-zx81";
 
 /* ---------------- switches ---------------- */
 test("switches are off unless set to true", () => {
-  assert.deepEqual(K.flagsOf(undefined), { ai: false, envelopes: false });
-  assert.deepEqual(K.flagsOf({ ci: { ai: "yes", envelopes: 1 } }), { ai: false, envelopes: false });
-  assert.deepEqual(K.flagsOf({ ci: { ai: true } }), { ai: true, envelopes: false });
+  assert.deepEqual(K.flagsOf(undefined), { ai: false, envelopes: false, signals: false });
+  assert.deepEqual(K.flagsOf({ ci: { ai: "yes", envelopes: 1 } }), { ai: false, envelopes: false, signals: false });
+  assert.deepEqual(K.flagsOf({ ci: { ai: true } }), { ai: true, envelopes: false, signals: false });
 });
 
 /* ---------------- data classes and routing ---------------- */
@@ -163,7 +163,7 @@ test("streams: use is always counted; a share limits only with the switch on", a
   await assert.rejects(reserveTavily(e, 1, "leads"), (x) => x instanceof CapError && /month/.test(x.code));
   assert.equal(await kv(e, sk), 3, "a refused reservation adds nothing");
   await reserveTavily(e, 1, "jobs");    // no share for jobs: only the ordinary caps
-  assert.deepEqual(await streamUsage(e), { jobs: 1, leads: 3, topic: 0 });
+  assert.deepEqual(await streamUsage(e), { jobs: 1, leads: 3, topic: 0, signals: 0 });
   const plain = await reserveTavily(e, 1); assert.equal(plain.streamKey, undefined, "a call without a stream works as before");
 });
 test("streams: when the daily cap refuses, the stream counter is given back", async () => {
@@ -175,7 +175,7 @@ test("share validation", () => {
   assert.equal(K.validateEnvelopes({ jobs: 100, leads: null, topic: "" }, 900), null);
   assert.match(K.validateEnvelopes({ jobs: 600, leads: 400 }, 900), /more than the monthly cap/);
   assert.match(K.validateEnvelopes({ jobs: -1 }, 900), /whole number/);
-  assert.deepEqual(K.envelopesOf({ envelopes: { jobs: "50", leads: "x" } }), { jobs: 50, leads: null, topic: null });
+  assert.deepEqual(K.envelopesOf({ envelopes: { jobs: "50", leads: "x" } }), { jobs: 50, leads: null, topic: null, signals: null });
 });
 
 /* ---------------- gazetteer ---------------- */

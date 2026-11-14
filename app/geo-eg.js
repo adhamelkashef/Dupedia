@@ -68,7 +68,9 @@
     areas.sort((x, y) => y[0].length - x[0].length); govs.sort((x, y) => y[0].length - x[0].length);
     return (IDX = { areas, govs });
   }
-  const hit = (text, w) => E().hasWord(text, w);
+  const FOLDED = new Map();
+  /** Whole-word test, after a cheap substring check (most names are absent, so most patterns are never built). */
+  const hit = (text, w) => { let f = FOLDED.get(w); if (f === undefined) { f = E().fold(w).replace(/\s+/g, " ").trim().replace(/^ال/, ""); FOLDED.set(w, f); } return text.includes(f) && E().hasWord(text, w); };
 
   function locate(raw) {
     const text = E().fold(raw || "").replace(/[-–—_,،.;:()/]+/g, " ").replace(/\s+/g, " ").trim();
